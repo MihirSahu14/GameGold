@@ -305,3 +305,13 @@ CS Graduate, University of Wisconsin-Madison. Full-stack engineer and game devel
 ---
 
 *GameGold is actively in development. Phase 1 is complete and running.*
+
+---
+
+## License
+
+**Copyright (c) 2025 Mihir Sahu. All rights reserved.**
+
+This source code is proprietary and confidential. Unauthorized copying, reproduction, distribution, or use of this software, in whole or in part, is strictly prohibited without the express written permission of the author.
+
+For licensing inquiries, contact [mihirs1410@gmail.com](mailto:mihirs1410@gmail.com)
