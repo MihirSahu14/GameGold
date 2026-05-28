@@ -1,0 +1,69 @@
+.gdd-editor h1,
+.gdd-editor h2,
+.gdd-editor h3 {
+  color: #f4f4f5;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.gdd-editor h2 { font-size: 1.25rem; }
+.gdd-editor h3 { font-size: 1.1rem; color: #a1a1aa; }
+
+.gdd-editor p {
+  color: #a1a1aa;
+  line-height: 1.75;
+  margin-bottom: 0.75rem;
+}
+
+.gdd-editor ul,
+.gdd-editor ol {
+  color: #a1a1aa;
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.gdd-editor li { margin-bottom: 0.25rem; }
+
+.gdd-editor strong { color: #f4f4f5; font-weight: 600; }
+.gdd-editor em { color: #d4d4d8; }
+
+.gdd-editor blockquote {
+  border-left: 3px solid #facc15;
+  padding-left: 1rem;
+  color: #71717a;
+  font-style: italic;
+  margin: 1rem 0;
+}
+
+.gdd-editor code {
+  background: #18181b;
+  color: #facc15;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.3rem;
+  font-size: 0.875rem;
+}
+
+.gdd-editor pre {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.gdd-editor pre code {
+  background: none;
+  padding: 0;
+  color: #d4d4d8;
+}
+
+/* Placeholder */
+.gdd-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #3f3f46;
+  pointer-events: none;
+  height: 0;
+}

@@ -1,0 +1,22 @@
+{
+  "name": "gamegold",
+  "version": "0.0.1",
+  "private": true,
+  "description": "AI-powered game design platform — from concept to gone gold",
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "build:web": "pnpm --filter web build",
+    "dev:all": "pnpm --parallel --filter web dev",
+    "lint": "pnpm --recursive lint",
+    "type-check": "pnpm --recursive type-check",
+    "clean": "pnpm --recursive clean"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@11.4.0"
+}
