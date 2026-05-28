@@ -48,5 +48,7 @@ pnpm-debug.log*
 # Type checking
 *.tsbuildinfo
 
-# Context file (local only — used for AI chat continuity)
+# AI workflow files (local only)
 CONTEXT.md
+CLAUDE.md
+PLAN.md
