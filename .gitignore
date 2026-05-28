@@ -49,4 +49,4 @@ pnpm-debug.log*
 *.tsbuildinfo
 
 # Context file (local only — used for AI chat continuity)
-context.md
+CONTEXT.md
