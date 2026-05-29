@@ -49,8 +49,8 @@ Every generated artifact — sprites, scripts, dialogue trees, architecture docs
 | Phase | Description | Status |
 |---|---|---|
 | **1. Concept & GDD** | Concept Card → AI-generated Game Design Document → edit in-browser | ✅ Complete |
-| **2. Systems Design** | Visual node graph for game entities + Claude balance analyzer | 🔜 Next |
-| **3. Asset Production** | Sprite generator + step-by-step Unity guides + dialogue trees + C# scaffolding | Planned |
+| **2. Systems Design** | Visual node graph for game entities + Claude balance analyzer | ✅ Complete |
+| **3. Asset Production** | Sprite generator + step-by-step Unity guides + dialogue trees + C# scaffolding | 🔜 Next |
 | **4. Playtesting** | AI playtest simulator, balance dashboard with Unity-specific tweak instructions | Planned |
 | **5. Deployment** | Store page generator, press kit, Unity build instructions, full export bundle | Planned |
 | **6. Desktop App** | Tauri wrapper + direct Unity project file integration (assets, scripts, configs) | Planned |
@@ -104,7 +104,7 @@ Steps are **checkable** — you mark them off as you work. Progress is saved per
 - **Next.js 14** (App Router) + TypeScript
 - **Tailwind CSS** for styling
 - **TipTap** — rich text GDD editor
-- **ReactFlow** — visual systems node graph (Phase 2)
+- **ReactFlow** — visual systems node graph
 - **Zustand** — client state
 - **TanStack Query** — server state + caching
 - **Framer Motion** — animations
@@ -129,28 +129,35 @@ Steps are **checkable** — you mark them off as you work. Progress is saved per
 ```
 GameGold/
 ├── apps/
-│   └── web/                    # Next.js 14 frontend
+│   └── web/                    # Next.js frontend
 │       ├── app/
 │       │   ├── page.tsx        # Landing page
 │       │   ├── (auth)/         # Login + Register
 │       │   └── (app)/          # Dashboard + Project pages
+│       │       └── projects/[id]/
+│       │           ├── layout.tsx      # Sets activeProject in store
+│       │           ├── concept/        # Concept Card form
+│       │           ├── gdd/            # GDD editor
+│       │           └── systems/        # Systems graph + balance
 │       ├── components/
 │       │   ├── gdd/            # TipTap GDD editor
-│       │   └── layout/         # Sidebar, stage progress
+│       │   ├── systems/        # ReactFlow canvas, NodeEditor, BalancePanel
+│       │   └── layout/         # Sidebar (dynamic stage unlocking)
 │       ├── lib/
 │       │   ├── api.ts          # Axios client + JWT interceptor
 │       │   ├── auth.ts         # Auth helpers
-│       │   └── queries/        # TanStack Query hooks
-│       └── store/              # Zustand stores
+│       │   └── queries/        # TanStack Query hooks (useGDD, useSystems…)
+│       └── store/              # Zustand stores (auth, project)
 ├── backend/
 │   └── app/
 │       ├── main.py             # FastAPI app
 │       ├── config.py           # Environment settings
-│       ├── routers/            # auth, projects, gdd
+│       ├── routers/            # auth, projects, gdd, systems
 │       ├── models/             # Pydantic v2 models
-│       ├── services/           # Claude service, auth service
-│       ├── prompts/            # GDD + Unity guide system prompts
+│       ├── services/           # Claude service, balance service, auth service
+│       ├── prompts/            # GDD + balance system prompts
 │       └── db/                 # MongoDB connection
+├── tests/                      # 30 pytest tests (backend)
 └── packages/
     ├── types/                  # Shared TypeScript types
     └── config/                 # Shared tsconfig
@@ -237,52 +244,65 @@ POST  /auth/register
 POST  /auth/login
 GET   /auth/me
 
-GET   /projects                     List all projects
-POST  /projects                     Create project
-GET   /projects/:id                 Get project
-PATCH /projects/:id                 Update project / save concept card
-DELETE /projects/:id                Delete project
+GET   /projects                       List all projects
+POST  /projects                       Create project
+GET   /projects/:id                   Get project
+PATCH /projects/:id                   Update project / save concept card
+DELETE /projects/:id                  Delete project
 
-GET   /projects/:id/gdd             Get GDD
-POST  /projects/:id/gdd/generate    Generate GDD with Claude AI
-PATCH /projects/:id/gdd             Save GDD edits
+GET   /projects/:id/gdd               Get GDD
+POST  /projects/:id/gdd/generate      Generate GDD with Claude AI
+PATCH /projects/:id/gdd               Save GDD edits
+
+GET   /projects/:id/systems           Get systems graph
+POST  /projects/:id/systems/save      Save nodes + edges (201 on first save)
+POST  /projects/:id/systems/analyze   Run Claude balance analysis
 ```
 
 Full interactive docs available at `http://localhost:8000/docs` when the backend is running.
 
 ---
 
-## Features in Phase 1
+## Features
 
-### Concept Card
-Define the foundation of your game:
+### Phase 1 — Concept & GDD
+
+**Concept Card** — define the foundation of your game:
 - Title, tagline, genre, platform
 - Tone (dark / lighthearted / epic / horror / atmospheric / comedic / realistic)
 - Core loop — the 30-second thing players repeat
 - Unique hook — what makes this game worth playing
 - Target audience and estimated scope
 
-### AI Game Design Document
-Click **"Generate GDD with AI"** and Claude writes all 8 sections:
-- Game Overview & Vision
-- Core Mechanics & Systems
-- Progression & Economy
-- Levels & World Structure
-- Characters & Enemies
-- UI/UX Design
-- Audio Direction
-- Visual Direction
+**AI Game Design Document** — click **"Generate GDD with AI"** and Claude writes all 8 sections:
+- Game Overview & Vision, Core Mechanics & Systems, Progression & Economy
+- Levels & World Structure, Characters & Enemies, UI/UX, Audio, Visual Direction
 
-Each section is editable in the built-in rich text editor with formatting support (headings, lists, code blocks, blockquotes).
+Each section is editable in the built-in rich text editor (headings, lists, code blocks, blockquotes).
+
+---
+
+### Phase 2 — Systems Design
+
+**Visual Node Graph** — model your game's entities and relationships:
+- Drag to add nodes: entities (characters, items), mechanics, events, states
+- Colour-coded by type; draw edges to define interactions
+- Edit each node's label, type, and stats (key/value pairs) in the side panel
+- Graph auto-saves 1 second after any change
+
+**Claude Balance Analyzer** — click **"Analyze Balance"** to get AI feedback on:
+- **Exploits** — infinite loops, farming cheese, unintended shortcuts
+- **Power Creep** — elements that outscale or invalidate others over time
+- **Dominant Strategies** — single approaches that trivialise meaningful choices
+- **Suggestions** — concrete fixes paired to each issue found
+
+Analysis uses your GDD (overview + mechanics) as context so Claude understands your game's intent. Results are cached and shown in the Balance tab.
 
 ---
 
 ## Roadmap
 
-**Phase 2 — Systems Design (next)**
-Visual node graph for modeling game entities, state machines, and event systems. Claude analyzes the graph for balance issues, dominant strategies, and exploits.
-
-**Phase 3 — Asset Production**
+**Phase 3 — Asset Production (next)**
 Generate pixel art or 2D illustrated sprites and assets via Replicate. Every asset ships with a checkable, step-by-step Unity setup guide. Build branching NPC dialogue trees (JSON export). Generate Unity C# code scaffolds (PlayerController, enemy AI, save system, etc.) — each with its own Unity integration walkthrough.
 
 **Phase 4 — Playtesting**
@@ -304,7 +324,7 @@ CS Graduate, University of Wisconsin-Madison. Full-stack engineer and game devel
 
 ---
 
-*GameGold is actively in development. Phase 1 is complete and running.*
+*GameGold is actively in development. Phases 1 and 2 are complete and running.*
 
 ---
 
