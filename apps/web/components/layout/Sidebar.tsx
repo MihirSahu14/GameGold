@@ -5,29 +5,43 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { logoutUser } from '@/lib/auth'
 import { useAuthStore } from '@/store/authStore'
+import { useProjectStore } from '@/store/projectStore'
 import { useRouter } from 'next/navigation'
+import type { ProjectStage } from '@gamegold/types'
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Projects', icon: '🗂️' },
 ]
 
-const STAGE_ITEMS = [
+const STAGE_ITEMS: { href: ProjectStage; label: string; icon: string }[] = [
   { href: 'concept', label: 'Concept', icon: '💡' },
   { href: 'gdd', label: 'GDD', icon: '📋' },
-  { href: 'systems', label: 'Systems', icon: '⚙️', locked: true },
-  { href: 'assets', label: 'Assets', icon: '🎨', locked: true },
-  { href: 'playtesting', label: 'Playtesting', icon: '🧪', locked: true },
-  { href: 'deployment', label: 'Deployment', icon: '🚀', locked: true },
+  { href: 'systems', label: 'Systems', icon: '⚙️' },
+  { href: 'assets', label: 'Assets', icon: '🎨' },
+  { href: 'playtesting', label: 'Playtesting', icon: '🧪' },
+  { href: 'deployment', label: 'Deployment', icon: '🚀' },
 ]
 
-interface SidebarProps {
-  projectId?: string
+// Stages unlock in order: reaching a stage unlocks all stages up to and including it.
+const STAGE_ORDER: ProjectStage[] = [
+  'concept', 'gdd', 'systems', 'assets', 'playtesting', 'deployment',
+]
+
+function isStageUnlocked(currentStage: ProjectStage | undefined, target: ProjectStage): boolean {
+  if (!currentStage) return target === 'concept'
+  const current = STAGE_ORDER.indexOf(currentStage)
+  const tgt = STAGE_ORDER.indexOf(target)
+  return tgt <= current
 }
 
-export function Sidebar({ projectId }: SidebarProps) {
+export function Sidebar() {
   const pathname = usePathname()
   const { user, setUser } = useAuthStore()
+  const { activeProject } = useProjectStore()
   const router = useRouter()
+
+  const projectId = activeProject?._id
+  const projectStage = activeProject?.stage as ProjectStage | undefined
 
   async function handleLogout() {
     await logoutUser()
@@ -62,7 +76,7 @@ export function Sidebar({ projectId }: SidebarProps) {
           </Link>
         ))}
 
-        {/* Project stages (only shown inside a project) */}
+        {/* Project stages — only shown inside a project route */}
         {projectId && (
           <div className="mt-4">
             <p className="text-zinc-600 text-xs font-semibold uppercase tracking-wider px-3 mb-2">
@@ -71,19 +85,21 @@ export function Sidebar({ projectId }: SidebarProps) {
             {STAGE_ITEMS.map((item) => {
               const href = `/projects/${projectId}/${item.href}`
               const active = pathname === href
+              const unlocked = isStageUnlocked(projectStage, item.href)
+
               return (
                 <div
                   key={item.href}
                   className={cn(
                     'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                    item.locked
+                    !unlocked
                       ? 'text-zinc-600 cursor-not-allowed'
                       : active
                       ? 'bg-zinc-800 text-zinc-50'
                       : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800/60'
                   )}
                 >
-                  {item.locked ? (
+                  {!unlocked ? (
                     <>
                       <span>{item.icon}</span>
                       <span>{item.label}</span>

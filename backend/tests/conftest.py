@@ -1,0 +1,131 @@
+"""
+Shared pytest fixtures for all backend tests.
+Patches MongoDB and Anthropic so no real network calls are made.
+"""
+import os
+
+# Must set before any app module is imported — Settings reads env at import time.
+os.environ.setdefault("MONGODB_URL", "mongodb://localhost:27017")
+os.environ.setdefault("MONGODB_DB", "gamegold_test")
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret-32-chars-long-ok")
+os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-key")
+
+import json
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+from bson import ObjectId
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.routers.auth import get_current_user
+from app.services.auth_service import create_access_token
+
+# ─── Stable IDs used across tests ────────────────────────────────────────────
+
+TEST_USER_ID = str(ObjectId())
+TEST_PROJECT_ID = str(ObjectId())
+
+TEST_USER = {
+    "_id": TEST_USER_ID,
+    "email": "test@example.com",
+    "username": "testuser",
+    "plan": "free",
+    "created_at": "2024-01-01T00:00:00",
+}
+
+TEST_PROJECT = {
+    "_id": ObjectId(TEST_PROJECT_ID),
+    "user_id": TEST_USER_ID,
+    "title": "Test Game",
+    "stage": "gdd",
+    "genre": "rpg",
+    "platform": "pc",
+    "tone": "epic",
+}
+
+
+# ─── DB mock ──────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def mock_db():
+    """In-memory mock of the Motor database. Each collection is an AsyncMock."""
+    db = MagicMock()
+    db.users = MagicMock()
+    db.users.find_one = AsyncMock(return_value=None)
+    db.users.insert_one = AsyncMock()
+    db.users.update_one = AsyncMock()
+
+    db.projects = MagicMock()
+    db.projects.find_one = AsyncMock(return_value=None)
+    db.projects.insert_one = AsyncMock()
+    db.projects.update_one = AsyncMock()
+
+    db.gdds = MagicMock()
+    db.gdds.find_one = AsyncMock(return_value=None)
+
+    db.systems = MagicMock()
+    db.systems.find_one = AsyncMock(return_value=None)
+    db.systems.insert_one = AsyncMock()
+    db.systems.update_one = AsyncMock()
+
+    return db
+
+
+# ─── TestClient ───────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def client(mock_db, monkeypatch):
+    """
+    FastAPI TestClient with:
+    - MongoDB replaced by mock_db (patched at the import site in each router)
+    - Lifespan connect/close mocked (no real Mongo ping)
+    - get_current_user overridden to return TEST_USER
+    """
+    # Patch get_db at the import sites (not at the definition site) so that
+    # the already-bound names in each router module get replaced correctly.
+    monkeypatch.setattr("app.routers.systems.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.routers.gdd.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.routers.projects.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.main.connect_db", AsyncMock())
+    monkeypatch.setattr("app.main.close_db", AsyncMock())
+
+    app.dependency_overrides[get_current_user] = lambda: TEST_USER
+
+    with TestClient(app) as c:
+        yield c
+
+    app.dependency_overrides.clear()
+
+
+# ─── Auth helpers ─────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def auth_token():
+    return create_access_token(TEST_USER_ID)
+
+
+@pytest.fixture
+def auth_headers(auth_token):
+    return {"Authorization": f"Bearer {auth_token}"}
+
+
+# ─── Canned Claude balance response ──────────────────────────────────────────
+
+CANNED_BALANCE_JSON = {
+    "exploits": ["Player can farm infinite gold by looping Enemy → Currency edge"],
+    "powerCreep": ["Sword damage scales 3× faster than Enemy HP"],
+    "dominantStrategies": ["Rushing Sword item trivialises early game"],
+    "suggestions": ["Cap Currency drop rate per enemy", "Normalize Sword damage curve"],
+}
+
+CANNED_BALANCE_TEXT = json.dumps(CANNED_BALANCE_JSON)
+
+
+@pytest.fixture
+def mock_claude_response():
+    """Mock Anthropic message response with canned balance JSON."""
+    content_block = MagicMock()
+    content_block.text = CANNED_BALANCE_TEXT
+    response = MagicMock()
+    response.content = [content_block]
+    return response

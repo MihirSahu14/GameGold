@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.db.mongodb import connect_db, close_db
-from app.routers import auth, projects, gdd
+from app.routers import auth, projects, gdd, systems
 
 
 @asynccontextmanager
@@ -34,6 +34,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(gdd.router)
+app.include_router(systems.router)
 
 
 @app.get("/")
