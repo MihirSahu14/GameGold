@@ -31,7 +31,8 @@ function isStageUnlocked(currentStage: ProjectStage | undefined, target: Project
   if (!currentStage) return target === 'concept'
   const current = STAGE_ORDER.indexOf(currentStage)
   const tgt = STAGE_ORDER.indexOf(target)
-  return tgt <= current
+  // Allow access to the current stage and one ahead so the user can progress
+  return tgt <= current + 1
 }
 
 export function Sidebar() {

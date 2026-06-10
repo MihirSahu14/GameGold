@@ -4,11 +4,20 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { useEffect } from 'react'
+import { marked } from 'marked'
 import './GDDEditor.css'
 
 interface GDDEditorProps {
   content: string
   onChange: (content: string) => void
+}
+
+// Convert markdown to HTML if needed — TipTap only understands HTML
+function toHTML(content: string): string {
+  if (!content) return ''
+  const trimmed = content.trimStart()
+  if (trimmed.startsWith('<')) return content  // already HTML
+  return String(marked.parse(content))
 }
 
 export function GDDEditor({ content, onChange }: GDDEditorProps) {
@@ -19,7 +28,7 @@ export function GDDEditor({ content, onChange }: GDDEditorProps) {
         placeholder: 'Start writing, or generate this section with AI above…',
       }),
     ],
-    content,
+    content: toHTML(content),
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML())
     },
@@ -32,8 +41,10 @@ export function GDDEditor({ content, onChange }: GDDEditorProps) {
 
   // Sync content when section changes
   useEffect(() => {
-    if (editor && content !== editor.getHTML()) {
-      editor.commands.setContent(content || '')
+    if (!editor) return
+    const html = toHTML(content)
+    if (html !== editor.getHTML()) {
+      editor.commands.setContent(html || '')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content])

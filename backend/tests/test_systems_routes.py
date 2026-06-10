@@ -1,6 +1,6 @@
 """
 Integration tests for /projects/{id}/systems routes.
-Uses TestClient with MongoDB and Anthropic mocked (see conftest.py).
+Uses TestClient with MongoDB and LLM mocked (see conftest.py).
 All tests here fail until backend/app/routers/systems.py is implemented.
 """
 import json
@@ -149,17 +149,22 @@ def test_save_systems_returns_json_with_camel_case_keys(client, mock_db):
 
 # ─── POST /projects/{id}/systems/analyze ─────────────────────────────────────
 
+def _make_litellm_response(text: str) -> MagicMock:
+    msg = MagicMock()
+    msg.content = text
+    choice = MagicMock()
+    choice.message = msg
+    resp = MagicMock()
+    resp.choices = [choice]
+    return resp
+
+
 def test_analyze_returns_balance_analysis(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     mock_db.gdds.find_one.return_value = None
 
-    content_block = MagicMock()
-    content_block.text = CANNED_BALANCE_TEXT
-    mock_response = MagicMock()
-    mock_response.content = [content_block]
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = mock_response
-    monkeypatch.setattr("app.services.balance_service.client", mock_client)
+    mock_completion = MagicMock(return_value=_make_litellm_response(CANNED_BALANCE_TEXT))
+    monkeypatch.setattr("litellm.completion", mock_completion)
 
     resp = client.post(
         f"/projects/{TEST_PROJECT_ID}/systems/analyze",
@@ -178,13 +183,8 @@ def test_analyze_caches_result_on_system_doc(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     mock_db.gdds.find_one.return_value = None
 
-    content_block = MagicMock()
-    content_block.text = CANNED_BALANCE_TEXT
-    mock_response = MagicMock()
-    mock_response.content = [content_block]
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = mock_response
-    monkeypatch.setattr("app.services.balance_service.client", mock_client)
+    mock_completion = MagicMock(return_value=_make_litellm_response(CANNED_BALANCE_TEXT))
+    monkeypatch.setattr("litellm.completion", mock_completion)
 
     client.post(
         f"/projects/{TEST_PROJECT_ID}/systems/analyze",
@@ -203,20 +203,14 @@ def test_analyze_uses_gdd_summary_when_available(client, mock_db, monkeypatch):
         "sections": {"overview": "Epic fantasy RPG", "mechanics": "Turn-based combat"},
     }
 
-    content_block = MagicMock()
-    content_block.text = CANNED_BALANCE_TEXT
-    mock_response = MagicMock()
-    mock_response.content = [content_block]
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = mock_response
-    monkeypatch.setattr("app.services.balance_service.client", mock_client)
+    mock_completion = MagicMock(return_value=_make_litellm_response(CANNED_BALANCE_TEXT))
+    monkeypatch.setattr("litellm.completion", mock_completion)
 
     client.post(
         f"/projects/{TEST_PROJECT_ID}/systems/analyze",
         json={"nodes": SAMPLE_NODES, "edges": SAMPLE_EDGES},
     )
-    call_kwargs = mock_client.messages.create.call_args
-    prompt_text = str(call_kwargs)
+    prompt_text = str(mock_completion.call_args)
     assert "Epic fantasy RPG" in prompt_text
 
 

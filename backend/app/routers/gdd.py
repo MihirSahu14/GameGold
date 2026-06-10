@@ -2,9 +2,9 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from bson import ObjectId
 from datetime import datetime
 from app.db.mongodb import get_db
-from app.models.gdd import GDDUpdate, GDDOut, GDDInDB, GenerateGDDRequest
+from app.models.gdd import GDDUpdate, GDDOut, GDDInDB, GenerateGDDRequest, RefineGDDRequest, RefinedSectionOut
 from app.routers.auth import get_current_user
-from app.services.claude_service import generate_gdd
+from app.services.claude_service import generate_gdd, refine_gdd_section
 
 router = APIRouter(prefix="/projects/{project_id}/gdd", tags=["gdd"])
 
@@ -23,7 +23,7 @@ async def verify_project_access(project_id: str, user_id: str, db) -> dict:
     return project
 
 
-@router.get("", response_model=GDDOut)
+@router.get("", response_model=GDDOut, response_model_by_alias=True)
 async def get_gdd(project_id: str, current_user: dict = Depends(get_current_user)):
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
@@ -37,6 +37,7 @@ async def get_gdd(project_id: str, current_user: dict = Depends(get_current_user
 @router.post(
     "/generate",
     response_model=GDDOut,
+    response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
 async def generate_gdd_endpoint(
@@ -75,7 +76,19 @@ async def generate_gdd_endpoint(
     return GDDOut(**serialize_gdd(gdd))
 
 
-@router.patch("", response_model=GDDOut)
+@router.post("/refine", response_model=RefinedSectionOut)
+async def refine_section(
+    project_id: str,
+    body: RefineGDDRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    content = await refine_gdd_section(body.section, body.current_content, body.instructions)
+    return RefinedSectionOut(section=body.section, content=content)
+
+
+@router.patch("", response_model=GDDOut, response_model_by_alias=True)
 async def update_gdd(
     project_id: str,
     data: GDDUpdate,

@@ -1,6 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends, Response, status
 from bson import ObjectId
 from datetime import datetime
+import re
+
+
+def _strip_html(text: str) -> str:
+    return re.sub(r'<[^>]+>', ' ', text).replace('  ', ' ').strip()
 
 from app.db.mongodb import get_db
 from app.models.systems import (
@@ -103,8 +108,8 @@ async def analyze_system(
     gdd = await db.gdds.find_one({"project_id": project_id})
     gdd_summary = ""
     if gdd and gdd.get("sections"):
-        overview = gdd["sections"].get("overview", "")
-        mechanics = gdd["sections"].get("mechanics", "")
+        overview = _strip_html(gdd["sections"].get("overview", ""))
+        mechanics = _strip_html(gdd["sections"].get("mechanics", ""))
         gdd_summary = f"{overview}\n{mechanics}".strip()
 
     analysis = await analyze_balance(body.nodes, body.edges, gdd_summary)

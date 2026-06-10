@@ -1,33 +1,29 @@
 """
-Tests for balance_service.py — Claude API is mocked; no real network calls.
-All tests here fail until backend/app/services/balance_service.py is implemented.
+Tests for balance_service.py — LLM is mocked; no real network calls.
 """
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 from tests.conftest import CANNED_BALANCE_JSON, CANNED_BALANCE_TEXT
 
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-
-def _make_claude_response(text: str) -> MagicMock:
-    content_block = MagicMock()
-    content_block.text = text
+def _make_litellm_response(text: str) -> MagicMock:
+    msg = MagicMock()
+    msg.content = text
+    choice = MagicMock()
+    choice.message = msg
     response = MagicMock()
-    response.content = [content_block]
+    response.choices = [choice]
     return response
 
 
-# ─── Tests ────────────────────────────────────────────────────────────────────
-
 async def test_analyze_returns_balance_analysis(monkeypatch):
-    """Service parses valid JSON from Claude into BalanceAnalysisOut."""
+    """Service parses valid JSON from LLM into BalanceAnalysisOut."""
     from app.models.systems import SystemNodeIn, SystemEdgeIn
 
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _make_claude_response(CANNED_BALANCE_TEXT)
-    monkeypatch.setattr("app.services.balance_service.client", mock_client)
+    mock_completion = MagicMock(return_value=_make_litellm_response(CANNED_BALANCE_TEXT))
+    monkeypatch.setattr("litellm.completion", mock_completion)
 
     from app.services.balance_service import analyze_balance
 
@@ -46,9 +42,8 @@ async def test_analyze_handles_empty_graph(monkeypatch):
     empty_response = json.dumps(
         {"exploits": [], "powerCreep": [], "dominantStrategies": [], "suggestions": []}
     )
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _make_claude_response(empty_response)
-    monkeypatch.setattr("app.services.balance_service.client", mock_client)
+    mock_completion = MagicMock(return_value=_make_litellm_response(empty_response))
+    monkeypatch.setattr("litellm.completion", mock_completion)
 
     from app.services.balance_service import analyze_balance
 
@@ -61,12 +56,11 @@ async def test_analyze_handles_empty_graph(monkeypatch):
 
 
 async def test_analyze_prompt_includes_node_labels(monkeypatch):
-    """Claude is called with a prompt that contains the node labels."""
+    """LLM is called with a prompt that contains the node labels."""
     from app.models.systems import SystemNodeIn, SystemEdgeIn
 
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _make_claude_response(CANNED_BALANCE_TEXT)
-    monkeypatch.setattr("app.services.balance_service.client", mock_client)
+    mock_completion = MagicMock(return_value=_make_litellm_response(CANNED_BALANCE_TEXT))
+    monkeypatch.setattr("litellm.completion", mock_completion)
 
     from app.services.balance_service import analyze_balance
 
@@ -76,17 +70,15 @@ async def test_analyze_prompt_includes_node_labels(monkeypatch):
     ]
     await analyze_balance(nodes, [], gdd_summary="")
 
-    call_kwargs = mock_client.messages.create.call_args
-    prompt_text = str(call_kwargs)
+    prompt_text = str(mock_completion.call_args)
     assert "PlayerHero" in prompt_text
     assert "DarkBoss" in prompt_text
 
 
 async def test_analyze_raises_on_invalid_json(monkeypatch):
-    """Service raises ValueError when Claude returns non-JSON text."""
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _make_claude_response("This is not JSON at all")
-    monkeypatch.setattr("app.services.balance_service.client", mock_client)
+    """Service raises ValueError when LLM returns non-JSON text."""
+    mock_completion = MagicMock(return_value=_make_litellm_response("This is not JSON at all"))
+    monkeypatch.setattr("litellm.completion", mock_completion)
 
     from app.services.balance_service import analyze_balance
 
@@ -95,15 +87,13 @@ async def test_analyze_raises_on_invalid_json(monkeypatch):
 
 
 async def test_analyze_passes_gdd_summary_to_prompt(monkeypatch):
-    """GDD summary is included in the Claude prompt for context."""
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _make_claude_response(CANNED_BALANCE_TEXT)
-    monkeypatch.setattr("app.services.balance_service.client", mock_client)
+    """GDD summary is included in the LLM prompt for context."""
+    mock_completion = MagicMock(return_value=_make_litellm_response(CANNED_BALANCE_TEXT))
+    monkeypatch.setattr("litellm.completion", mock_completion)
 
     from app.services.balance_service import analyze_balance
 
     await analyze_balance([], [], gdd_summary="Fantasy RPG with turn-based combat")
 
-    call_kwargs = mock_client.messages.create.call_args
-    prompt_text = str(call_kwargs)
+    prompt_text = str(mock_completion.call_args)
     assert "Fantasy RPG" in prompt_text

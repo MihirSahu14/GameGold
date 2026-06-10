@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from pydantic.alias_generators import to_camel
 from typing import Optional
 from datetime import datetime
 
@@ -29,7 +30,7 @@ class GDDOut(BaseModel):
     version: int = 1
     updated_at: datetime
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class GDDInDB(BaseModel):
@@ -40,4 +41,19 @@ class GDDInDB(BaseModel):
 
 
 class GenerateGDDRequest(BaseModel):
-    concept_card: dict  # ConceptCard dict passed from frontend
+    concept_card: dict
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+class RefineGDDRequest(BaseModel):
+    section: str
+    current_content: str
+    instructions: str
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+class RefinedSectionOut(BaseModel):
+    section: str
+    content: str

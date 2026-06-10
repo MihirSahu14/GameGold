@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
 import ReactFlow, {
   ReactFlowProvider,
   Background,
@@ -63,14 +63,28 @@ interface SystemsCanvasProps {
   isAnalyzing: boolean
 }
 
+// ─── Imperative handle exposed to parent ──────────────────────────────────────
+
+export interface SystemsCanvasHandle {
+  updateNode: (node: SystemNode) => void
+}
+
 // ─── Inner canvas (must be inside ReactFlowProvider) ─────────────────────────
 
-function Canvas({ nodes: propNodes, edges: propEdges, onSave, onNodeClick, onAnalyze, isAnalyzing }: SystemsCanvasProps) {
+const Canvas = forwardRef<SystemsCanvasHandle, SystemsCanvasProps>(
+function Canvas({ nodes: propNodes, edges: propEdges, onSave, onNodeClick, onAnalyze, isAnalyzing }, ref) {
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(propNodes.map(toRfNode))
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(propEdges.map(toRfEdge))
 
   const [showAddMenu, setShowAddMenu] = useState(false)
   const isFirstRender = useRef(true)
+
+  // Expose updateNode so parent (NodeEditor path) can sync label/type/data changes
+  useImperativeHandle(ref, () => ({
+    updateNode: (node: SystemNode) => {
+      setRfNodes((nds) => nds.map((n) => n.id === node.id ? { ...n, data: node } : n))
+    },
+  }))
 
   // Sync prop changes into internal state (e.g. on initial load from DB)
   useEffect(() => {
@@ -189,14 +203,16 @@ function Canvas({ nodes: propNodes, edges: propEdges, onSave, onNodeClick, onAna
       </ReactFlow>
     </div>
   )
-}
+})
 
-// ─── Exported component (wraps in ReactFlowProvider) ─────────────────────────
+// ─── Exported component (wraps in ReactFlowProvider + forwards ref) ───────────
 
-export function SystemsCanvas(props: SystemsCanvasProps) {
-  return (
-    <ReactFlowProvider>
-      <Canvas {...props} />
-    </ReactFlowProvider>
-  )
-}
+export const SystemsCanvas = forwardRef<SystemsCanvasHandle, SystemsCanvasProps>(
+  function SystemsCanvas(props, ref) {
+    return (
+      <ReactFlowProvider>
+        <Canvas {...props} ref={ref} />
+      </ReactFlowProvider>
+    )
+  }
+)

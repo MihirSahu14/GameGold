@@ -253,6 +253,7 @@ DELETE /projects/:id                  Delete project
 GET   /projects/:id/gdd               Get GDD
 POST  /projects/:id/gdd/generate      Generate GDD with Claude AI
 PATCH /projects/:id/gdd               Save GDD edits
+POST  /projects/:id/gdd/refine        Refine a GDD section with AI instructions
 
 GET   /projects/:id/systems           Get systems graph
 POST  /projects/:id/systems/save      Save nodes + edges (201 on first save)
@@ -279,6 +280,8 @@ Full interactive docs available at `http://localhost:8000/docs` when the backend
 - Levels & World Structure, Characters & Enemies, UI/UX, Audio, Visual Direction
 
 Each section is editable in the built-in rich text editor (headings, lists, code blocks, blockquotes).
+
+**Refine with AI** — click **"✏️ Refine with AI"** on any section, describe the change you want (e.g. "make the combat more roguelike"), and Claude rewrites that section in place while preserving everything else.
 
 ---
 

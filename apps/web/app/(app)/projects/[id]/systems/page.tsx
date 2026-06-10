@@ -1,9 +1,9 @@
 'use client'
 
-import { use, useState, useCallback } from 'react'
+import { use, useState, useCallback, useRef } from 'react'
 import { useGameSystem, useSaveSystem, useAnalyzeBalance } from '@/lib/queries/useSystems'
 import { useProject } from '@/lib/queries/useProjects'
-import { SystemsCanvas } from '@/components/systems/SystemsCanvas'
+import { SystemsCanvas, type SystemsCanvasHandle } from '@/components/systems/SystemsCanvas'
 import { NodeEditor } from '@/components/systems/NodeEditor'
 import { BalancePanel } from '@/components/systems/BalancePanel'
 import type { SystemNode, SystemEdge, BalanceAnalysis } from '@gamegold/types'
@@ -17,6 +17,7 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
   const saveSystem = useSaveSystem(id)
   const analyzeBalance = useAnalyzeBalance(id)
 
+  const canvasRef = useRef<SystemsCanvasHandle>(null)
   const [selectedNode, setSelectedNode] = useState<SystemNode | null>(null)
   const [localAnalysis, setLocalAnalysis] = useState<BalanceAnalysis | null>(
     system?.analysisCache ?? null
@@ -35,17 +36,21 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
 
   const handleAnalyze = useCallback(async () => {
     setActiveTab('balance')
-    const result = await analyzeBalance.mutateAsync({ nodes, edges })
-    setLocalAnalysis(result)
+    try {
+      const result = await analyzeBalance.mutateAsync({ nodes, edges })
+      setLocalAnalysis(result)
+    } catch {
+      alert('Balance analysis failed — check the console.')
+    }
   }, [analyzeBalance, nodes, edges])
 
   const handleNodeUpdate = useCallback(
     (updatedNode: SystemNode) => {
       setSelectedNode(updatedNode)
-      const updatedNodes = nodes.map((n) => (n.id === updatedNode.id ? updatedNode : n))
-      saveSystem.mutate({ nodes: updatedNodes, edges })
+      // Update canvas immediately via ref — auto-save picks it up within 1 s
+      canvasRef.current?.updateNode(updatedNode)
     },
-    [nodes, edges, saveSystem]
+    []
   )
 
   if (systemLoading) {
@@ -61,6 +66,7 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
       {/* Canvas — takes remaining space */}
       <div className="flex-1 relative">
         <SystemsCanvas
+          ref={canvasRef}
           nodes={nodes}
           edges={edges}
           onSave={handleSave}

@@ -24,6 +24,21 @@ export function useGenerateGDD(projectId: string) {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['gdd', projectId], data)
+      // Backend advances project stage to 'gdd' on first generation — refresh project so sidebar unlocks
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+    },
+  })
+}
+
+// ─── Refine a single section with AI ──────────────────────────────────────────
+export function useRefineGDDSection(projectId: string) {
+  return useMutation({
+    mutationFn: async (payload: { section: string; currentContent: string; instructions: string }) => {
+      const res = await api.post<{ section: string; content: string }>(
+        `/projects/${projectId}/gdd/refine`,
+        payload,
+      )
+      return res.data
     },
   })
 }

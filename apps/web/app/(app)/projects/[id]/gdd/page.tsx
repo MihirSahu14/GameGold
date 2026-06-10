@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from 'react'
 import { useProject } from '@/lib/queries/useProjects'
-import { useGDD, useGenerateGDD, useSaveGDD } from '@/lib/queries/useGDD'
+import { useGDD, useGenerateGDD, useSaveGDD, useRefineGDDSection } from '@/lib/queries/useGDD'
 import { GDDEditor } from '@/components/gdd/GDDEditor'
 import type { GDDSections } from '@gamegold/types'
 
@@ -23,10 +23,13 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
   const { data: gdd, isLoading: gddLoading } = useGDD(id)
   const generateGDD = useGenerateGDD(id)
   const saveGDD = useSaveGDD(id)
+  const refineSection = useRefineGDDSection(id)
 
   const [activeSection, setActiveSection] = useState<keyof GDDSections>('overview')
   const [localSections, setLocalSections] = useState<Partial<GDDSections>>({})
   const [saved, setSaved] = useState(false)
+  const [refineInput, setRefineInput] = useState('')
+  const [showRefine, setShowRefine] = useState(false)
 
   useEffect(() => {
     if (gdd?.sections) {
@@ -50,6 +53,28 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
 
   function handleSectionChange(content: string) {
     setLocalSections((prev) => ({ ...prev, [activeSection]: content }))
+  }
+
+  async function handleRefine() {
+    if (!refineInput.trim()) return
+    const raw = localSections[activeSection] ?? ''
+    // Always send plain text — strip HTML tags if TipTap has converted the content
+    const currentContent = raw.trimStart().startsWith('<')
+      ? raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      : raw
+    try {
+      const result = await refineSection.mutateAsync({
+        section: activeSection,
+        currentContent,
+        instructions: refineInput,
+      })
+      setLocalSections((prev) => ({ ...prev, [activeSection]: result.content }))
+      setRefineInput('')
+      setShowRefine(false)
+    } catch (err) {
+      console.error('Refine failed:', err)
+      alert('AI refine failed — check the console for details.')
+    }
   }
 
   return (
@@ -97,13 +122,25 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
 
           <div className="flex gap-2">
             {hasGDD && (
-              <button
-                onClick={handleSave}
-                disabled={saveGDD.isPending}
-                className="bg-zinc-800 text-zinc-300 font-medium px-4 py-2 rounded-lg text-sm hover:bg-zinc-700 hover:text-zinc-50 transition-colors disabled:opacity-50"
-              >
-                {saved ? '✓ Saved' : saveGDD.isPending ? 'Saving...' : 'Save'}
-              </button>
+              <>
+                <button
+                  onClick={() => setShowRefine((v) => !v)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    showRefine
+                      ? 'bg-zinc-700 border-zinc-600 text-zinc-50'
+                      : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-50 hover:border-zinc-600'
+                  }`}
+                >
+                  ✏️ Refine with AI
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saveGDD.isPending}
+                  className="bg-zinc-800 text-zinc-300 font-medium px-4 py-2 rounded-lg text-sm hover:bg-zinc-700 hover:text-zinc-50 transition-colors disabled:opacity-50"
+                >
+                  {saved ? '✓ Saved' : saveGDD.isPending ? 'Saving...' : 'Save'}
+                </button>
+              </>
             )}
             <button
               onClick={handleGenerate}
@@ -119,6 +156,28 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
             </button>
           </div>
         </div>
+
+        {/* AI Refine panel */}
+        {showRefine && hasGDD && (
+          <div className="px-6 py-3 border-b border-zinc-800 bg-zinc-900/60 flex items-center gap-3 flex-shrink-0">
+            <span className="text-zinc-500 text-xs whitespace-nowrap">Tell AI what to change:</span>
+            <input
+              value={refineInput}
+              onChange={(e) => setRefineInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleRefine()}
+              placeholder={`e.g. "Add more detail about enemy AI behaviour"`}
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/50"
+              autoFocus
+            />
+            <button
+              onClick={handleRefine}
+              disabled={refineSection.isPending || !refineInput.trim()}
+              className="bg-yellow-400 text-zinc-950 font-semibold px-4 py-1.5 rounded-lg text-sm hover:bg-yellow-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {refineSection.isPending ? 'Refining...' : 'Apply'}
+            </button>
+          </div>
+        )}
 
         {/* Editor */}
         <div className="flex-1 overflow-auto p-6">

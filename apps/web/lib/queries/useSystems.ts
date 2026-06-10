@@ -23,6 +23,8 @@ export function useSaveSystem(projectId: string) {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['systems', projectId], data)
+      // Backend advances stage to 'systems' on first save — refresh project so sidebar unlocks
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
     },
   })
 }
