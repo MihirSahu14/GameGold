@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from pydantic.alias_generators import to_camel
 from typing import Literal, Optional
 from datetime import datetime
 
@@ -23,6 +24,8 @@ class ConceptCard(BaseModel):
     target_audience: str = ""
     estimated_scope: EstimatedScope = "indie"
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
 
 class ProjectCreate(BaseModel):
     title: str = Field(min_length=1, max_length=100)
@@ -37,6 +40,8 @@ class ProjectUpdate(BaseModel):
     stage: Optional[ProjectStage] = None
     concept_card: Optional[ConceptCard] = None
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
 
 class ProjectOut(BaseModel):
     id: str = Field(alias="_id")
@@ -50,7 +55,7 @@ class ProjectOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class ProjectInDB(BaseModel):

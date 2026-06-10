@@ -17,8 +17,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
 
-    # AI
-    anthropic_api_key: str
+    # AI — swap model string to switch providers (Groq dev, Claude prod)
+    llm_model: str = "groq/llama-3.3-70b-versatile"
+    llm_api_key: str
 
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "https://gamegold.vercel.app"]

@@ -1,17 +1,15 @@
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from app.config import settings
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 def create_access_token(user_id: str) -> str:
@@ -21,7 +19,6 @@ def create_access_token(user_id: str) -> str:
 
 
 def decode_token(token: str) -> str:
-    """Returns user_id (sub) from token. Raises JWTError on failure."""
     payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     user_id: str | None = payload.get("sub")
     if user_id is None:

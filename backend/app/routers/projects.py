@@ -18,7 +18,7 @@ def check_project_ownership(project: dict, user_id: str) -> None:
         raise HTTPException(status_code=403, detail="Not your project")
 
 
-@router.get("", response_model=list[ProjectOut])
+@router.get("", response_model=list[ProjectOut], response_model_by_alias=True)
 async def list_projects(current_user: dict = Depends(get_current_user)):
     db = get_db()
     cursor = db.projects.find({"user_id": current_user["_id"]}).sort("created_at", -1)
@@ -26,7 +26,7 @@ async def list_projects(current_user: dict = Depends(get_current_user)):
     return [ProjectOut(**serialize_project(p)) for p in projects]
 
 
-@router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ProjectOut, response_model_by_alias=True, status_code=status.HTTP_201_CREATED)
 async def create_project(data: ProjectCreate, current_user: dict = Depends(get_current_user)):
     db = get_db()
     project_in_db = ProjectInDB(
@@ -42,7 +42,7 @@ async def create_project(data: ProjectCreate, current_user: dict = Depends(get_c
     return ProjectOut(**serialize_project(project))
 
 
-@router.get("/{project_id}", response_model=ProjectOut)
+@router.get("/{project_id}", response_model=ProjectOut, response_model_by_alias=True)
 async def get_project(project_id: str, current_user: dict = Depends(get_current_user)):
     db = get_db()
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
@@ -52,7 +52,7 @@ async def get_project(project_id: str, current_user: dict = Depends(get_current_
     return ProjectOut(**serialize_project(project))
 
 
-@router.patch("/{project_id}", response_model=ProjectOut)
+@router.patch("/{project_id}", response_model=ProjectOut, response_model_by_alias=True)
 async def update_project(
     project_id: str,
     data: ProjectUpdate,

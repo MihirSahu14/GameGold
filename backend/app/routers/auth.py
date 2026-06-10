@@ -29,7 +29,7 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=TokenResponse, response_model_by_alias=True, status_code=status.HTTP_201_CREATED)
 async def register(data: UserCreate):
     db = get_db()
 
@@ -58,7 +58,7 @@ async def register(data: UserCreate):
     )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, response_model_by_alias=True)
 async def login(data: UserLogin):
     db = get_db()
 
@@ -74,6 +74,6 @@ async def login(data: UserLogin):
     )
 
 
-@router.get("/me", response_model=UserOut)
+@router.get("/me", response_model=UserOut, response_model_by_alias=True)
 async def get_me(current_user: dict = Depends(get_current_user)):
     return UserOut(**current_user)

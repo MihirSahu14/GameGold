@@ -1,4 +1,5 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic.alias_generators import to_camel
 from typing import Literal
 from datetime import datetime
 
@@ -21,7 +22,10 @@ class UserOut(BaseModel):
     plan: Literal["free", "pro"] = "free"
     created_at: datetime
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
 
 class UserInDB(BaseModel):
@@ -36,3 +40,8 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )

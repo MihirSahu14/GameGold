@@ -20,7 +20,7 @@ async def connect_db() -> None:
     client = AsyncIOMotorClient(settings.mongodb_url)
     # Ping to verify connection
     await client.admin.command("ping")
-    print(f"✅ MongoDB connected — db: {settings.mongodb_db}")
+    print(f"[OK] MongoDB connected - db: {settings.mongodb_db}")
 
 
 async def close_db() -> None:

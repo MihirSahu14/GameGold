@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, use } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useProject, useUpdateConceptCard } from '@/lib/queries/useProjects'
 import type { ConceptCard, GameTone } from '@gamegold/types'
@@ -28,16 +28,24 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
   const updateConcept = useUpdateConceptCard(id)
   const router = useRouter()
 
-  const existing = project?.conceptCard
-  const [tagline, setTagline] = useState(existing?.tagline ?? '')
-  const [tone, setTone] = useState<GameTone>(existing?.tone ?? 'atmospheric')
-  const [coreLoop, setCoreLoop] = useState(existing?.coreLoop ?? '')
-  const [uniqueHook, setUniqueHook] = useState(existing?.uniqueHook ?? '')
-  const [targetAudience, setTargetAudience] = useState(existing?.targetAudience ?? '')
-  const [estimatedScope, setEstimatedScope] = useState<ConceptCard['estimatedScope']>(
-    existing?.estimatedScope ?? 'indie'
-  )
+  const [tagline, setTagline] = useState('')
+  const [tone, setTone] = useState<GameTone>('atmospheric')
+  const [coreLoop, setCoreLoop] = useState('')
+  const [uniqueHook, setUniqueHook] = useState('')
+  const [targetAudience, setTargetAudience] = useState('')
+  const [estimatedScope, setEstimatedScope] = useState<ConceptCard['estimatedScope']>('indie')
   const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    const cc = project?.conceptCard
+    if (!cc) return
+    setTagline(cc.tagline ?? '')
+    setTone(cc.tone ?? 'atmospheric')
+    setCoreLoop(cc.coreLoop ?? '')
+    setUniqueHook(cc.uniqueHook ?? '')
+    setTargetAudience(cc.targetAudience ?? '')
+    setEstimatedScope(cc.estimatedScope ?? 'indie')
+  }, [project?.conceptCard])
 
   if (isLoading || !project) {
     return (
@@ -66,7 +74,19 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setSaved(false), 2000)
   }
 
-  function handleProceedToGDD() {
+  async function handleProceedToGDD() {
+    const conceptCard: ConceptCard = {
+      title: project!.title,
+      tagline,
+      genre: project!.genre,
+      platform: project!.platform,
+      tone,
+      coreLoop,
+      uniqueHook,
+      targetAudience,
+      estimatedScope,
+    }
+    await updateConcept.mutateAsync(conceptCard)
     router.push(`/projects/${id}/gdd`)
   }
 
@@ -210,9 +230,10 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
           <button
             type="button"
             onClick={handleProceedToGDD}
-            className="bg-yellow-400 text-zinc-950 font-semibold px-5 py-2.5 rounded-xl text-sm hover:bg-yellow-300 transition-colors"
+            disabled={updateConcept.isPending}
+            className="bg-yellow-400 text-zinc-950 font-semibold px-5 py-2.5 rounded-xl text-sm hover:bg-yellow-300 transition-colors disabled:opacity-50"
           >
-            Generate GDD →
+            {updateConcept.isPending ? 'Saving...' : 'Generate GDD →'}
           </button>
         </div>
       </form>

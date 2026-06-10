@@ -8,7 +8,8 @@ import os
 os.environ.setdefault("MONGODB_URL", "mongodb://localhost:27017")
 os.environ.setdefault("MONGODB_DB", "gamegold_test")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-32-chars-long-ok")
-os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-key")
+os.environ.setdefault("LLM_API_KEY", "test-llm-key")
+os.environ.setdefault("LLM_MODEL", "groq/llama-3.3-70b-versatile")
 
 import json
 import pytest
