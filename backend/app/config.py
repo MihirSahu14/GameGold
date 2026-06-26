@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     llm_model: str = "groq/llama-3.3-70b-versatile"
     llm_api_key: str
 
+    # Image generation (Phase 3) — optional; sprite gen returns a clear error without it
+    replicate_api_token: str = ""
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "https://gamegold.vercel.app"]
 

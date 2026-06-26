@@ -47,6 +47,25 @@ TEST_PROJECT = {
 
 # ─── DB mock ──────────────────────────────────────────────────────────────────
 
+def make_cursor(docs: list) -> MagicMock:
+    """Mock a Motor cursor: find(...).sort(...).to_list(n) → docs."""
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.to_list = AsyncMock(return_value=docs)
+    return cursor
+
+
+def make_llm_response(text: str) -> MagicMock:
+    """Mock LiteLLM completion response with the given content text."""
+    msg = MagicMock()
+    msg.content = text
+    choice = MagicMock()
+    choice.message = msg
+    response = MagicMock()
+    response.choices = [choice]
+    return response
+
+
 @pytest.fixture
 def mock_db():
     """In-memory mock of the Motor database. Each collection is an AsyncMock."""
@@ -69,6 +88,26 @@ def mock_db():
     db.systems.insert_one = AsyncMock()
     db.systems.update_one = AsyncMock()
 
+    db.assets = MagicMock()
+    db.assets.find = MagicMock(return_value=make_cursor([]))
+    db.assets.find_one = AsyncMock(return_value=None)
+    db.assets.insert_one = AsyncMock()
+    db.assets.update_one = AsyncMock()
+    db.assets.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
+
+    db.playtests = MagicMock()
+    db.playtests.find = MagicMock(return_value=make_cursor([]))
+    db.playtests.find_one = AsyncMock(return_value=None)
+    db.playtests.insert_one = AsyncMock()
+    db.playtests.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
+
+    db.bugs = MagicMock()
+    db.bugs.find = MagicMock(return_value=make_cursor([]))
+    db.bugs.find_one = AsyncMock(return_value=None)
+    db.bugs.insert_one = AsyncMock()
+    db.bugs.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    db.bugs.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
+
     return db
 
 
@@ -87,6 +126,8 @@ def client(mock_db, monkeypatch):
     monkeypatch.setattr("app.routers.systems.get_db", lambda: mock_db)
     monkeypatch.setattr("app.routers.gdd.get_db", lambda: mock_db)
     monkeypatch.setattr("app.routers.projects.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.routers.assets.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.routers.playtest.get_db", lambda: mock_db)
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
 

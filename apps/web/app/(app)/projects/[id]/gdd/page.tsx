@@ -55,6 +55,30 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
     setLocalSections((prev) => ({ ...prev, [activeSection]: content }))
   }
 
+  function handleExport() {
+    const parts = SECTION_LABELS.map((s) => {
+      const raw = localSections[s.key] ?? ''
+      // TipTap stores edited sections as HTML — flatten to plain text for the export
+      const body = raw.trimStart().startsWith('<')
+        ? raw
+            .replace(/<\/(p|h[1-6]|li|blockquote|pre)>/g, '\n\n')
+            .replace(/<li[^>]*>/g, '- ')
+            .replace(/<[^>]+>/g, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim()
+        : raw
+      return `## ${s.label}\n\n${body}`
+    })
+    const md = `# ${project?.title ?? 'Game'} — Game Design Document\n\n${parts.join('\n\n---\n\n')}\n`
+    const blob = new Blob([md], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${(project?.title ?? 'gdd').replace(/\s+/g, '_')}_GDD.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function handleRefine() {
     if (!refineInput.trim()) return
     const raw = localSections[activeSection] ?? ''
@@ -123,6 +147,13 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
           <div className="flex gap-2">
             {hasGDD && (
               <>
+                <button
+                  onClick={handleExport}
+                  title="Download the full GDD as markdown"
+                  className="px-4 py-2 rounded-lg text-sm font-medium border bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-50 hover:border-zinc-600 transition-colors"
+                >
+                  ⬇ Export .md
+                </button>
                 <button
                   onClick={() => setShowRefine((v) => !v)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${

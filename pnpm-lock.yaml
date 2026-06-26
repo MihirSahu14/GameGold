@@ -14,6 +14,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@gamegold/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@tanstack/react-query':
         specifier: ^5.100.14
         version: 5.100.14(react@19.2.4)

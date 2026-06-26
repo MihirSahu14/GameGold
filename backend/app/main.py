@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.db.mongodb import connect_db, close_db
-from app.routers import auth, projects, gdd, systems
+from app.routers import auth, projects, gdd, systems, assets, playtest
 
 
 @asynccontextmanager
@@ -35,6 +35,9 @@ app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(gdd.router)
 app.include_router(systems.router)
+app.include_router(assets.router)
+app.include_router(playtest.router)
+app.include_router(playtest.bugs_router)
 
 
 @app.get("/")

@@ -50,9 +50,9 @@ Every generated artifact — sprites, scripts, dialogue trees, architecture docs
 |---|---|---|
 | **1. Concept & GDD** | Concept Card → AI-generated Game Design Document → edit in-browser | ✅ Complete |
 | **2. Systems Design** | Visual node graph for game entities + Claude balance analyzer | ✅ Complete |
-| **3. Asset Production** | Sprite generator + step-by-step Unity guides + dialogue trees + C# scaffolding | 🔜 Next |
-| **4. Playtesting** | AI playtest simulator, balance dashboard with Unity-specific tweak instructions | Planned |
-| **5. Deployment** | Store page generator, press kit, Unity build instructions, full export bundle | Planned |
+| **3. Asset Production** | Sprite generator + step-by-step Unity guides + dialogue trees + C# scaffolding | ✅ Complete |
+| **4. Playtesting** | AI playtest simulator (4 player personas) + bug tracker with Unity-specific tweak instructions | ✅ Complete |
+| **5. Deployment** | Store page generator, press kit, Unity build instructions, full export bundle | 🔜 Next |
 | **6. Desktop App** | Tauri wrapper + direct Unity project file integration (assets, scripts, configs) | Planned |
 
 ---
@@ -112,9 +112,9 @@ Steps are **checkable** — you mark them off as you work. Progress is saved per
 ### Backend (`backend`)
 - **FastAPI** (Python 3.11)
 - **MongoDB** + Motor (async)
-- **Claude API** (`claude-sonnet-4-5`) — GDD generation, balance analysis, dialogue, C# scaffolding, Unity guides
-- **Replicate API** — sprite and asset generation (Phase 3)
-- **python-jose** + **passlib** — JWT auth + bcrypt
+- **LiteLLM** — unified LLM client (Groq Llama 3.3 free in dev, Claude in prod — swap one env var) — GDD generation, balance analysis, dialogue, C# scaffolding, Unity guides, playtest simulation
+- **Replicate API** (Flux Schnell) — sprite generation with pixel art / illustrated styles
+- **python-jose** + **bcrypt** — JWT auth + password hashing
 
 ### Infrastructure
 - **Vercel** — frontend deployment
@@ -138,10 +138,14 @@ GameGold/
 │       │           ├── layout.tsx      # Sets activeProject in store
 │       │           ├── concept/        # Concept Card form
 │       │           ├── gdd/            # GDD editor
-│       │           └── systems/        # Systems graph + balance
+│       │           ├── systems/        # Systems graph + balance
+│       │           ├── assets/         # Sprites, C# scripts, dialogue + Unity guides
+│       │           └── playtesting/    # AI playtest simulator + bug tracker
 │       ├── components/
 │       │   ├── gdd/            # TipTap GDD editor
 │       │   ├── systems/        # ReactFlow canvas, NodeEditor, BalancePanel
+│       │   ├── assets/         # AssetCard, UnityGuide, StyleToggle
+│       │   ├── playtest/       # PlaytestReportView, BugTracker
 │       │   └── layout/         # Sidebar (dynamic stage unlocking)
 │       ├── lib/
 │       │   ├── api.ts          # Axios client + JWT interceptor
@@ -152,12 +156,12 @@ GameGold/
 │   └── app/
 │       ├── main.py             # FastAPI app
 │       ├── config.py           # Environment settings
-│       ├── routers/            # auth, projects, gdd, systems
+│       ├── routers/            # auth, projects, gdd, systems, assets, playtest
 │       ├── models/             # Pydantic v2 models
-│       ├── services/           # Claude service, balance service, auth service
-│       ├── prompts/            # GDD + balance system prompts
+│       ├── services/           # LLM, balance, asset, replicate, playtest, auth services
+│       ├── prompts/            # GDD, balance, asset, playtest system prompts
 │       └── db/                 # MongoDB connection
-├── tests/                      # 30 pytest tests (backend)
+├── tests/                      # 66 pytest tests (backend)
 └── packages/
     ├── types/                  # Shared TypeScript types
     └── config/                 # Shared tsconfig
@@ -172,7 +176,8 @@ GameGold/
 - pnpm 11+
 - Python 3.11+
 - MongoDB Atlas account (or local MongoDB)
-- Anthropic API key
+- LLM API key — free Groq key for dev ([console.groq.com](https://console.groq.com)) or Anthropic key for prod
+- Replicate API token (optional — only for sprite image generation)
 
 ### 1. Clone and install
 
@@ -193,7 +198,13 @@ Edit `backend/.env`:
 MONGODB_URL=mongodb+srv://<user>:<password>@cluster.mongodb.net/
 MONGODB_DB=gamegold
 JWT_SECRET=your-secret-key-here
-ANTHROPIC_API_KEY=sk-ant-...
+
+# LLM — Groq is free for dev; swap to claude-sonnet-4-6 for prod
+LLM_MODEL=groq/llama-3.3-70b-versatile
+LLM_API_KEY=gsk_...
+
+# Optional — only needed for sprite image generation
+REPLICATE_API_TOKEN=
 ```
 
 ### 3. Configure the frontend
@@ -258,6 +269,21 @@ POST  /projects/:id/gdd/refine        Refine a GDD section with AI instructions
 GET   /projects/:id/systems           Get systems graph
 POST  /projects/:id/systems/save      Save nodes + edges (201 on first save)
 POST  /projects/:id/systems/analyze   Run Claude balance analysis
+
+GET    /projects/:id/assets               List all assets
+POST   /projects/:id/assets/sprites       Generate sprite + Unity import guide
+POST   /projects/:id/assets/scripts       Generate C# script + Unity setup guide
+POST   /projects/:id/assets/dialogue      Generate dialogue tree + Unity guide
+PATCH  /projects/:id/assets/:id/guide     Save Unity guide step progress
+DELETE /projects/:id/assets/:id           Delete asset
+
+GET    /projects/:id/playtest             List playtest reports
+POST   /projects/:id/playtest/run         Run AI playthrough simulation
+DELETE /projects/:id/playtest/:id         Delete report
+GET    /projects/:id/bugs                 List bugs
+POST   /projects/:id/bugs                 Report a bug
+PATCH  /projects/:id/bugs/:id             Update bug status / severity
+DELETE /projects/:id/bugs/:id             Delete bug
 ```
 
 Full interactive docs available at `http://localhost:8000/docs` when the backend is running.
@@ -303,15 +329,36 @@ Analysis uses your GDD (overview + mechanics) as context so Claude understands y
 
 ---
 
+### Phase 3 — Asset Production
+
+Three asset types, each generated **together with its Unity setup guide** in a single AI call:
+
+- **🎨 Sprites** — describe the sprite, pick pixel art or 2D illustrated, and AI writes the image prompt, generates the image (Replicate Flux), and produces import steps (Texture Type, Pixels Per Unit, filter mode). Requires a `REPLICATE_API_TOKEN`; everything else works without it.
+- **📜 C# Scripts** — pick a script type (PlayerController, EnemyAI, SaveSystem, …) and AI writes production-ready C# tailored to your GDD's mechanics, with serialized fields and attachment steps. Copy or download as `.cs`.
+- **💬 Dialogue Trees** — describe an NPC's personality and AI writes a branching dialogue tree (8–14 nodes) you can export as JSON, plus wiring instructions for a DialogueManager.
+
+Every guide is a **checkable step list** — progress is saved per asset as you work in Unity.
+
+---
+
+### Phase 4 — Playtesting
+
+**AI Playtest Simulator** — pick a player persona and AI plays through your game using the GDD and systems graph:
+
+- 🛋️ **Casual** — skips tutorials, hates difficulty walls
+- ⚔️ **Hardcore** — min-maxes, hunts exploits, breaks economies
+- ⏱️ **Speedrunner** — abuses movement, finds sequence breaks and softlocks
+- 🗺️ **Completionist** — does everything, finds dead ends
+
+Each run produces a report: first-person playthrough log, **softlocks**, **pacing issues**, **difficulty spikes**, fun highlights, and **balance suggestions with exact Unity paths** (`Boss2 prefab > BossController > contactDamage`).
+
+**Bug Tracker** — report bugs with severity and an optional GDD section link, filter by status, and work them from open → fixed.
+
+---
+
 ## Roadmap
 
-**Phase 3 — Asset Production (next)**
-Generate pixel art or 2D illustrated sprites and assets via Replicate. Every asset ships with a checkable, step-by-step Unity setup guide. Build branching NPC dialogue trees (JSON export). Generate Unity C# code scaffolds (PlayerController, enemy AI, save system, etc.) — each with its own Unity integration walkthrough.
-
-**Phase 4 — Playtesting**
-AI-simulated playthroughs that surface softlocks, pacing issues, and balance problems. Balance suggestions include exact Unity Inspector field paths so you know precisely where to make each change.
-
-**Phase 5 — Shipping**
+**Phase 5 — Shipping (next)**
 Auto-generate your itch.io or Steam store page, press kit, and a full export bundle. Includes Unity build configuration instructions for each target platform.
 
 **Phase 6 — Desktop (Tauri + Unity Integration)**
@@ -327,7 +374,7 @@ CS Graduate, University of Wisconsin-Madison. Full-stack engineer and game devel
 
 ---
 
-*GameGold is actively in development. Phases 1 and 2 are complete and running.*
+*GameGold is actively in development. Phases 1–4 are complete and running.*
 
 ---
 
