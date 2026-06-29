@@ -108,6 +108,13 @@ def mock_db():
     db.bugs.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
     db.bugs.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
 
+    db.deployments = MagicMock()
+    db.deployments.find = MagicMock(return_value=make_cursor([]))
+    db.deployments.find_one = AsyncMock(return_value=None)
+    db.deployments.insert_one = AsyncMock()
+    db.deployments.update_one = AsyncMock()
+    db.deployments.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
+
     return db
 
 
@@ -128,6 +135,7 @@ def client(mock_db, monkeypatch):
     monkeypatch.setattr("app.routers.projects.get_db", lambda: mock_db)
     monkeypatch.setattr("app.routers.assets.get_db", lambda: mock_db)
     monkeypatch.setattr("app.routers.playtest.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.routers.deployment.get_db", lambda: mock_db)
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
 
@@ -137,6 +145,24 @@ def client(mock_db, monkeypatch):
         yield c
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def auth_client(mock_db, monkeypatch):
+    """
+    TestClient exercising the *real* auth flow (no get_current_user override)
+    against a mocked db.users collection — for testing login/register/me/logout
+    and the cookie + CSRF middleware directly.
+    """
+    from app.core.rate_limit import limiter
+
+    monkeypatch.setattr("app.routers.auth.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.main.connect_db", AsyncMock())
+    monkeypatch.setattr("app.main.close_db", AsyncMock())
+    limiter.reset()
+
+    with TestClient(app) as c:
+        yield c
 
 
 # ─── Auth helpers ─────────────────────────────────────────────────────────────

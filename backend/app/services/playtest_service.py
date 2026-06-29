@@ -15,7 +15,7 @@ async def run_playtest(
     project_id: str, persona: str, gdd_summary: str, systems_summary: str
 ) -> PlaytestReportInDB:
     prompt = build_playtest_prompt(persona, gdd_summary, systems_summary)
-    data = extract_json(complete(PLAYTEST_SYSTEM_PROMPT, prompt, max_tokens=2500))
+    data = extract_json(await complete(PLAYTEST_SYSTEM_PROMPT, prompt, max_tokens=2500))
 
     suggestions = []
     for item in data.get("balanceSuggestions", []):

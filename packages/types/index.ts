@@ -8,10 +8,6 @@ export interface User {
   plan: 'free' | 'pro'
 }
 
-export interface AuthTokens {
-  accessToken: string
-}
-
 // ─── Project ─────────────────────────────────────────────────────────────────
 
 export type ProjectStage =
@@ -220,6 +216,34 @@ export interface Bug {
   gddSection?: string
   createdAt: string
   updatedAt: string
+}
+
+// ─── Deployment ──────────────────────────────────────────────────────────────
+
+export type DeploymentType = 'storePage' | 'pressKit' | 'buildGuide'
+export type StorePlatform = 'itch' | 'steam'
+export type BuildPlatform = 'pc-windows' | 'pc-mac' | 'pc-linux' | 'webgl' | 'android' | 'ios'
+
+export interface DeploymentItem {
+  _id: string
+  projectId: string
+  type: DeploymentType
+  createdAt: string
+  // storePage
+  platform?: StorePlatform
+  title?: string
+  shortDescription?: string
+  longDescription?: string
+  tags?: string[]
+  bullets?: string[]
+  // pressKit
+  tagline?: string
+  description?: string
+  keyFeatures?: string[]
+  devBlurb?: string
+  // buildGuide
+  buildPlatform?: BuildPlatform
+  unityGuide?: UnityGuide
 }
 
 // ─── API Responses ───────────────────────────────────────────────────────────

@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
 
+    # Auth cookies — frontend (Vercel) and backend (Render) are different
+    # domains, so prod cookies must be SameSite=None + Secure. Local dev runs
+    # both over plain http on "localhost", which needs Lax + non-Secure.
+    cookie_secure: bool = False
+    cookie_samesite: str = "lax"
+
     # AI — swap model string to switch providers (Groq dev, Claude prod)
     llm_model: str = "groq/llama-3.3-70b-versatile"
     llm_api_key: str

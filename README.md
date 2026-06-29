@@ -52,8 +52,8 @@ Every generated artifact — sprites, scripts, dialogue trees, architecture docs
 | **2. Systems Design** | Visual node graph for game entities + Claude balance analyzer | ✅ Complete |
 | **3. Asset Production** | Sprite generator + step-by-step Unity guides + dialogue trees + C# scaffolding | ✅ Complete |
 | **4. Playtesting** | AI playtest simulator (4 player personas) + bug tracker with Unity-specific tweak instructions | ✅ Complete |
-| **5. Deployment** | Store page generator, press kit, Unity build instructions, full export bundle | 🔜 Next |
-| **6. Desktop App** | Tauri wrapper + direct Unity project file integration (assets, scripts, configs) | Planned |
+| **5. Deployment** | Store page generator, press kit, Unity build instructions, full export bundle | ✅ Complete |
+| **6. Desktop App** | Tauri wrapper + direct Unity project file integration (assets, scripts, configs) | 🔜 Next |
 
 ---
 
@@ -118,7 +118,7 @@ Steps are **checkable** — you mark them off as you work. Progress is saved per
 
 ### Infrastructure
 - **Vercel** — frontend deployment
-- **Railway** — backend deployment
+- **Render** — backend deployment
 - **Cloudflare R2** — asset file storage (Phase 3)
 - **Tauri** — desktop app wrapper + Unity project integration (Phase 6)
 
@@ -161,7 +161,7 @@ GameGold/
 │       ├── services/           # LLM, balance, asset, replicate, playtest, auth services
 │       ├── prompts/            # GDD, balance, asset, playtest system prompts
 │       └── db/                 # MongoDB connection
-├── tests/                      # 66 pytest tests (backend)
+├── tests/                      # 92 pytest tests (backend)
 └── packages/
     ├── types/                  # Shared TypeScript types
     └── config/                 # Shared tsconfig
@@ -248,11 +248,30 @@ cd backend
 
 ---
 
+## Deployment
+
+**Backend → Render**, using the `render.yaml` blueprint at the repo root:
+1. New → Blueprint → connect this repo. Render reads `render.yaml` and creates the `gamegold-api` web service (`rootDir: backend`).
+2. Set the `sync: false` env vars in the Render dashboard: `MONGODB_URL`, `LLM_API_KEY`, `REPLICATE_API_TOKEN` (optional). `JWT_SECRET` is auto-generated.
+3. Once deployed, copy the service URL (e.g. `https://gamegold-api.onrender.com`).
+
+**Frontend → Vercel**, in a pnpm monorepo:
+1. New Project → import this repo → set **Root Directory** to `apps/web`. Vercel auto-detects the pnpm workspace and installs from the repo root.
+2. Framework preset: Next.js (auto-detected) — leave Build/Install commands as default.
+3. Set env var `NEXT_PUBLIC_API_URL` to the Render backend URL from step above.
+
+**After both are live**, update `CORS_ORIGINS` on Render to the real Vercel domain (`render.yaml` ships with `https://gamegold.vercel.app` as a placeholder), and redeploy the backend so CORS allows it.
+
+Auth uses an httpOnly session cookie + a CSRF cookie (double-submit pattern) — since the frontend and backend are on different domains in production, `COOKIE_SECURE=true` and `COOKIE_SAMESITE=none` (already set in `render.yaml`) are required for the cookies to be sent cross-site at all.
+
+---
+
 ## API Overview
 
 ```
-POST  /auth/register
-POST  /auth/login
+POST  /auth/register                  → User (sets httpOnly session + CSRF cookies)
+POST  /auth/login                      → User (sets httpOnly session + CSRF cookies)
+POST  /auth/logout                     204 (clears cookies)
 GET   /auth/me
 
 GET   /projects                       List all projects
@@ -358,10 +377,7 @@ Each run produces a report: first-person playthrough log, **softlocks**, **pacin
 
 ## Roadmap
 
-**Phase 5 — Shipping (next)**
-Auto-generate your itch.io or Steam store page, press kit, and a full export bundle. Includes Unity build configuration instructions for each target platform.
-
-**Phase 6 — Desktop (Tauri + Unity Integration)**
+**Phase 6 — Desktop (Tauri + Unity Integration, next)**
 Tauri wrapper for offline use. Direct Unity project file integration — GameGold can copy assets into the right `Assets/` folders, write `.meta` files, and scaffold script files directly into your project. Creative decisions (scene layout, gameplay tuning) always remain yours.
 
 ---
@@ -374,7 +390,7 @@ CS Graduate, University of Wisconsin-Madison. Full-stack engineer and game devel
 
 ---
 
-*GameGold is actively in development. Phases 1–4 are complete and running.*
+*GameGold is actively in development. Phases 1–5 are complete and running.*
 
 ---
 

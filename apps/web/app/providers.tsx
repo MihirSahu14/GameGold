@@ -3,17 +3,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/store/authStore'
-import { getMe, getToken } from '@/lib/auth'
+import { getMe } from '@/lib/auth'
 
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const { setUser, setLoading } = useAuthStore()
 
   useEffect(() => {
     async function initAuth() {
-      if (!getToken()) {
-        setLoading(false)
-        return
-      }
+      // The session lives in an httpOnly cookie, invisible to JS — just ask
+      // the backend who we are and treat a 401 as "not authenticated".
       try {
         const user = await getMe()
         setUser(user)

@@ -9,7 +9,7 @@ async def analyze_balance(
     gdd_summary: str = "",
 ) -> BalanceAnalysisOut:
     prompt = build_balance_prompt(nodes, edges, gdd_summary)
-    data = extract_json(complete(BALANCE_SYSTEM_PROMPT, prompt, max_tokens=2000))
+    data = extract_json(await complete(BALANCE_SYSTEM_PROMPT, prompt, max_tokens=2000))
 
     return BalanceAnalysisOut(
         exploits=data.get("exploits", []),

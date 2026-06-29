@@ -3,6 +3,7 @@ Shared LLM helpers — single completion entrypoint plus robust output parsing.
 Smaller dev models (Groq Llama) sometimes wrap JSON in markdown fences or add
 prose around it, so json.loads alone is too brittle.
 """
+import asyncio
 import json
 import re
 
@@ -45,8 +46,7 @@ def extract_json(text: str) -> dict:
     raise ValueError(f"LLM returned invalid JSON: {text[:200]!r}")
 
 
-def complete(system_prompt: str, user_prompt: str, max_tokens: int = 1500) -> str:
-    """One LLM call via LiteLLM. Returns the response text."""
+def _call_llm(system_prompt: str, user_prompt: str, max_tokens: int) -> str:
     response = litellm.completion(
         model=settings.llm_model,
         api_key=settings.llm_api_key,
@@ -57,3 +57,9 @@ def complete(system_prompt: str, user_prompt: str, max_tokens: int = 1500) -> st
         ],
     )
     return response.choices[0].message.content or ""
+
+
+async def complete(system_prompt: str, user_prompt: str, max_tokens: int = 1500) -> str:
+    """One LLM call via LiteLLM, run off the event loop thread so it doesn't block
+    other requests for the duration of the (often multi-second) call."""
+    return await asyncio.to_thread(_call_llm, system_prompt, user_prompt, max_tokens)

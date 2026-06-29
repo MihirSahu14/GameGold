@@ -24,7 +24,7 @@ async def generate_sprite_assets(
 ) -> tuple[str, UnityGuide]:
     """Returns (image_prompt, unity_guide)."""
     data = extract_json(
-        complete(SPRITE_SYSTEM_PROMPT, build_sprite_prompt(name, description, style, game_context))
+        await complete(SPRITE_SYSTEM_PROMPT, build_sprite_prompt(name, description, style, game_context))
     )
     image_prompt = str(data.get("imagePrompt", "")).strip()
     if not image_prompt:
@@ -37,7 +37,7 @@ async def generate_script_asset(
 ) -> tuple[str, UnityGuide]:
     """Returns (csharp_code, unity_guide)."""
     data = extract_json(
-        complete(
+        await complete(
             SCRIPT_SYSTEM_PROMPT,
             build_script_prompt(name, script_type, description, game_context),
             max_tokens=3000,
@@ -54,7 +54,7 @@ async def generate_dialogue_asset(
 ) -> tuple[DialogueTree, UnityGuide]:
     """Returns (dialogue_tree, unity_guide)."""
     data = extract_json(
-        complete(
+        await complete(
             DIALOGUE_SYSTEM_PROMPT,
             build_dialogue_prompt(npc_name, personality, game_context),
             max_tokens=2500,
