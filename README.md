@@ -252,7 +252,7 @@ cd backend
 
 **Backend → Render**, using the `render.yaml` blueprint at the repo root:
 1. New → Blueprint → connect this repo. Render reads `render.yaml` and creates the `gamegold-api` web service (`rootDir: backend`).
-2. Set the `sync: false` env vars in the Render dashboard: `MONGODB_URL`, `LLM_API_KEY`, `REPLICATE_API_TOKEN` (optional). `JWT_SECRET` is auto-generated.
+2. Set the `sync: false` env vars in the Render dashboard: `MONGODB_URL`, `LLM_API_KEY` (Groq key by default — `render.yaml` ships with `LLM_MODEL=groq/llama-3.3-70b-versatile`; swap both to switch to Claude later), `REPLICATE_API_TOKEN` (optional). `JWT_SECRET` is auto-generated.
 3. Once deployed, copy the service URL (e.g. `https://gamegold-api.onrender.com`).
 
 **Frontend → Vercel**, in a pnpm monorepo:
