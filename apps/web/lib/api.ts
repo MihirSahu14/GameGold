@@ -32,11 +32,14 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Handle 401 — session expired or missing, redirect to login
+// Handle 401 — session expired or missing, redirect to login.
+// Exclude /auth/me because a 401 there means "not logged in" (expected),
+// not "session expired" — AuthProvider handles that case via setUser(null).
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 && typeof window !== 'undefined') {
+    const isAuthCheck = error.config?.url?.includes('/auth/me')
+    if (error.response?.status === 401 && !isAuthCheck && typeof window !== 'undefined') {
       window.location.href = '/login'
     }
     return Promise.reject(error)
