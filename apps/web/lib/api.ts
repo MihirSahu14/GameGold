@@ -42,3 +42,16 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+// Distinguishes a real backend error (has a response + detail) from a
+// network/CORS-level failure (no response at all) — the latter looks
+// identical to "request failed" otherwise and is easy to misread as a
+// validation error.
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  const axiosErr = err as { response?: { data?: { detail?: string } } } | undefined
+  if (!axiosErr) return fallback
+  if (axiosErr.response) {
+    return axiosErr.response.data?.detail ?? fallback
+  }
+  return 'Could not reach the server — it may be down, or the request was blocked by CORS. Check the browser console for details.'
+}

@@ -4,7 +4,24 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { registerUser } from '@/lib/auth'
+import { apiErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
+
+const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
+const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#07090d',
+  border: '1px solid #1b2533',
+  padding: '12px 14px',
+  color: '#c8d4e2',
+  fontSize: '14px',
+  outline: 'none',
+  boxSizing: 'border-box',
+  fontFamily: 'var(--font-space-mono), monospace',
+  transition: 'border-color .15s',
+}
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -23,77 +40,190 @@ export default function RegisterPage() {
       const user = await registerUser(email, username, password)
       setUser(user)
       router.push('/dashboard')
-    } catch {
-      setError('Registration failed. Email may already be in use.')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Registration failed. Email may already be in use.'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <span className="text-yellow-400 text-2xl font-bold">🎮 GameGold</span>
-          <h1 className="text-zinc-50 text-2xl font-semibold mt-4">Create your account</h1>
-          <p className="text-zinc-400 text-sm mt-1">Start shipping games, for free</p>
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#07090d',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        ...mono,
+      }}
+    >
+      {/* Faint grid background */}
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundImage:
+            'linear-gradient(rgba(78,168,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(78,168,255,0.03) 1px, transparent 1px)',
+          backgroundSize: '46px 46px',
+          pointerEvents: 'none',
+        }}
+      />
+
+      <div style={{ position: 'relative', width: '100%', maxWidth: '380px' }}>
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+          <Link
+            href="/"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '10px',
+              textDecoration: 'none',
+            }}
+          >
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px',
+                background: '#4ea8ff',
+                color: '#07090d',
+                ...pixel,
+                fontSize: '12px',
+              }}
+            >
+              G
+            </span>
+            <span style={{ ...pixel, fontSize: '13px', color: '#eaf2ff', letterSpacing: '1px' }}>
+              GAMEGOLD
+            </span>
+          </Link>
+
+          <div style={{ marginTop: '28px' }}>
+            <div style={{ fontSize: '11px', letterSpacing: '3px', color: '#4ea8ff', marginBottom: '10px' }}>
+              // START BUILDING
+            </div>
+            <h1 style={{ ...pixel, fontSize: '14px', color: '#eaf2ff', margin: 0, lineHeight: 1.5 }}>
+              CREATE ACCOUNT
+            </h1>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="block text-zinc-400 text-sm mb-1.5">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              placeholder="indiedev42"
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/60 transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-zinc-400 text-sm mb-1.5">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="you@example.com"
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/60 transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-zinc-400 text-sm mb-1.5">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-              placeholder="At least 8 characters"
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/60 transition-colors"
-            />
-          </div>
+        {/* Card */}
+        <div
+          style={{
+            background: '#0b1018',
+            border: '1px solid #1b2533',
+            padding: '32px',
+          }}
+        >
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div>
+              <label
+                style={{ display: 'block', fontSize: '11px', letterSpacing: '2px', color: '#4a5a6c', marginBottom: '8px' }}
+              >
+                USERNAME
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                placeholder="indiedev42"
+                style={inputStyle}
+                onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
+                onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
+              />
+            </div>
 
-          {error && (
-            <p className="text-red-400 text-sm bg-red-400/10 border border-red-400/20 px-4 py-2 rounded-lg">
-              {error}
-            </p>
-          )}
+            <div>
+              <label
+                style={{ display: 'block', fontSize: '11px', letterSpacing: '2px', color: '#4a5a6c', marginBottom: '8px' }}
+              >
+                EMAIL
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="you@example.com"
+                style={inputStyle}
+                onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
+                onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-yellow-400 text-zinc-950 font-semibold py-3 rounded-lg text-sm hover:bg-yellow-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-1"
-          >
-            {loading ? 'Creating account...' : 'Create account'}
-          </button>
-        </form>
+            <div>
+              <label
+                style={{ display: 'block', fontSize: '11px', letterSpacing: '2px', color: '#4a5a6c', marginBottom: '8px' }}
+              >
+                PASSWORD
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={8}
+                placeholder="At least 8 characters"
+                style={inputStyle}
+                onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
+                onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
+              />
+              <div style={{ fontSize: '11px', color: '#3a4757', marginTop: '6px' }}>
+                8 characters minimum
+              </div>
+            </div>
 
-        <p className="text-center text-zinc-500 text-sm mt-6">
+            {error && (
+              <div
+                style={{
+                  fontSize: '13px',
+                  color: '#ff5277',
+                  background: 'rgba(255,82,119,0.08)',
+                  border: '1px solid rgba(255,82,119,0.25)',
+                  padding: '10px 14px',
+                  ...mono,
+                }}
+              >
+                &#9888; {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                background: loading ? '#1b2533' : '#4ea8ff',
+                color: loading ? '#4a5a6c' : '#07090d',
+                border: 'none',
+                padding: '14px',
+                fontSize: '12px',
+                letterSpacing: '1px',
+                fontWeight: 700,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                ...pixel,
+                marginTop: '4px',
+                transition: 'background .15s, color .15s',
+              }}
+            >
+              {loading ? 'CREATING...' : '▶ CREATE ACCOUNT'}
+            </button>
+          </form>
+        </div>
+
+        <p style={{ textAlign: 'center', fontSize: '13px', color: '#4a5a6c', marginTop: '20px' }}>
           Already have an account?{' '}
-          <Link href="/login" className="text-yellow-400 hover:text-yellow-300 transition-colors">
-            Sign in
+          <Link
+            href="/login"
+            style={{ color: '#4ea8ff', textDecoration: 'none' }}
+          >
+            Sign in ›
           </Link>
         </p>
       </div>

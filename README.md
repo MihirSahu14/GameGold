@@ -40,7 +40,7 @@ Every generated artifact — sprites, scripts, dialogue trees, architecture docs
 
 > *Dragging assets into Unity, wiring up components, building scenes — that's the craft. GameGold handles the generation and guidance. You handle the creation.*
 
-**Future integration (Phase 6):** When the Tauri desktop app ships, GameGold will integrate directly with Unity project files — copying assets to the right folders, writing config files. But even then, scene composition, gameplay feel, and creative decisions stay entirely in your hands.
+**Future integration (Phase 6):** When the Unity MCP server ships, Claude will be able to act inside the Unity Editor directly — creating GameObjects, attaching scripts, setting Inspector values through real Editor APIs. Scene composition, gameplay feel, and creative decisions always stay entirely in your hands.
 
 ---
 
@@ -53,7 +53,7 @@ Every generated artifact — sprites, scripts, dialogue trees, architecture docs
 | **3. Asset Production** | Sprite generator + step-by-step Unity guides + dialogue trees + C# scaffolding | ✅ Complete |
 | **4. Playtesting** | AI playtest simulator (4 player personas) + bug tracker with Unity-specific tweak instructions | ✅ Complete |
 | **5. Deployment** | Store page generator, press kit, Unity build instructions, full export bundle | ✅ Complete |
-| **6. Desktop App** | Tauri wrapper + direct Unity project file integration (assets, scripts, configs) | 🔜 Next |
+| **6. Unity MCP Server** | Model Context Protocol server inside the Unity Editor — Claude reads scene hierarchy, creates GameObjects, attaches scripts, writes Inspector values directly | 🔜 Next |
 
 ---
 
@@ -120,7 +120,7 @@ Steps are **checkable** — you mark them off as you work. Progress is saved per
 - **Vercel** — frontend deployment
 - **Render** — backend deployment
 - **Cloudflare R2** — asset file storage (Phase 3)
-- **Tauri** — desktop app wrapper + Unity project integration (Phase 6)
+- **Unity MCP Server** — Model Context Protocol server (C# Unity package) giving Claude live Editor access (Phase 6)
 
 ---
 
@@ -377,8 +377,8 @@ Each run produces a report: first-person playthrough log, **softlocks**, **pacin
 
 ## Roadmap
 
-**Phase 6 — Desktop (Tauri + Unity Integration, next)**
-Tauri wrapper for offline use. Direct Unity project file integration — GameGold can copy assets into the right `Assets/` folders, write `.meta` files, and scaffold script files directly into your project. Creative decisions (scene layout, gameplay tuning) always remain yours.
+**Phase 6 — Unity MCP Server (next)**
+A Model Context Protocol server that runs inside the Unity Editor as a C# package. Claude gets live access to the Editor — it can read the scene hierarchy, create and configure GameObjects, attach components, set Inspector values, and import assets. No file-system guesswork from outside Unity; everything goes through real Editor APIs. GameGold's web UI gets a "Send to Unity" action on each generated artifact. Creative decisions (scene layout, gameplay tuning) always remain yours.
 
 ---
 
