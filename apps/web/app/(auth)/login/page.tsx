@@ -91,7 +91,7 @@ export default function LoginPage() {
 
           <div style={{ marginTop: '28px' }}>
             <div style={{ fontSize: '11px', letterSpacing: '3px', color: '#4ea8ff', marginBottom: '10px' }}>
-              // WELCOME BACK
+              {'// WELCOME BACK'}
             </div>
             <h1 style={{ ...pixel, fontSize: '14px', color: '#eaf2ff', margin: 0, lineHeight: 1.5 }}>
               SIGN IN

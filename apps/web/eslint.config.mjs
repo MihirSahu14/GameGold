@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Test files are linted by Vitest, not Next.js
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
   ]),
 ]);
 

@@ -140,7 +140,7 @@ export function UnityGuideSection() {
       }}
     >
       <div style={{ fontSize: '12px', letterSpacing: '3px', color: '#4ea8ff', marginBottom: '28px' }}>
-        // UNITY INTEGRATION
+        {'// UNITY INTEGRATION'}
       </div>
       <h2
         style={{

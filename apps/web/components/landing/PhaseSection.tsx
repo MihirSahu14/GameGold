@@ -176,7 +176,7 @@ export function PhaseSection() {
             fontFamily: 'var(--font-space-mono), monospace',
           }}
         >
-          // THE 6 PHASES
+          {'// THE 6 PHASES'}
         </div>
 
         {/* Bottom HUD bar */}

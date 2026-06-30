@@ -105,7 +105,7 @@ export default function RegisterPage() {
 
           <div style={{ marginTop: '28px' }}>
             <div style={{ fontSize: '11px', letterSpacing: '3px', color: '#4ea8ff', marginBottom: '10px' }}>
-              // START BUILDING
+              {'// START BUILDING'}
             </div>
             <h1 style={{ ...pixel, fontSize: '14px', color: '#eaf2ff', margin: 0, lineHeight: 1.5 }}>
               CREATE ACCOUNT

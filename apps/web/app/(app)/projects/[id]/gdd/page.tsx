@@ -31,11 +31,13 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
   const [refineInput, setRefineInput] = useState('')
   const [showRefine, setShowRefine] = useState(false)
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (gdd?.sections) {
       setLocalSections(gdd.sections)
     }
   }, [gdd])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const hasConceptCard = !!project?.conceptCard
   const hasGDD = !!gdd

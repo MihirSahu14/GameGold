@@ -36,6 +36,7 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
   const [estimatedScope, setEstimatedScope] = useState<ConceptCard['estimatedScope']>('indie')
   const [saved, setSaved] = useState(false)
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const cc = project?.conceptCard
     if (!cc) return
@@ -46,6 +47,7 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
     setTargetAudience(cc.targetAudience ?? '')
     setEstimatedScope(cc.estimatedScope ?? 'indie')
   }, [project?.conceptCard])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (isLoading || !project) {
     return (

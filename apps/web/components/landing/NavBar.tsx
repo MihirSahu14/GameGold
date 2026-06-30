@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from 'react'
 
-const GITHUB = 'https://github.com/MihirSahu14/GameGold'
 const REGISTER = '/register'
 
 const NAV_LINKS = [

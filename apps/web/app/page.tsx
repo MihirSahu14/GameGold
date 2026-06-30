@@ -84,7 +84,7 @@ export default function LandingPage() {
         style={{ position: 'relative', zIndex: 2, maxWidth: '1040px', margin: '0 auto', padding: '120px 28px' }}
       >
         <div style={{ fontSize: '12px', letterSpacing: '3px', color: '#4ea8ff', marginBottom: '28px' }}>
-          // WHAT IS GAMEGOLD
+          {'// WHAT IS GAMEGOLD'}
         </div>
         <h2
           style={{
@@ -144,7 +144,7 @@ export default function LandingPage() {
       >
         <div style={{ maxWidth: '1040px', margin: '0 auto' }}>
           <div style={{ fontSize: '12px', letterSpacing: '3px', color: '#4ea8ff', marginBottom: '28px' }}>
-            // THE PHILOSOPHY
+            {'// THE PHILOSOPHY'}
           </div>
           <h2
             style={{
