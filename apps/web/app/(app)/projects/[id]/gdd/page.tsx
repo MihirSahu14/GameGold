@@ -106,24 +106,25 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Section nav */}
-      <div className="w-52 bg-zinc-900/50 border-r border-zinc-800 flex flex-col p-3 gap-1 overflow-y-auto">
-        <p className="text-zinc-600 text-xs font-semibold uppercase tracking-wider px-3 mb-2 mt-1">
-          Sections
+      <div className="w-52 border-r border-zinc-800 flex flex-col p-3 gap-1 overflow-y-auto" style={{ background: '#0a0f16' }}>
+        <p className="text-zinc-600 text-xs font-semibold uppercase tracking-wider px-3 mb-2 mt-1" style={{ letterSpacing: '2px', fontSize: '10px' }}>
+          // SECTIONS
         </p>
         {SECTION_LABELS.map((s) => (
           <button
             key={s.key}
             onClick={() => setActiveSection(s.key)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+            className={`flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
               activeSection === s.key
                 ? 'bg-zinc-800 text-zinc-50'
                 : 'text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800/40'
             }`}
+            style={{ borderLeft: activeSection === s.key ? '2px solid #4ea8ff' : '2px solid transparent' }}
           >
             <span className="text-base">{s.emoji}</span>
             <span className="text-xs">{s.label}</span>
             {localSections[s.key] && (
-              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-yellow-400/60 flex-shrink-0" />
+              <span className="ml-auto w-1.5 h-1.5 flex-shrink-0" style={{ background: '#4ea8ff', opacity: 0.6 }} />
             )}
           </button>
         ))}
@@ -144,6 +145,9 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
               {SECTION_LABELS.find((s) => s.key === activeSection)?.emoji}{' '}
               {SECTION_LABELS.find((s) => s.key === activeSection)?.label}
             </h1>
+            <p className="text-zinc-500 text-xs mt-0.5">
+              AI writes all 8 GDD sections from your Concept Card in ~20 seconds. Edit in rich text, refine any section with AI, then export as Markdown.
+            </p>
           </div>
 
           <div className="flex gap-2">

@@ -7,8 +7,14 @@ export function useGDD(projectId: string) {
   return useQuery({
     queryKey: ['gdd', projectId],
     queryFn: async () => {
-      const res = await api.get<GDD>(`/projects/${projectId}/gdd`)
-      return res.data
+      try {
+        const res = await api.get<GDD>(`/projects/${projectId}/gdd`)
+        return res.data
+      } catch (err: unknown) {
+        const e = err as { response?: { status?: number } }
+        if (e?.response?.status === 404) return null
+        throw err
+      }
     },
     enabled: !!projectId,
   })

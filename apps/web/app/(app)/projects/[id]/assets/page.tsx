@@ -123,7 +123,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
       : !!npcName.trim() && !!personality.trim()
 
   const inputClass =
-    'bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/50'
+    'bg-zinc-900 border border-zinc-800 px-3 py-2 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none'
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -135,7 +135,10 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
           <span className="text-zinc-300">Asset Production</span>
         </div>
         <div className="flex items-center justify-between">
-          <h1 className="text-zinc-50 font-semibold text-lg">Assets & Unity Guides</h1>
+          <div>
+            <h1 className="text-zinc-50 font-semibold text-lg">Assets & Unity Guides</h1>
+            <p className="text-zinc-500 text-xs mt-0.5">Generate C# scripts, AI-drawn sprites, and dialogue trees. Every asset includes step-by-step Unity setup instructions.</p>
+          </div>
           <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 gap-0.5">
             {TABS.map((tab) => (
               <button

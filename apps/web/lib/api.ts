@@ -12,6 +12,16 @@ export const api = axios.create({
   withCredentials: true,
 })
 
+// In-memory CSRF token store. The gg_csrf cookie is set by the backend domain
+// (Render) and cannot be read via document.cookie on the frontend domain
+// (Vercel) — cross-origin cookies are domain-scoped. We fetch the token once
+// via GET /auth/csrf (which the backend can read) and keep it here.
+let _csrfToken: string | null = null
+
+export function setCsrfToken(token: string | null): void {
+  _csrfToken = token
+}
+
 function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
@@ -19,12 +29,13 @@ function getCookie(name: string): string | null {
 }
 
 // Auth lives in an httpOnly session cookie (sent automatically). Mutating
-// requests must also echo the readable CSRF cookie back as a header — the
-// backend's double-submit check rejects them otherwise.
+// requests must also echo the readable CSRF token as a header.
+// Use the in-memory token first (works cross-origin); fall back to document.cookie
+// for same-origin local dev where the cookie IS readable.
 api.interceptors.request.use((config) => {
   const method = config.method?.toLowerCase()
   if (method && !SAFE_METHODS.has(method)) {
-    const csrfToken = getCookie(CSRF_COOKIE)
+    const csrfToken = _csrfToken ?? getCookie(CSRF_COOKIE)
     if (csrfToken) {
       config.headers['X-CSRF-Token'] = csrfToken
     }
@@ -46,10 +57,6 @@ api.interceptors.response.use(
   }
 )
 
-// Distinguishes a real backend error (has a response + detail) from a
-// network/CORS-level failure (no response at all) — the latter looks
-// identical to "request failed" otherwise and is easy to misread as a
-// validation error.
 export function apiErrorMessage(err: unknown, fallback: string): string {
   const axiosErr = err as { response?: { data?: { detail?: string } } } | undefined
   if (!axiosErr) return fallback

@@ -5,22 +5,38 @@ import { useRouter } from 'next/navigation'
 import { useProject, useUpdateConceptCard } from '@/lib/queries/useProjects'
 import type { ConceptCard, GameTone } from '@gamegold/types'
 
+const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
+const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
+
 const TONES: { value: GameTone; label: string; emoji: string }[] = [
-  { value: 'dark', label: 'Dark', emoji: '🌑' },
-  { value: 'lighthearted', label: 'Lighthearted', emoji: '☀️' },
-  { value: 'epic', label: 'Epic', emoji: '⚔️' },
-  { value: 'comedic', label: 'Comedic', emoji: '😄' },
-  { value: 'horror', label: 'Horror', emoji: '👻' },
-  { value: 'atmospheric', label: 'Atmospheric', emoji: '🌫️' },
-  { value: 'realistic', label: 'Realistic', emoji: '🎯' },
+  { value: 'dark',        label: 'Dark',         emoji: '🌑' },
+  { value: 'lighthearted',label: 'Lighthearted', emoji: '☀️' },
+  { value: 'epic',        label: 'Epic',         emoji: '⚔️' },
+  { value: 'comedic',     label: 'Comedic',      emoji: '😄' },
+  { value: 'horror',      label: 'Horror',       emoji: '👻' },
+  { value: 'atmospheric', label: 'Atmospheric',  emoji: '🌫️' },
+  { value: 'realistic',   label: 'Realistic',    emoji: '🎯' },
 ]
 
 const SCOPES = [
-  { value: 'jam', label: 'Game Jam', desc: '48–72 hours' },
-  { value: 'indie', label: 'Indie', desc: '1–6 months' },
-  { value: 'mid', label: 'Mid-scope', desc: '6–18 months' },
-  { value: 'large', label: 'Large', desc: '18+ months' },
+  { value: 'jam',   label: 'Game Jam',  desc: '48–72 hours' },
+  { value: 'indie', label: 'Indie',     desc: '1–6 months' },
+  { value: 'mid',   label: 'Mid-scope', desc: '6–18 months' },
+  { value: 'large', label: 'Large',     desc: '18+ months' },
 ]
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#07090d',
+  border: '1px solid #1b2533',
+  color: '#c8d4e2',
+  fontSize: '13px',
+  padding: '10px 14px',
+  outline: 'none',
+  boxSizing: 'border-box',
+  ...mono,
+  transition: 'border-color 0.15s',
+}
 
 export default function ConceptPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -51,9 +67,9 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
 
   if (isLoading || !project) {
     return (
-      <div className="p-8">
-        <div className="h-8 w-48 bg-zinc-900 rounded animate-pulse mb-4" />
-        <div className="h-4 w-96 bg-zinc-900 rounded animate-pulse" />
+      <div style={{ padding: '40px 36px', ...mono }}>
+        <div style={{ height: '24px', width: '200px', background: '#0b1018', marginBottom: '16px' }} />
+        <div style={{ height: '14px', width: '380px', background: '#0b1018' }} />
       </div>
     )
   }
@@ -62,14 +78,8 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
     e.preventDefault()
     const conceptCard: ConceptCard = {
       title: project!.title,
-      tagline,
-      genre: project!.genre,
-      platform: project!.platform,
-      tone,
-      coreLoop,
-      uniqueHook,
-      targetAudience,
-      estimatedScope,
+      tagline, genre: project!.genre, platform: project!.platform,
+      tone, coreLoop, uniqueHook, targetAudience, estimatedScope,
     }
     await updateConcept.mutateAsync(conceptCard)
     setSaved(true)
@@ -79,77 +89,86 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
   async function handleProceedToGDD() {
     const conceptCard: ConceptCard = {
       title: project!.title,
-      tagline,
-      genre: project!.genre,
-      platform: project!.platform,
-      tone,
-      coreLoop,
-      uniqueHook,
-      targetAudience,
-      estimatedScope,
+      tagline, genre: project!.genre, platform: project!.platform,
+      tone, coreLoop, uniqueHook, targetAudience, estimatedScope,
     }
     await updateConcept.mutateAsync(conceptCard)
     router.push(`/projects/${id}/gdd`)
   }
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div style={{ padding: '40px 36px', maxWidth: '760px', ...mono }}>
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-2 text-zinc-500 text-sm mb-3">
-          <span>🎮 {project.title}</span>
-          <span>/</span>
-          <span className="text-zinc-300">Concept Card</span>
+      <div style={{ marginBottom: '36px' }}>
+        <div style={{ fontSize: '11px', color: '#4ea8ff', letterSpacing: '3px', marginBottom: '10px' }}>
+          // CONCEPT CARD
         </div>
-        <h1 className="text-2xl font-bold text-zinc-50 mb-1">Define your concept</h1>
-        <p className="text-zinc-400 text-sm">
+        <div style={{ fontSize: '12px', color: '#456079', marginBottom: '10px' }}>
+          🎮 {project.title}
+        </div>
+        <h1 style={{ ...pixel, fontSize: '16px', color: '#eaf2ff', margin: '0 0 10px', lineHeight: 1.5 }}>
+          Define your concept
+        </h1>
+        <p style={{ color: '#6b7787', fontSize: '13px', margin: 0, lineHeight: 1.7 }}>
           This card drives everything — your GDD, systems, and assets will all build on this.
         </p>
       </div>
 
-      <form onSubmit={handleSave} className="flex flex-col gap-6">
-        {/* Title (read-only from project) */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="text-yellow-400 text-xl">🎮</span>
-            <div>
-              <p className="text-zinc-400 text-xs mb-0.5">Title</p>
-              <p className="text-zinc-50 font-semibold text-lg">{project.title}</p>
-            </div>
-            <div className="ml-auto flex gap-2">
-              <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded capitalize">{project.genre}</span>
-              <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded capitalize">{project.platform}</span>
-            </div>
+      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {/* Title card */}
+        <div style={{ background: '#0b1018', border: '1px solid #1b2533', padding: '20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <span style={{ fontSize: '22px' }}>🎮</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '11px', color: '#456079', letterSpacing: '1.5px', marginBottom: '4px' }}>TITLE</div>
+            <div style={{ ...pixel, fontSize: '13px', color: '#eaf2ff' }}>{project.title}</div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <span style={{ fontSize: '11px', color: '#8b97a7', background: '#141c27', padding: '3px 10px', letterSpacing: '1px', textTransform: 'capitalize' }}>
+              {project.genre}
+            </span>
+            <span style={{ fontSize: '11px', color: '#8b97a7', background: '#141c27', padding: '3px 10px', letterSpacing: '1px', textTransform: 'capitalize' }}>
+              {project.platform}
+            </span>
           </div>
         </div>
 
         {/* Tagline */}
         <div>
-          <label className="block text-zinc-300 text-sm font-medium mb-2">
-            Tagline <span className="text-zinc-600 font-normal">— One sentence pitch</span>
+          <label style={{ display: 'block', fontSize: '11px', letterSpacing: '2px', color: '#456079', marginBottom: '8px' }}>
+            TAGLINE <span style={{ color: '#2a3a4a', letterSpacing: 'normal', textTransform: 'none', fontSize: '12px' }}>— One sentence pitch</span>
           </label>
           <input
             value={tagline}
             onChange={(e) => setTagline(e.target.value)}
             placeholder='e.g. "A horror puzzle game where light is your only weapon"'
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/60 transition-colors"
+            style={inputStyle}
+            onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
+            onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
           />
         </div>
 
         {/* Tone */}
         <div>
-          <label className="block text-zinc-300 text-sm font-medium mb-3">Tone</label>
-          <div className="flex flex-wrap gap-2">
+          <label style={{ display: 'block', fontSize: '11px', letterSpacing: '2px', color: '#456079', marginBottom: '12px' }}>TONE</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {TONES.map((t) => (
               <button
                 key={t.value}
                 type="button"
                 onClick={() => setTone(t.value)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
-                  tone === t.value
-                    ? 'bg-yellow-400/10 border-yellow-400/40 text-yellow-400'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-300'
-                }`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  border: tone === t.value ? '1px solid #4ea8ff' : '1px solid #1b2533',
+                  background: tone === t.value ? 'rgba(78,168,255,0.1)' : '#0b1018',
+                  color: tone === t.value ? '#4ea8ff' : '#8b97a7',
+                  transition: 'all 0.15s',
+                  ...mono,
+                }}
               >
                 <span>{t.emoji}</span> {t.label}
               </button>
@@ -159,83 +178,114 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
 
         {/* Core loop */}
         <div>
-          <label className="block text-zinc-300 text-sm font-medium mb-2">
-            Core Loop <span className="text-zinc-600 font-normal">— The 30-second thing players repeat</span>
+          <label style={{ display: 'block', fontSize: '11px', letterSpacing: '2px', color: '#456079', marginBottom: '8px' }}>
+            CORE LOOP <span style={{ color: '#2a3a4a', letterSpacing: 'normal', textTransform: 'none', fontSize: '12px' }}>— The 30-second thing players repeat</span>
           </label>
           <textarea
             value={coreLoop}
             onChange={(e) => setCoreLoop(e.target.value)}
             rows={3}
-            placeholder='e.g. "Explore dark room → find light source → solve puzzle → unlock next area → repeat with new threat"'
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/60 transition-colors resize-none"
+            placeholder='e.g. "Explore dark room → find light source → solve puzzle → unlock next area"'
+            style={{ ...inputStyle, resize: 'none' }}
+            onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
+            onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
           />
         </div>
 
         {/* Unique Hook */}
         <div>
-          <label className="block text-zinc-300 text-sm font-medium mb-2">
-            Unique Hook <span className="text-zinc-600 font-normal">— What makes this game worth playing</span>
+          <label style={{ display: 'block', fontSize: '11px', letterSpacing: '2px', color: '#456079', marginBottom: '8px' }}>
+            UNIQUE HOOK <span style={{ color: '#2a3a4a', letterSpacing: 'normal', textTransform: 'none', fontSize: '12px' }}>— What makes this game worth playing</span>
           </label>
           <textarea
             value={uniqueHook}
             onChange={(e) => setUniqueHook(e.target.value)}
             rows={2}
-            placeholder='e.g. "The monster is blind but reacts to sound — every action you take creates noise"'
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/60 transition-colors resize-none"
+            placeholder='e.g. "The monster is blind but reacts to sound — every action creates noise"'
+            style={{ ...inputStyle, resize: 'none' }}
+            onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
+            onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
           />
         </div>
 
         {/* Target Audience */}
         <div>
-          <label className="block text-zinc-300 text-sm font-medium mb-2">Target Audience</label>
+          <label style={{ display: 'block', fontSize: '11px', letterSpacing: '2px', color: '#456079', marginBottom: '8px' }}>TARGET AUDIENCE</label>
           <input
             value={targetAudience}
             onChange={(e) => setTargetAudience(e.target.value)}
             placeholder='e.g. "Horror fans who enjoy puzzle games, 18–30, PC players"'
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/60 transition-colors"
+            style={inputStyle}
+            onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
+            onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
           />
         </div>
 
         {/* Scope */}
         <div>
-          <label className="block text-zinc-300 text-sm font-medium mb-3">Estimated Scope</label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <label style={{ display: 'block', fontSize: '11px', letterSpacing: '2px', color: '#456079', marginBottom: '12px' }}>ESTIMATED SCOPE</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
             {SCOPES.map((s) => (
               <button
                 key={s.value}
                 type="button"
                 onClick={() => setEstimatedScope(s.value as ConceptCard['estimatedScope'])}
-                className={`p-3 rounded-xl border text-left transition-all ${
-                  estimatedScope === s.value
-                    ? 'bg-yellow-400/10 border-yellow-400/40'
-                    : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
-                }`}
+                style={{
+                  padding: '14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  border: estimatedScope === s.value ? '1px solid #4ea8ff' : '1px solid #1b2533',
+                  background: estimatedScope === s.value ? 'rgba(78,168,255,0.08)' : '#0b1018',
+                  transition: 'all 0.15s',
+                  ...mono,
+                }}
               >
-                <p className={`text-sm font-medium ${estimatedScope === s.value ? 'text-yellow-400' : 'text-zinc-300'}`}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: estimatedScope === s.value ? '#4ea8ff' : '#c8d4e2', marginBottom: '4px' }}>
                   {s.label}
-                </p>
-                <p className="text-zinc-500 text-xs mt-0.5">{s.desc}</p>
+                </div>
+                <div style={{ fontSize: '11px', color: '#6b7787' }}>{s.desc}</div>
               </button>
             ))}
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3 pt-2">
+        <div style={{ display: 'flex', gap: '12px', paddingTop: '8px' }}>
           <button
             type="submit"
             disabled={updateConcept.isPending}
-            className="bg-zinc-800 text-zinc-300 font-medium px-5 py-2.5 rounded-xl text-sm hover:bg-zinc-700 hover:text-zinc-50 transition-colors disabled:opacity-50"
+            style={{
+              background: '#141c27',
+              color: '#c8d4e2',
+              border: '1px solid #1b2533',
+              padding: '12px 22px',
+              fontSize: '12px',
+              letterSpacing: '1px',
+              cursor: updateConcept.isPending ? 'not-allowed' : 'pointer',
+              ...mono,
+              transition: 'background 0.15s',
+            }}
           >
-            {saved ? '✓ Saved' : updateConcept.isPending ? 'Saving...' : 'Save'}
+            {saved ? '✓ SAVED' : updateConcept.isPending ? 'SAVING...' : 'SAVE'}
           </button>
           <button
             type="button"
             onClick={handleProceedToGDD}
             disabled={updateConcept.isPending}
-            className="bg-yellow-400 text-zinc-950 font-semibold px-5 py-2.5 rounded-xl text-sm hover:bg-yellow-300 transition-colors disabled:opacity-50"
+            style={{
+              background: '#4ea8ff',
+              color: '#07090d',
+              border: 'none',
+              padding: '12px 22px',
+              fontSize: '12px',
+              letterSpacing: '1px',
+              fontWeight: 700,
+              cursor: updateConcept.isPending ? 'not-allowed' : 'pointer',
+              ...mono,
+              opacity: updateConcept.isPending ? 0.5 : 1,
+            }}
           >
-            {updateConcept.isPending ? 'Saving...' : 'Generate GDD →'}
+            GENERATE GDD →
           </button>
         </div>
       </form>

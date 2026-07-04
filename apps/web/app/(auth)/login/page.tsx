@@ -119,6 +119,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={loading}
                 placeholder="you@example.com"
                 style={{
                   width: '100%',
@@ -129,6 +130,7 @@ export default function LoginPage() {
                   fontSize: '14px',
                   outline: 'none',
                   boxSizing: 'border-box',
+                  opacity: loading ? 0.5 : 1,
                   ...mono,
                   transition: 'border-color .15s',
                 }}
@@ -148,6 +150,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={loading}
                 placeholder="••••••••"
                 style={{
                   width: '100%',
@@ -158,6 +161,7 @@ export default function LoginPage() {
                   fontSize: '14px',
                   outline: 'none',
                   boxSizing: 'border-box',
+                  opacity: loading ? 0.5 : 1,
                   ...mono,
                   transition: 'border-color .15s',
                 }}

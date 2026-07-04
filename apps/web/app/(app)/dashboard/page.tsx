@@ -4,7 +4,27 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useProjects, useCreateProject } from '@/lib/queries/useProjects'
 import { useAuthStore } from '@/store/authStore'
-import type { GameGenre, GamePlatform, GameTone } from '@gamegold/types'
+import type { GameGenre, GamePlatform } from '@gamegold/types'
+
+const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
+const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#07090d',
+  border: '1px solid #1b2533',
+  color: '#c8d4e2',
+  fontSize: '13px',
+  padding: '10px 14px',
+  outline: 'none',
+  boxSizing: 'border-box',
+  ...mono,
+}
+
+const selectStyle: React.CSSProperties = {
+  ...inputStyle,
+  cursor: 'pointer',
+}
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
@@ -25,123 +45,240 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div style={{ padding: '40px 36px', maxWidth: '1100px', ...mono }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '40px', gap: '16px', flexWrap: 'wrap' }}>
         <div>
-          <h1 className="text-2xl font-bold text-zinc-50">
+          <div style={{ fontSize: '11px', color: '#4ea8ff', letterSpacing: '3px', marginBottom: '10px' }}>
+            // DASHBOARD
+          </div>
+          <h1 style={{ ...pixel, fontSize: '20px', color: '#eaf2ff', margin: '0 0 8px', lineHeight: 1.4 }}>
             Your Games
           </h1>
-          <p className="text-zinc-400 text-sm mt-1">
+          <p style={{ color: '#8b97a7', fontSize: '13px', margin: 0 }}>
             Hey {user?.username} — let&apos;s ship something.
           </p>
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="bg-yellow-400 text-zinc-950 font-semibold px-5 py-2.5 rounded-xl text-sm hover:bg-yellow-300 transition-colors"
+          style={{
+            background: '#4ea8ff',
+            color: '#07090d',
+            fontWeight: 700,
+            fontSize: '12px',
+            letterSpacing: '1px',
+            padding: '12px 22px',
+            border: 'none',
+            cursor: 'pointer',
+            ...mono,
+          }}
         >
-          + New game
+          + NEW GAME
         </button>
       </div>
 
       {/* Project grid */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-40 bg-zinc-900 rounded-2xl animate-pulse border border-zinc-800" />
+            <div
+              key={i}
+              style={{ height: '160px', background: '#0b1018', border: '1px solid #1b2533', animation: 'pulse 2s ease-in-out infinite' }}
+            />
           ))}
         </div>
       ) : projects && projects.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
           {projects.map((project) => (
             <button
               key={project._id}
               onClick={() => router.push(`/projects/${project._id}/concept`)}
-              className="text-left bg-zinc-900 border border-zinc-800 rounded-2xl p-6 hover:border-zinc-700 transition-all hover:bg-zinc-900/80 group"
+              style={{
+                textAlign: 'left',
+                background: '#0b1018',
+                border: '1px solid #1b2533',
+                padding: '22px',
+                cursor: 'pointer',
+                transition: 'border-color 0.15s, background 0.15s',
+                ...mono,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#4ea8ff'
+                e.currentTarget.style.background = '#0d1420'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#1b2533'
+                e.currentTarget.style.background = '#0b1018'
+              }}
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-10 h-10 rounded-xl bg-yellow-400/10 text-yellow-400 flex items-center justify-center text-xl">
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    background: 'rgba(78,168,255,0.08)',
+                    border: '1px solid #1b2533',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '18px',
+                  }}
+                >
                   🎮
                 </div>
-                <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded-lg capitalize">
+                <span
+                  style={{
+                    fontSize: '10px',
+                    color: '#8b97a7',
+                    background: '#141c27',
+                    padding: '3px 8px',
+                    letterSpacing: '1.5px',
+                    textTransform: 'uppercase',
+                    ...pixel,
+                  }}
+                >
                   {project.stage}
                 </span>
               </div>
-              <h3 className="text-zinc-50 font-semibold text-base mb-1 group-hover:text-yellow-400 transition-colors">
+              <h3 style={{ color: '#eaf2ff', fontSize: '14px', margin: '0 0 6px', fontWeight: 700, letterSpacing: '0.5px' }}>
                 {project.title}
               </h3>
-              <p className="text-zinc-500 text-sm capitalize">
+              <p style={{ color: '#6b7787', fontSize: '12px', margin: 0, textTransform: 'capitalize' }}>
                 {project.genre} · {project.platform}
               </p>
             </button>
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="text-6xl mb-6">🎮</div>
-          <h3 className="text-zinc-300 text-xl font-semibold mb-2">No games yet</h3>
-          <p className="text-zinc-500 text-sm mb-8 max-w-xs">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', textAlign: 'center' }}>
+          <div style={{ fontSize: '52px', marginBottom: '20px' }}>🎮</div>
+          <h3 style={{ ...pixel, color: '#c8d4e2', fontSize: '14px', margin: '0 0 12px', lineHeight: 1.6 }}>No games yet</h3>
+          <p style={{ color: '#6b7787', fontSize: '13px', margin: '0 0 28px', maxWidth: '320px', lineHeight: 1.7 }}>
             Create your first game project and let AI help you take it from concept to gone gold.
           </p>
           <button
             onClick={() => setShowModal(true)}
-            className="bg-yellow-400 text-zinc-950 font-semibold px-6 py-3 rounded-xl text-sm hover:bg-yellow-300 transition-colors"
+            style={{
+              background: '#4ea8ff',
+              color: '#07090d',
+              fontWeight: 700,
+              fontSize: '12px',
+              letterSpacing: '1px',
+              padding: '14px 28px',
+              border: 'none',
+              cursor: 'pointer',
+              ...mono,
+            }}
           >
-            Create your first game
+            ▶ CREATE YOUR FIRST GAME
           </button>
         </div>
       )}
 
       {/* New project modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
-            <h2 className="text-zinc-50 font-semibold text-lg mb-5">New game project</h2>
-            <form onSubmit={handleCreate} className="flex flex-col gap-4">
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(7,9,13,0.85)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+            padding: '20px',
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false) }}
+        >
+          <div
+            style={{
+              background: '#0b1018',
+              border: '1px solid #1b2533',
+              padding: '28px',
+              width: '100%',
+              maxWidth: '420px',
+              ...mono,
+            }}
+          >
+            <div style={{ fontSize: '11px', color: '#4ea8ff', letterSpacing: '3px', marginBottom: '16px' }}>
+              // NEW PROJECT
+            </div>
+            <h2 style={{ ...pixel, fontSize: '14px', color: '#eaf2ff', margin: '0 0 24px', lineHeight: 1.5 }}>
+              New game project
+            </h2>
+            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label className="text-zinc-400 text-sm block mb-1.5">Game title</label>
+                <label style={{ color: '#8b97a7', fontSize: '11px', letterSpacing: '1.5px', display: 'block', marginBottom: '8px' }}>
+                  GAME TITLE
+                </label>
                 <input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   required
-                  placeholder="Project Veil, CryptoDash, etc."
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/60 transition-colors"
+                  placeholder="Project Veil, CryptoDash, ..."
+                  style={{ ...inputStyle }}
                 />
               </div>
               <div>
-                <label className="text-zinc-400 text-sm block mb-1.5">Genre</label>
+                <label style={{ color: '#8b97a7', fontSize: '11px', letterSpacing: '1.5px', display: 'block', marginBottom: '8px' }}>
+                  GENRE
+                </label>
                 <select
                   value={genre}
                   onChange={(e) => setGenre(e.target.value as GameGenre)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-50 text-sm focus:outline-none focus:border-yellow-400/60 transition-colors"
+                  style={selectStyle}
                 >
                   {GENRES.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-zinc-400 text-sm block mb-1.5">Platform</label>
+                <label style={{ color: '#8b97a7', fontSize: '11px', letterSpacing: '1.5px', display: 'block', marginBottom: '8px' }}>
+                  PLATFORM
+                </label>
                 <select
                   value={platform}
                   onChange={(e) => setPlatform(e.target.value as GamePlatform)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-50 text-sm focus:outline-none focus:border-yellow-400/60 transition-colors"
+                  style={selectStyle}
                 >
                   {PLATFORMS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
-              <div className="flex gap-3 mt-2">
+              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 border border-zinc-700 text-zinc-400 py-2.5 rounded-xl text-sm hover:text-zinc-50 hover:border-zinc-500 transition-colors"
+                  style={{
+                    flex: 1,
+                    border: '1px solid #1b2533',
+                    background: 'transparent',
+                    color: '#8b97a7',
+                    padding: '12px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    letterSpacing: '1px',
+                    ...mono,
+                  }}
                 >
-                  Cancel
+                  CANCEL
                 </button>
                 <button
                   type="submit"
                   disabled={createProject.isPending}
-                  className="flex-1 bg-yellow-400 text-zinc-950 font-semibold py-2.5 rounded-xl text-sm hover:bg-yellow-300 transition-colors disabled:opacity-50"
+                  style={{
+                    flex: 1,
+                    background: createProject.isPending ? '#2a4a6a' : '#4ea8ff',
+                    color: '#07090d',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    letterSpacing: '1px',
+                    padding: '12px',
+                    border: 'none',
+                    cursor: createProject.isPending ? 'not-allowed' : 'pointer',
+                    ...mono,
+                  }}
                 >
-                  {createProject.isPending ? 'Creating...' : 'Create project'}
+                  {createProject.isPending ? 'CREATING...' : 'CREATE PROJECT'}
                 </button>
               </div>
             </form>
@@ -154,21 +291,21 @@ export default function DashboardPage() {
 
 const GENRES = [
   { value: 'platformer', label: 'Platformer' },
-  { value: 'rpg', label: 'RPG' },
-  { value: 'puzzle', label: 'Puzzle' },
-  { value: 'shooter', label: 'Shooter' },
-  { value: 'strategy', label: 'Strategy' },
-  { value: 'horror', label: 'Horror' },
+  { value: 'rpg',        label: 'RPG' },
+  { value: 'puzzle',     label: 'Puzzle' },
+  { value: 'shooter',    label: 'Shooter' },
+  { value: 'strategy',   label: 'Strategy' },
+  { value: 'horror',     label: 'Horror' },
   { value: 'simulation', label: 'Simulation' },
-  { value: 'adventure', label: 'Adventure' },
-  { value: 'fighting', label: 'Fighting' },
-  { value: 'other', label: 'Other' },
+  { value: 'adventure',  label: 'Adventure' },
+  { value: 'fighting',   label: 'Fighting' },
+  { value: 'other',      label: 'Other' },
 ]
 
 const PLATFORMS = [
-  { value: 'pc', label: 'PC' },
-  { value: 'mobile', label: 'Mobile' },
-  { value: 'web', label: 'Web Browser' },
-  { value: 'console', label: 'Console' },
+  { value: 'pc',             label: 'PC' },
+  { value: 'mobile',         label: 'Mobile' },
+  { value: 'web',            label: 'Web Browser' },
+  { value: 'console',        label: 'Console' },
   { value: 'cross-platform', label: 'Cross-Platform' },
 ]

@@ -79,7 +79,10 @@ export default function PlaytestingPage({ params }: { params: Promise<{ id: stri
           <span className="text-zinc-300">Playtesting</span>
         </div>
         <div className="flex items-center justify-between">
-          <h1 className="text-zinc-50 font-semibold text-lg">AI Playtesting & Bug Tracking</h1>
+          <div>
+            <h1 className="text-zinc-50 font-semibold text-lg">AI Playtesting & Bug Tracking</h1>
+            <p className="text-zinc-500 text-xs mt-0.5">AI simulates a full playtest session with a chosen persona against your GDD — surfacing friction, exploits, and player dropoff moments.</p>
+          </div>
           <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 gap-0.5">
             <button
               onClick={() => setActiveTab('simulator')}

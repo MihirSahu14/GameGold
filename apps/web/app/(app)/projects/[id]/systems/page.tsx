@@ -55,8 +55,8 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
 
   if (systemLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+      <div className="flex h-screen items-center justify-center" style={{ background: '#07090d' }}>
+        <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#4ea8ff', borderTopColor: 'transparent' }} />
       </div>
     )
   }
@@ -88,16 +88,24 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
       </div>
 
       {/* Right panel — Node editor + Balance */}
-      <div className="w-80 bg-zinc-900 border-l border-zinc-800 flex flex-col">
+      <div className="w-80 border-l border-zinc-800 flex flex-col" style={{ background: '#0b1018' }}>
+        {/* Tool description */}
+        <div className="px-4 py-3 border-b border-zinc-800">
+          <p className="text-zinc-400 text-xs font-medium mb-0.5">⚙️ Systems Designer</p>
+          <p className="text-zinc-500 text-xs leading-relaxed">
+            Map mechanics, stats, and resource flows as a visual node graph. Run AI balance analysis to catch exploits before you build.
+          </p>
+        </div>
         {/* Tab bar */}
         <div className="flex border-b border-zinc-800 shrink-0">
           <button
             onClick={() => setActiveTab('node')}
             className={`flex-1 px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors ${
               activeTab === 'node'
-                ? 'text-yellow-400 border-b-2 border-yellow-400'
+                ? 'text-zinc-50'
                 : 'text-zinc-500 hover:text-zinc-300'
             }`}
+            style={{ borderBottom: activeTab === 'node' ? '2px solid #4ea8ff' : '2px solid transparent' }}
           >
             ⚙️ Node
           </button>
@@ -105,9 +113,10 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
             onClick={() => setActiveTab('balance')}
             className={`flex-1 px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors ${
               activeTab === 'balance'
-                ? 'text-yellow-400 border-b-2 border-yellow-400'
+                ? 'text-zinc-50'
                 : 'text-zinc-500 hover:text-zinc-300'
             }`}
+            style={{ borderBottom: activeTab === 'balance' ? '2px solid #4ea8ff' : '2px solid transparent' }}
           >
             ⚖️ Balance
           </button>

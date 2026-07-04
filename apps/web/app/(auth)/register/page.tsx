@@ -10,17 +10,20 @@ import { useAuthStore } from '@/store/authStore'
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  background: '#07090d',
-  border: '1px solid #1b2533',
-  padding: '12px 14px',
-  color: '#c8d4e2',
-  fontSize: '14px',
-  outline: 'none',
-  boxSizing: 'border-box',
-  fontFamily: 'var(--font-space-mono), monospace',
-  transition: 'border-color .15s',
+function inputStyle(disabled: boolean): React.CSSProperties {
+  return {
+    width: '100%',
+    background: '#07090d',
+    border: '1px solid #1b2533',
+    padding: '12px 14px',
+    color: '#c8d4e2',
+    fontSize: '14px',
+    outline: 'none',
+    boxSizing: 'border-box',
+    fontFamily: 'var(--font-space-mono), monospace',
+    transition: 'border-color .15s',
+    opacity: disabled ? 0.5 : 1,
+  }
 }
 
 export default function RegisterPage() {
@@ -134,7 +137,7 @@ export default function RegisterPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 placeholder="indiedev42"
-                style={inputStyle}
+                disabled={loading} style={inputStyle(loading)}
                 onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
                 onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
               />
@@ -152,7 +155,7 @@ export default function RegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 placeholder="you@example.com"
-                style={inputStyle}
+                disabled={loading} style={inputStyle(loading)}
                 onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
                 onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
               />
@@ -171,7 +174,7 @@ export default function RegisterPage() {
                 required
                 minLength={8}
                 placeholder="At least 8 characters"
-                style={inputStyle}
+                disabled={loading} style={inputStyle(loading)}
                 onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
                 onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
               />

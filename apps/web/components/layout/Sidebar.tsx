@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { cn } from '@/lib/utils'
 import { logoutUser } from '@/lib/auth'
 import { useAuthStore } from '@/store/authStore'
 import { useProjectStore } from '@/store/projectStore'
@@ -14,15 +13,14 @@ const NAV_ITEMS = [
 ]
 
 const STAGE_ITEMS: { href: ProjectStage; label: string; icon: string }[] = [
-  { href: 'concept', label: 'Concept', icon: '💡' },
-  { href: 'gdd', label: 'GDD', icon: '📋' },
-  { href: 'systems', label: 'Systems', icon: '⚙️' },
-  { href: 'assets', label: 'Assets', icon: '🎨' },
-  { href: 'playtesting', label: 'Playtesting', icon: '🧪' },
-  { href: 'deployment', label: 'Deployment', icon: '🚀' },
+  { href: 'concept',     label: 'Concept',     icon: '💡' },
+  { href: 'gdd',         label: 'GDD',          icon: '📋' },
+  { href: 'systems',     label: 'Systems',      icon: '⚙️' },
+  { href: 'assets',      label: 'Assets',       icon: '🎨' },
+  { href: 'playtesting', label: 'Playtesting',  icon: '🧪' },
+  { href: 'deployment',  label: 'Deployment',   icon: '🚀' },
 ]
 
-// Stages unlock in order: reaching a stage unlocks all stages up to and including it.
 const STAGE_ORDER: ProjectStage[] = [
   'concept', 'gdd', 'systems', 'assets', 'playtesting', 'deployment',
 ]
@@ -31,9 +29,11 @@ function isStageUnlocked(currentStage: ProjectStage | undefined, target: Project
   if (!currentStage) return target === 'concept'
   const current = STAGE_ORDER.indexOf(currentStage)
   const tgt = STAGE_ORDER.indexOf(target)
-  // Allow access to the current stage and one ahead so the user can progress
   return tgt <= current + 1
 }
+
+const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
+const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -51,66 +51,139 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-60 min-h-screen bg-zinc-900 border-r border-zinc-800 flex flex-col">
+    <aside
+      style={{
+        width: '224px',
+        minWidth: '224px',
+        minHeight: '100vh',
+        background: '#0b1018',
+        borderRight: '1px solid #1b2533',
+        display: 'flex',
+        flexDirection: 'column',
+        ...mono,
+      }}
+    >
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-zinc-800">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="text-yellow-400 font-bold text-lg">🎮 GameGold</span>
+      <div style={{ padding: '18px 16px', borderBottom: '1px solid #1b2533' }}>
+        <Link href="/dashboard" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '26px',
+              height: '26px',
+              background: '#4ea8ff',
+              color: '#07090d',
+              ...pixel,
+              fontSize: '10px',
+              flexShrink: 0,
+            }}
+          >
+            G
+          </span>
+          <span style={{ ...pixel, fontSize: '11px', color: '#eaf2ff', letterSpacing: '0.5px' }}>
+            GameGold
+          </span>
         </Link>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-3 flex flex-col gap-1">
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-              pathname === item.href
-                ? 'bg-zinc-800 text-zinc-50'
-                : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800/60'
-            )}
-          >
-            <span>{item.icon}</span>
-            {item.label}
-          </Link>
-        ))}
+      <nav style={{ flex: 1, padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        {NAV_ITEMS.map((item) => {
+          const active = pathname === item.href
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '8px 10px',
+                fontSize: '12px',
+                textDecoration: 'none',
+                color: active ? '#eaf2ff' : '#8b97a7',
+                background: active ? 'rgba(78,168,255,0.1)' : 'transparent',
+                borderLeft: active ? '2px solid #4ea8ff' : '2px solid transparent',
+                transition: 'color 0.15s, background 0.15s',
+                letterSpacing: '0.5px',
+              }}
+            >
+              <span style={{ fontSize: '14px' }}>{item.icon}</span>
+              {item.label}
+            </Link>
+          )
+        })}
 
-        {/* Project stages — only shown inside a project route */}
+        {/* Project stages */}
         {projectId && (
-          <div className="mt-4">
-            <p className="text-zinc-600 text-xs font-semibold uppercase tracking-wider px-3 mb-2">
-              Stages
+          <div style={{ marginTop: '20px' }}>
+            <p
+              style={{
+                fontSize: '10px',
+                color: '#456079',
+                letterSpacing: '2px',
+                padding: '0 10px',
+                marginBottom: '6px',
+              }}
+            >
+              // STAGES
             </p>
-            {STAGE_ITEMS.map((item) => {
+            {STAGE_ITEMS.map((item, i) => {
               const href = `/projects/${projectId}/${item.href}`
               const active = pathname === href
               const unlocked = isStageUnlocked(projectStage, item.href)
+              const stageNum = String(i + 1).padStart(2, '0')
 
               return (
-                <div
-                  key={item.href}
-                  className={cn(
-                    'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                    !unlocked
-                      ? 'text-zinc-600 cursor-not-allowed'
-                      : active
-                      ? 'bg-zinc-800 text-zinc-50'
-                      : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800/60'
-                  )}
-                >
+                <div key={item.href}>
                   {!unlocked ? (
-                    <>
-                      <span>{item.icon}</span>
-                      <span>{item.label}</span>
-                      <span className="ml-auto text-xs bg-zinc-800 text-zinc-600 px-1.5 py-0.5 rounded">
-                        Soon
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '8px 10px',
+                        fontSize: '12px',
+                        color: '#2a3a4a',
+                        cursor: 'not-allowed',
+                        borderLeft: '2px solid transparent',
+                      }}
+                    >
+                      <span style={{ fontSize: '10px', color: '#2a3a4a', ...pixel, minWidth: '16px' }}>{stageNum}</span>
+                      <span style={{ fontSize: '13px', opacity: 0.3 }}>{item.icon}</span>
+                      <span style={{ flex: 1 }}>{item.label}</span>
+                      <span
+                        style={{
+                          fontSize: '9px',
+                          color: '#2a3a4a',
+                          background: '#141c27',
+                          padding: '2px 6px',
+                          letterSpacing: '1px',
+                        }}
+                      >
+                        SOON
                       </span>
-                    </>
+                    </div>
                   ) : (
-                    <Link href={href} className="flex items-center gap-2.5 w-full">
-                      <span>{item.icon}</span>
+                    <Link
+                      href={href}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '8px 10px',
+                        fontSize: '12px',
+                        textDecoration: 'none',
+                        color: active ? '#eaf2ff' : '#8b97a7',
+                        background: active ? 'rgba(78,168,255,0.1)' : 'transparent',
+                        borderLeft: active ? '2px solid #4ea8ff' : '2px solid transparent',
+                        transition: 'color 0.15s, background 0.15s',
+                      }}
+                    >
+                      <span style={{ fontSize: '10px', color: active ? '#4ea8ff' : '#456079', ...pixel, minWidth: '16px' }}>{stageNum}</span>
+                      <span style={{ fontSize: '13px' }}>{item.icon}</span>
                       {item.label}
                     </Link>
                   )}
@@ -122,19 +195,46 @@ export function Sidebar() {
       </nav>
 
       {/* User */}
-      <div className="p-3 border-t border-zinc-800">
-        <div className="flex items-center gap-2.5 px-3 py-2">
-          <div className="w-7 h-7 rounded-full bg-yellow-400/20 text-yellow-400 text-xs font-bold flex items-center justify-center uppercase">
+      <div style={{ padding: '12px 8px', borderTop: '1px solid #1b2533' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px' }}>
+          <div
+            style={{
+              width: '26px',
+              height: '26px',
+              background: 'rgba(78,168,255,0.12)',
+              border: '1px solid #1b2533',
+              color: '#4ea8ff',
+              fontSize: '11px',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textTransform: 'uppercase',
+              flexShrink: 0,
+            }}
+          >
             {user?.username?.[0] ?? '?'}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-zinc-50 text-sm font-medium truncate">{user?.username}</p>
-            <p className="text-zinc-500 text-xs truncate">{user?.email}</p>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ color: '#c8d4e2', fontSize: '12px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user?.username}
+            </p>
+            <p style={{ color: '#456079', fontSize: '11px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user?.email}
+            </p>
           </div>
           <button
             onClick={handleLogout}
-            className="text-zinc-600 hover:text-zinc-400 text-xs transition-colors"
             title="Sign out"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#456079',
+              cursor: 'pointer',
+              fontSize: '14px',
+              padding: '2px 4px',
+              transition: 'color 0.15s',
+            }}
           >
             ↩
           </button>

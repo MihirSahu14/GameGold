@@ -85,3 +85,17 @@ async def logout(response: Response):
 @router.get("/me", response_model=UserOut, response_model_by_alias=True)
 async def get_me(current_user: dict = Depends(get_current_user)):
     return UserOut(**current_user)
+
+
+@router.get("/csrf")
+async def get_csrf_token(request: Request):
+    """
+    Returns the CSRF token from the session cookie so the frontend can store it
+    in memory. Required because cross-origin JS (Vercel) cannot read a cookie
+    set by a different domain (Render) via document.cookie.
+    """
+    from app.core.csrf import CSRF_COOKIE
+    token = request.cookies.get(CSRF_COOKIE)
+    if not token:
+        raise HTTPException(status_code=401, detail="No active session")
+    return {"csrf_token": token}

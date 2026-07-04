@@ -89,7 +89,7 @@ export default function DeploymentPage({ params }: { params: Promise<{ id: strin
   }
 
   const inputClass =
-    'bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none focus:border-yellow-400/50'
+    'bg-zinc-900 border border-zinc-800 px-3 py-2 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none'
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -101,7 +101,10 @@ export default function DeploymentPage({ params }: { params: Promise<{ id: strin
           <span className="text-zinc-300">Deployment</span>
         </div>
         <div className="flex items-center justify-between">
-          <h1 className="text-zinc-50 font-semibold text-lg">Deployment</h1>
+          <div>
+            <h1 className="text-zinc-50 font-semibold text-lg">Deployment</h1>
+            <p className="text-zinc-500 text-xs mt-0.5">Generate a custom shipping checklist: Steam/itch store copy, press kit text, and a Unity build guide with exact export settings.</p>
+          </div>
           <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 gap-0.5">
             {TABS.map((tab) => (
               <button

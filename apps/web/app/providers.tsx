@@ -3,7 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/store/authStore'
-import { getMe } from '@/lib/auth'
+import { getMe, fetchCsrfToken } from '@/lib/auth'
 
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const { setUser, setLoading } = useAuthStore()
@@ -15,6 +15,9 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const user = await getMe()
         setUser(user)
+        // Load CSRF token into memory — cross-origin cookies can't be read
+        // via document.cookie, so we fetch the token from the backend.
+        await fetchCsrfToken()
       } catch {
         setUser(null)
       } finally {

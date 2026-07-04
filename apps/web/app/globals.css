@@ -6,6 +6,23 @@
   --font-sans: var(--font-inter);
   --font-pixel: var(--font-pixel);
   --font-mono: var(--font-space-mono);
+
+  /* ── Remap zinc scale → GameGold dark palette ── */
+  --color-zinc-50:  #eaf2ff;
+  --color-zinc-100: #d8e4f0;
+  --color-zinc-200: #c8d4e2;
+  --color-zinc-300: #b0bfce;
+  --color-zinc-400: #8b97a7;
+  --color-zinc-500: #6b7787;
+  --color-zinc-600: #456079;
+  --color-zinc-700: #243446;
+  --color-zinc-800: #1b2533;
+  --color-zinc-900: #0b1018;
+  --color-zinc-950: #07090d;
+
+  /* ── Remap yellow-400/300 → accent blue ── */
+  --color-yellow-400: #4ea8ff;
+  --color-yellow-300: #7dc0ff;
 }
 
 /* overflow-x: clip prevents horizontal scrollbar without creating a scroll container
@@ -18,6 +35,12 @@ html {
 body {
   background: #07090d;
   color: #c8d4e2;
+}
+
+/* Square corners everywhere — matching the landing page aesthetic.
+   rounded-full stays circular (spinner, avatar chips). */
+.rounded-sm, .rounded, .rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl {
+  border-radius: 0 !important;
 }
 
 ::selection {
