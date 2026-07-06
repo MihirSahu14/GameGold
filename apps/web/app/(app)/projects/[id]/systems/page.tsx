@@ -92,8 +92,11 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
         {/* Tool description */}
         <div className="px-4 py-3 border-b border-zinc-800">
           <p className="text-zinc-400 text-xs font-medium mb-0.5">⚙️ Systems Designer</p>
-          <p className="text-zinc-500 text-xs leading-relaxed">
-            Map mechanics, stats, and resource flows as a visual node graph. Run AI balance analysis to catch exploits before you build.
+          <p className="text-zinc-500 text-xs leading-relaxed mb-2">
+            Map your game&apos;s parts as nodes, connect them with arrows, then run AI balance analysis.
+          </p>
+          <p className="text-zinc-600 text-xs leading-relaxed">
+            <span className="text-zinc-500">New here?</span> Click <span className="text-zinc-400">+ Add Node ▾</span> on the canvas and pick a Quick Add preset to get started.
           </p>
         </div>
         {/* Tab bar */}

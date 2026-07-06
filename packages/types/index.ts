@@ -15,6 +15,7 @@ export type ProjectStage =
   | 'gdd'
   | 'systems'
   | 'assets'
+  | 'unity'
   | 'playtesting'
   | 'deployment'
 

@@ -13,16 +13,17 @@ const NAV_ITEMS = [
 ]
 
 const STAGE_ITEMS: { href: ProjectStage; label: string; icon: string }[] = [
-  { href: 'concept',     label: 'Concept',     icon: '💡' },
-  { href: 'gdd',         label: 'GDD',          icon: '📋' },
-  { href: 'systems',     label: 'Systems',      icon: '⚙️' },
-  { href: 'assets',      label: 'Assets',       icon: '🎨' },
-  { href: 'playtesting', label: 'Playtesting',  icon: '🧪' },
-  { href: 'deployment',  label: 'Deployment',   icon: '🚀' },
+  { href: 'concept',     label: 'Concept',          icon: '💡' },
+  { href: 'gdd',         label: 'GDD',               icon: '📋' },
+  { href: 'systems',     label: 'Systems',           icon: '⚙️' },
+  { href: 'assets',      label: 'Assets',            icon: '🎨' },
+  { href: 'unity',       label: 'Unity Integration', icon: '🎮' },
+  { href: 'playtesting', label: 'Playtesting',       icon: '🧪' },
+  { href: 'deployment',  label: 'Deployment',        icon: '🚀' },
 ]
 
 const STAGE_ORDER: ProjectStage[] = [
-  'concept', 'gdd', 'systems', 'assets', 'playtesting', 'deployment',
+  'concept', 'gdd', 'systems', 'assets', 'unity', 'playtesting', 'deployment',
 ]
 
 function isStageUnlocked(currentStage: ProjectStage | undefined, target: ProjectStage): boolean {

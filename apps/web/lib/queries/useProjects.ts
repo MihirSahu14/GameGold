@@ -56,6 +56,21 @@ export function useUpdateConceptCard(projectId: string) {
   })
 }
 
+// ─── Advance stage to 'unity' (called from Unity Integration page) ───────────
+export function useMarkUnityComplete(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.patch<Project>(`/projects/${projectId}`, { stage: 'unity' })
+      return res.data
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['projects', projectId], data)
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
 // ─── Delete project ───────────────────────────────────────────────────────────
 export function useDeleteProject() {
   const queryClient = useQueryClient()

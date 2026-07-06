@@ -9,7 +9,7 @@ GameGenre = Literal[
 ]
 GamePlatform = Literal["pc", "mobile", "web", "console", "cross-platform"]
 GameTone = Literal["dark", "lighthearted", "epic", "comedic", "horror", "atmospheric", "realistic"]
-ProjectStage = Literal["concept", "gdd", "systems", "assets", "playtesting", "deployment"]
+ProjectStage = Literal["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"]
 EstimatedScope = Literal["jam", "indie", "mid", "large"]
 
 
