@@ -30,9 +30,11 @@ function isStageUnlocked(currentStage: ProjectStage | undefined, target: Project
   if (!currentStage) return target === 'concept'
   const current = STAGE_ORDER.indexOf(currentStage)
   const tgt = STAGE_ORDER.indexOf(target)
-  // 'unity' was inserted between 'assets' and 'playtesting'. Give 'assets' a
-  // +2 window so playtesting remains reachable (same as before unity was added).
-  if (currentStage === 'assets') return tgt <= current + 2
+  // Gate only the first three steps (concept → gdd → systems). Once the
+  // project has a systems graph the stage flow is established and all later
+  // stages unlock — forcing sequential progress past that point is friction,
+  // not guidance.
+  if (current >= STAGE_ORDER.indexOf('systems')) return true
   return tgt <= current + 1
 }
 

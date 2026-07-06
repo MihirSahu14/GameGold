@@ -16,13 +16,14 @@ from app.services.asset_service import (
     generate_sprite_assets,
     generate_script_asset,
     generate_dialogue_asset,
+    generate_svg_sprite,
 )
 from app.services.replicate_service import generate_sprite_image, SpriteGenerationError
 from app.services.llm_utils import strip_html
 
 router = APIRouter(prefix="/projects/{project_id}/assets", tags=["assets"])
 
-STAGE_ORDER = ["concept", "gdd", "systems", "assets", "playtesting", "deployment"]
+STAGE_ORDER = ["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"]
 
 
 def serialize_asset(doc: dict) -> dict:
@@ -100,9 +101,11 @@ async def create_sprite(
         image_prompt, guide = await generate_sprite_assets(
             body.name, body.description, body.style, game_context
         )
-        url = await generate_sprite_image(image_prompt, body.style)
-    except SpriteGenerationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        try:
+            url = await generate_sprite_image(image_prompt, body.style)
+        except SpriteGenerationError:
+            # No Replicate key — fall back to LLM-generated pixel art SVG
+            url = await generate_svg_sprite(body.name, image_prompt, body.style)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

@@ -2,14 +2,18 @@
 Phase 3 asset generation. Each artifact (sprite prompt, C# script, dialogue
 tree) is generated together with its Unity setup guide in a single LLM call.
 """
+import base64
+
 from app.models.assets import DialogueTree, UnityGuide
 from app.prompts.asset_prompts import (
     SPRITE_SYSTEM_PROMPT,
     SCRIPT_SYSTEM_PROMPT,
     DIALOGUE_SYSTEM_PROMPT,
+    SVG_SPRITE_SYSTEM_PROMPT,
     build_sprite_prompt,
     build_script_prompt,
     build_dialogue_prompt,
+    build_svg_sprite_prompt,
 )
 from app.services.llm_utils import complete, extract_json
 
@@ -30,6 +34,18 @@ async def generate_sprite_assets(
     if not image_prompt:
         raise ValueError("LLM returned no image prompt")
     return image_prompt, _make_guide(data)
+
+
+async def generate_svg_sprite(name: str, image_prompt: str, style: str) -> str:
+    """Fallback when Replicate is not configured: returns an SVG data URI."""
+    data = extract_json(
+        await complete(SVG_SPRITE_SYSTEM_PROMPT, build_svg_sprite_prompt(name, image_prompt, style))
+    )
+    svg = str(data.get("svg", "")).strip()
+    if not svg:
+        raise ValueError("LLM returned no SVG for sprite fallback")
+    encoded = base64.b64encode(svg.encode()).decode()
+    return f"data:image/svg+xml;base64,{encoded}"
 
 
 async def generate_script_asset(

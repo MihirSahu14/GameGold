@@ -139,3 +139,36 @@ Personality: {personality}
 
 Return the JSON object now.
 """
+
+
+# ─── SVG fallback sprites (used when REPLICATE_API_TOKEN is not set) ──────────
+
+SVG_SPRITE_SYSTEM_PROMPT = """\
+You are a pixel art designer. Given a sprite description, create a 16x16 pixel art SVG.
+
+Respond with ONLY a valid JSON object — no prose, no markdown fences:
+{
+  "svg": "complete SVG string"
+}
+
+SVG rules:
+- viewBox="0 0 16 16", shapeRendering="crispEdges", width="64" height="64".
+- Each pixel is one <rect x="C" y="R" width="1" height="1" fill="#RRGGBB"/>.
+- Omit background pixels (use transparency — do not add a background rect).
+- Draw a recognizable representation: outline, key feature colors, clear silhouette.
+- Use 4-8 colors maximum.
+- ONLY <rect> elements inside the <svg>. No <text>, <circle>, <path>, <use>.
+- Wrap everything in <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shapeRendering="crispEdges" width="64" height="64">...</svg>
+"""
+
+
+def build_svg_sprite_prompt(name: str, image_prompt: str, style: str) -> str:
+    style_note = "pixel art (limited palette, strong silhouette)" if style == "pixel" else "2D illustrated (clean shapes, vibrant colors)"
+    return f"""\
+Create the pixel art SVG for this game sprite.
+Name: {name}
+Visual description: {image_prompt}
+Style: {style_note}
+
+Return the JSON object now.
+"""

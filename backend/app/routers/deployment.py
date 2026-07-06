@@ -27,7 +27,7 @@ from app.services.llm_utils import strip_html
 router = APIRouter(prefix="/projects/{project_id}/deployment", tags=["deployment"])
 export_router = APIRouter(prefix="/projects/{project_id}/export", tags=["deployment"])
 
-STAGE_ORDER = ["concept", "gdd", "systems", "assets", "playtesting", "deployment"]
+STAGE_ORDER = ["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"]
 
 
 def serialize_item(doc: dict) -> dict:
