@@ -9,7 +9,7 @@ from app.config import settings
 from app.core.csrf import CSRFMiddleware
 from app.core.rate_limit import limiter
 from app.db.mongodb import connect_db, close_db
-from app.routers import auth, projects, gdd, systems, assets, playtest, deployment
+from app.routers import auth, projects, gdd, systems, assets, playtest, deployment, unity
 
 
 @asynccontextmanager
@@ -51,6 +51,7 @@ app.include_router(playtest.router)
 app.include_router(playtest.bugs_router)
 app.include_router(deployment.router)
 app.include_router(deployment.export_router)
+app.include_router(unity.router)
 
 
 @app.get("/")
