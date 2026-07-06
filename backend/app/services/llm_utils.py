@@ -17,10 +17,39 @@ def strip_html(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
 
 
+def _repair_json_strings(text: str) -> str:
+    """Escape literal newlines/tabs inside JSON string values.
+    LLMs (especially smaller ones) sometimes emit raw newlines inside strings
+    instead of the \\n sequences that JSON requires."""
+    result: list[str] = []
+    in_string = False
+    escaped = False
+    for ch in text:
+        if escaped:
+            result.append(ch)
+            escaped = False
+        elif ch == "\\" and in_string:
+            result.append(ch)
+            escaped = True
+        elif ch == '"':
+            result.append(ch)
+            in_string = not in_string
+        elif in_string and ch == "\n":
+            result.append("\\n")
+        elif in_string and ch == "\r":
+            result.append("\\r")
+        elif in_string and ch == "\t":
+            result.append("\\t")
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
 def extract_json(text: str) -> dict:
     """
-    Parse a JSON object out of LLM output. Tolerates markdown fences and
-    surrounding prose. Raises ValueError when no valid object is found.
+    Parse a JSON object out of LLM output. Tolerates markdown fences,
+    surrounding prose, and literal newlines inside string values.
+    Raises ValueError when no valid object is found.
     """
     candidate = text.strip()
 
@@ -29,19 +58,23 @@ def extract_json(text: str) -> dict:
     if fence:
         candidate = fence.group(1).strip()
 
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        pass
+    # Try plain parse first, then with literal-newline repair
+    for attempt in (candidate, _repair_json_strings(candidate)):
+        try:
+            return json.loads(attempt)
+        except json.JSONDecodeError:
+            pass
 
-    # Fall back to the outermost { ... } span
+    # Fall back to the outermost { ... } span (with and without repair)
     start = candidate.find("{")
     end = candidate.rfind("}")
     if start != -1 and end > start:
-        try:
-            return json.loads(candidate[start : end + 1])
-        except json.JSONDecodeError:
-            pass
+        span = candidate[start : end + 1]
+        for attempt in (span, _repair_json_strings(span)):
+            try:
+                return json.loads(attempt)
+            except json.JSONDecodeError:
+                pass
 
     raise ValueError(f"LLM returned invalid JSON: {text[:200]!r}")
 
