@@ -44,7 +44,13 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
 
   async function handleGenerate() {
     if (!project?.conceptCard) return
-    await generateGDD.mutateAsync(project.conceptCard)
+    try {
+      await generateGDD.mutateAsync(project.conceptCard)
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } }
+      const msg = e?.response?.data?.detail ?? 'GDD generation failed. Check the browser console for details.'
+      alert(msg)
+    }
   }
 
   async function handleSave() {

@@ -47,8 +47,11 @@ export function useUpdateConceptCard(projectId: string) {
       const res = await api.patch<Project>(`/projects/${projectId}`, { conceptCard })
       return res.data
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+    onSuccess: (data) => {
+      // Immediately write the saved project into the cache so the GDD page
+      // sees conceptCard right away instead of waiting for a background refetch.
+      queryClient.setQueryData(['projects', projectId], data)
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
   })
 }
