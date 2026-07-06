@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MCPDemo } from './MCPDemo'
 
 type Step = { text: string; highlight?: string; text2?: string }
 
@@ -166,9 +167,55 @@ export function UnityGuideSection() {
         <UnityCard filename="PlayerController.cs" label="Script generated" steps={SCRIPT_STEPS} />
       </div>
 
-      <p style={{ fontSize: '13px', color: '#3a4757', marginTop: '40px' }}>
-        &#9670; Phase 6 MCP server executes these steps live inside the Unity Editor — no manual drag-and-drop required.
-      </p>
+      {/* MCP callout */}
+      <div
+        style={{
+          marginTop: '48px',
+          border: '1px solid #4a3d0e',
+          background: 'linear-gradient(135deg, rgba(244,194,13,0.06), rgba(11,16,24,0.4))',
+          padding: '28px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '22px' }}>&#128268;</span>
+          <span style={{ fontFamily: 'var(--font-pixel), monospace', fontSize: '12px', color: '#f4c20d', letterSpacing: '1px' }}>
+            UNITY MCP SERVER
+          </span>
+          <span
+            style={{
+              fontSize: '10px',
+              letterSpacing: '2px',
+              color: '#07090d',
+              background: '#ff5277',
+              padding: '3px 10px',
+              fontFamily: 'var(--font-space-mono), monospace',
+            }}
+          >
+            NEXT
+          </span>
+        </div>
+        <h3
+          style={{
+            fontFamily: 'var(--font-pixel), monospace',
+            fontSize: 'clamp(14px, 2vw, 20px)',
+            color: '#eaf2ff',
+            margin: '0 0 14px',
+            lineHeight: 1.5,
+          }}
+        >
+          Or skip the manual steps entirely.
+        </h3>
+        <p style={{ fontSize: '15px', color: '#8b97a7', maxWidth: '640px', lineHeight: 1.7, margin: '0 0 6px' }}>
+          Install the GameGold MCP package in your Unity Editor and Claude executes the whole checklist for you.
+          It reads your GDD and generated assets, builds a step-by-step plan, then runs each step live &mdash;
+          creating GameObjects, importing sprites, attaching scripts and entering Play mode. You watch it happen in the Editor.
+        </p>
+        <p style={{ fontSize: '13px', color: '#4a5a6c', margin: '0 0 4px' }}>
+          &#8595; press run &mdash; this is a live simulation of the MCP build flow
+        </p>
+
+        <MCPDemo />
+      </div>
     </section>
   )
 }

@@ -30,26 +30,26 @@ const PHASES = [
   {
     num: '04',
     color: '#f4c20d',
+    icon: '🔌',
+    status: 'NEXT' as const,
+    title: 'Unity MCP Server',
+    desc: 'A C# Editor package that runs an HTTP server inside Unity. Claude reads your GDD and assets, generates a step-by-step build plan, and the browser executes each step live in the Editor — creating GameObjects, importing sprites, attaching scripts, entering Play mode. No manual drag-and-drop.',
+  },
+  {
+    num: '05',
+    color: '#ff8a3d',
     icon: '🎮',
     status: 'COMPLETE' as const,
     title: 'AI Playtesting',
     desc: 'Claude simulates full playthroughs as four personas — casual, hardcore, speedrunner, completionist. Each run returns a structured report: softlocks, pacing gaps, difficulty spikes and balance suggestions with exact Unity Inspector paths.',
   },
   {
-    num: '05',
-    color: '#ff8a3d',
+    num: '06',
+    color: '#ff5277',
     icon: '🚀',
     status: 'COMPLETE' as const,
     title: 'Deployment',
     desc: 'Generate store page copy tuned for itch.io or Steam, a full press kit, and per-platform Unity build guides. Export a single ZIP with your GDD, all scripts, sprites and dialogue — ready to hand off.',
-  },
-  {
-    num: '06',
-    color: '#ff5277',
-    icon: '🔌',
-    status: 'NEXT' as const,
-    title: 'Unity MCP Server',
-    desc: 'A C# Editor package that starts an HTTP server inside Unity. Claude generates a step-by-step build plan from your assets; the browser executes each tool call live — creating GameObjects, importing sprites, attaching scripts, entering Play mode. No manual file imports.',
   },
 ]
 
@@ -57,9 +57,9 @@ const PHASE_TAGS = [
   'CONCEPT & GDD',
   'SYSTEMS & BALANCE',
   'ASSET PRODUCTION',
+  'UNITY MCP',
   'AI PLAYTESTING',
   'DEPLOYMENT',
-  'UNITY MCP',
 ]
 
 export function PhaseSection() {
