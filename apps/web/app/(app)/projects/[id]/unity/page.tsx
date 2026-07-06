@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState } from 'react'
+import { use, useState, useEffect } from 'react'
 import { useProject, useMarkUnityComplete } from '@/lib/queries/useProjects'
 import { useAssets } from '@/lib/queries/useAssets'
 import { api } from '@/lib/api'
@@ -26,8 +26,22 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const { data: assets } = useAssets(id)
   const markComplete = useMarkUnityComplete(id)
 
-  const [checked, setChecked] = useState<boolean[]>(Array(SETUP_STEPS.length).fill(false))
+  const STORAGE_KEY = `unity-checklist-${id}`
+  const [checked, setChecked] = useState<boolean[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved) as boolean[]
+        if (Array.isArray(parsed) && parsed.length === SETUP_STEPS.length) return parsed
+      }
+    } catch { /* ignore */ }
+    return Array(SETUP_STEPS.length).fill(false)
+  })
   const [exporting, setExporting] = useState(false)
+
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(checked)) } catch { /* ignore */ }
+  }, [checked, STORAGE_KEY])
 
   const sprites = (assets ?? []).filter(a => a.type === 'sprite')
   const scripts = (assets ?? []).filter(a => a.type === 'script')
