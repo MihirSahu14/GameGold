@@ -167,7 +167,7 @@ export function UnityGuideSection() {
       </div>
 
       <p style={{ fontSize: '13px', color: '#3a4757', marginTop: '40px' }}>
-        &#9670; Phase 6 will write assets directly to your Unity project folder with one click.
+        &#9670; Phase 6 MCP server executes these steps live inside the Unity Editor — no manual drag-and-drop required.
       </p>
     </section>
   )

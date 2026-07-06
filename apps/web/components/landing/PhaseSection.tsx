@@ -9,15 +9,15 @@ const PHASES = [
     icon: '📋',
     status: 'COMPLETE' as const,
     title: 'Concept & GDD',
-    desc: 'Concept Card → AI-generated Game Design Document → edit it in your browser. Claude writes all 8 sections; refine any of them with a plain instruction.',
+    desc: 'Fill out a Concept Card — title, genre, platform, tone, core loop. Claude writes all 8 GDD sections from it in one shot. Edit any section in a rich-text editor, or refine with a plain instruction.',
   },
   {
     num: '02',
     color: '#7cc4ff',
     icon: '🕸️',
     status: 'COMPLETE' as const,
-    title: 'Systems Design',
-    desc: "A visual node graph for your game's entities and relationships, plus a Claude-powered balance analyzer that finds exploits and dominant strategies.",
+    title: 'Systems & Balance',
+    desc: 'Map your game\'s entities, mechanics, events and states on a visual node graph. Claude reads the graph and flags dominant strategies, exploit loops and stat imbalances before you write a line of code.',
   },
   {
     num: '03',
@@ -25,15 +25,15 @@ const PHASES = [
     icon: '🎨',
     status: 'COMPLETE' as const,
     title: 'Asset Production',
-    desc: 'Sprite generator, C# scaffolding and branching dialogue trees — every artifact ships with a step-by-step Unity setup guide so you always know what you\'re doing.',
+    desc: 'Generate pixel-art sprites (Replicate Flux Schnell), complete C# MonoBehaviours, and branching NPC dialogue trees. Every artifact ships with a checkable Unity setup guide generated in the same call.',
   },
   {
     num: '04',
     color: '#f4c20d',
     icon: '🎮',
     status: 'COMPLETE' as const,
-    title: 'Playtesting',
-    desc: 'An AI playtest simulator with 4 player personas — casual, hardcore, speedrunner, completionist — plus a bug tracker with Unity-specific tweak instructions.',
+    title: 'AI Playtesting',
+    desc: 'Claude simulates full playthroughs as four personas — casual, hardcore, speedrunner, completionist. Each run returns a structured report: softlocks, pacing gaps, difficulty spikes and balance suggestions with exact Unity Inspector paths.',
   },
   {
     num: '05',
@@ -41,7 +41,7 @@ const PHASES = [
     icon: '🚀',
     status: 'COMPLETE' as const,
     title: 'Deployment',
-    desc: 'Store page generator, press kit, Unity build instructions and a full export bundle. Everything you need the moment your game is ready to ship.',
+    desc: 'Generate store page copy tuned for itch.io or Steam, a full press kit, and per-platform Unity build guides. Export a single ZIP with your GDD, all scripts, sprites and dialogue — ready to hand off.',
   },
   {
     num: '06',
@@ -49,17 +49,17 @@ const PHASES = [
     icon: '🔌',
     status: 'NEXT' as const,
     title: 'Unity MCP Server',
-    desc: 'A Model Context Protocol server that gives Claude live access to the Unity Editor — read scene hierarchy, create GameObjects, attach scripts, and tweak Inspector values directly from the AI chat. No file-system guesswork.',
+    desc: 'A C# Editor package that starts an HTTP server inside Unity. Claude generates a step-by-step build plan from your assets; the browser executes each tool call live — creating GameObjects, importing sprites, attaching scripts, entering Play mode. No manual file imports.',
   },
 ]
 
 const PHASE_TAGS = [
   'CONCEPT & GDD',
-  'SYSTEMS DESIGN',
+  'SYSTEMS & BALANCE',
   'ASSET PRODUCTION',
-  'PLAYTESTING',
+  'AI PLAYTESTING',
   'DEPLOYMENT',
-  'DESKTOP APP',
+  'UNITY MCP',
 ]
 
 export function PhaseSection() {
@@ -176,7 +176,7 @@ export function PhaseSection() {
             fontFamily: 'var(--font-space-mono), monospace',
           }}
         >
-          {'// THE 6 PHASES'}
+          {'// THE 6 STAGES'}
         </div>
 
         {/* Bottom HUD bar */}

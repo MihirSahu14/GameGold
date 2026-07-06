@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-const GITHUB = 'https://github.com/MihirSahu14/GameGold'
 const REGISTER = '/register'
 const PHRASES = ['From concept to gone gold.', 'AI assists — you build.', 'Idea → shipped game.']
 
@@ -189,24 +188,6 @@ export function HeroSection() {
           }}
         >
           &#9654; START BUILDING
-        </a>
-        <a
-          href={GITHUB}
-          data-cursor="hover"
-          style={{
-            textDecoration: 'none',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '10px',
-            color: '#c8d4e2',
-            fontSize: '13px',
-            letterSpacing: '1px',
-            padding: '15px 26px',
-            border: '2px solid #1b2533',
-            background: '#0b1018',
-          }}
-        >
-          VIEW ON GITHUB &#8599;
         </a>
       </div>
 

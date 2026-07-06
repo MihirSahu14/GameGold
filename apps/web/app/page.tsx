@@ -5,7 +5,6 @@ import { HeroSection } from '@/components/landing/HeroSection'
 import { PhaseSection } from '@/components/landing/PhaseSection'
 import { UnityGuideSection } from '@/components/landing/UnityGuideSection'
 
-const GITHUB = 'https://github.com/MihirSahu14/GameGold'
 const REGISTER = '/register'
 
 const WHAT_CARDS = [
@@ -51,7 +50,7 @@ const STACK = [
   'LITELLM',
   'CLAUDE',
   'REPLICATE FLUX',
-  'TAURI',
+  'UNITY MCP',
   'VERCEL',
   'RENDER',
 ]
@@ -323,21 +322,6 @@ export default function LandingPage() {
             }}
           >
             &#9654; START BUILDING
-          </a>
-          <a
-            href={GITHUB}
-            data-cursor="hover"
-            style={{
-              textDecoration: 'none',
-              color: '#c8d4e2',
-              fontSize: '13px',
-              letterSpacing: '1px',
-              padding: '16px 30px',
-              border: '2px solid #1b2533',
-              background: '#0b1018',
-            }}
-          >
-            VIEW ON GITHUB &#8599;
           </a>
         </div>
       </section>

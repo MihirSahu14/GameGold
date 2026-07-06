@@ -282,18 +282,33 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
           {mcpStatus !== 'connected' && (
             <div style={{ background: '#0b1018', border: '1px solid #1b2533', padding: '20px', marginBottom: '24px' }}>
               <div style={{ fontSize: '11px', color: '#456079', letterSpacing: '2px', marginBottom: '12px' }}>HOW TO INSTALL THE MCP PACKAGE</div>
-              <ol style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <ol style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
                 {[
+                  'Download the GameGold MCP package below',
+                  'Extract the ZIP to a folder on your machine',
                   'Open your Unity project',
                   'Go to Window → Package Manager',
-                  'Click + → Add package from git URL',
-                  'Paste: https://github.com/MihirSahu14/GameGold.git?path=unity-mcp',
+                  'Click + → Add package from disk',
+                  'Select the package.json inside the extracted folder',
                   'After import: Window → GameGold MCP → Start Server',
                   'Come back here and click Connect to Unity',
                 ].map((s, i) => (
                   <li key={i} style={{ fontSize: '12px', color: '#8b97a7', lineHeight: 1.7 }}>{s}</li>
                 ))}
               </ol>
+              <a
+                href="/gamegold-mcp.zip"
+                download="gamegold-mcp.zip"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '8px',
+                  background: '#141c27', color: '#c8d4e2',
+                  border: '1px solid #1b2533', padding: '10px 16px',
+                  fontSize: '12px', letterSpacing: '1px', textDecoration: 'none',
+                  ...mono,
+                }}
+              >
+                ⬇ DOWNLOAD MCP PACKAGE
+              </a>
             </div>
           )}
 
