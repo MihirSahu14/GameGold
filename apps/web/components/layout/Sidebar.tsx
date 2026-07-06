@@ -30,6 +30,9 @@ function isStageUnlocked(currentStage: ProjectStage | undefined, target: Project
   if (!currentStage) return target === 'concept'
   const current = STAGE_ORDER.indexOf(currentStage)
   const tgt = STAGE_ORDER.indexOf(target)
+  // 'unity' was inserted between 'assets' and 'playtesting'. Give 'assets' a
+  // +2 window so playtesting remains reachable (same as before unity was added).
+  if (currentStage === 'assets') return tgt <= current + 2
   return tgt <= current + 1
 }
 
