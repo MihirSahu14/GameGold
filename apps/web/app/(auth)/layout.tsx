@@ -5,20 +5,19 @@ import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/authStore'
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuthStore()
+  const { user } = useAuthStore()
   const router = useRouter()
 
   useEffect(() => {
-    if (!isLoading && user) {
+    if (user) {
       router.replace('/dashboard')
     }
-  }, [user, isLoading, router])
+  }, [user, router])
 
-  // Show nothing while the session check is in flight — prevents a flash of
-  // the login form for users who are already authenticated.
-  if (isLoading) return null
-
-  // Redirect is queued — render nothing to avoid a brief login-form flash.
+  // Render the form immediately — the session check can take 30s+ on a
+  // Render cold start, and blanking the page for it left visitors staring
+  // at a black screen. Logged-in users may glimpse the form before the
+  // redirect; that's the cheaper trade.
   if (user) return null
 
   return <>{children}</>
