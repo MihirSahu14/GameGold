@@ -1,0 +1,12 @@
+name: Keep Render backend warm
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # Render free tier sleeps after 15 idle minutes
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -sf --max-time 60 https://gamegold-api.onrender.com/health
