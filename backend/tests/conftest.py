@@ -108,6 +108,11 @@ def mock_db():
     db.bugs.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
     db.bugs.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
 
+    db.unity_plans = MagicMock()
+    db.unity_plans.find_one = AsyncMock(return_value=None)
+    db.unity_plans.update_one = AsyncMock()
+    db.unity_plans.replace_one = AsyncMock()
+
     db.deployments = MagicMock()
     db.deployments.find = MagicMock(return_value=make_cursor([]))
     db.deployments.find_one = AsyncMock(return_value=None)
@@ -136,6 +141,7 @@ def client(mock_db, monkeypatch):
     monkeypatch.setattr("app.routers.assets.get_db", lambda: mock_db)
     monkeypatch.setattr("app.routers.playtest.get_db", lambda: mock_db)
     monkeypatch.setattr("app.routers.deployment.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.routers.unity.get_db", lambda: mock_db)
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
 

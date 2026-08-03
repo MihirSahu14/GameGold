@@ -38,10 +38,14 @@ export default function DashboardPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    const project = await createProject.mutateAsync({ title, genre, platform, stage: 'concept' })
-    setShowModal(false)
-    setTitle('')
-    router.push(`/projects/${project._id}/concept`)
+    try {
+      const project = await createProject.mutateAsync({ title, genre, platform, stage: 'concept' })
+      setShowModal(false)
+      setTitle('')
+      router.push(`/projects/${project._id}/concept`)
+    } catch {
+      alert('Could not create project — check the console for details.')
+    }
   }
 
   return (

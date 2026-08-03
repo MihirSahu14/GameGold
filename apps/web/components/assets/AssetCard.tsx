@@ -3,9 +3,16 @@
 import { useState } from 'react'
 import type { Asset } from '@gamegold/types'
 import { UnityGuide } from './UnityGuide'
+import {
+  useApproveAsset,
+  useGenerateSprite,
+  useGenerateScript,
+  useGenerateDialogue,
+} from '@/lib/queries/useAssets'
 
 interface AssetCardProps {
   asset: Asset
+  projectId: string
   onToggleStep: (assetId: string, completed: boolean[]) => void
   onDelete: (assetId: string) => void
   isSavingGuide?: boolean
@@ -27,10 +34,50 @@ function download(filename: string, content: string, mime: string) {
   URL.revokeObjectURL(url)
 }
 
-export function AssetCard({ asset, onToggleStep, onDelete, isSavingGuide }: AssetCardProps) {
+export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGuide }: AssetCardProps) {
   const [copied, setCopied] = useState(false)
   const [showCode, setShowCode] = useState(false)
+  const [showRegenerate, setShowRegenerate] = useState(false)
+  const [note, setNote] = useState('')
   const meta = TYPE_META[asset.type]
+
+  const approveAsset = useApproveAsset(projectId)
+  const regenerateSprite = useGenerateSprite(projectId)
+  const regenerateScript = useGenerateScript(projectId)
+  const regenerateDialogue = useGenerateDialogue(projectId)
+  const isRegenerating =
+    regenerateSprite.isPending || regenerateScript.isPending || regenerateDialogue.isPending
+
+  async function handleRegenerate() {
+    const regen = { regenerateOf: asset._id, note: note.trim() }
+    try {
+      if (asset.type === 'sprite') {
+        await regenerateSprite.mutateAsync({
+          name: asset.name,
+          description: asset.description,
+          style: asset.style ?? 'pixel',
+          ...regen,
+        })
+      } else if (asset.type === 'script') {
+        await regenerateScript.mutateAsync({
+          name: asset.name,
+          scriptType: asset.scriptType ?? 'custom',
+          description: asset.description,
+          ...regen,
+        })
+      } else {
+        await regenerateDialogue.mutateAsync({
+          npcName: asset.tree?.npcName ?? asset.name,
+          personality: asset.tree?.personality ?? asset.description,
+          ...regen,
+        })
+      }
+      setShowRegenerate(false)
+      setNote('')
+    } catch (err) {
+      console.error('Regeneration failed:', err)
+    }
+  }
 
   async function handleCopy(text: string) {
     await navigator.clipboard.writeText(text)
@@ -65,6 +112,18 @@ export function AssetCard({ asset, onToggleStep, onDelete, isSavingGuide }: Asse
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${meta.badge}`}>
           {meta.label}
         </span>
+        <button
+          onClick={() => approveAsset.mutate({ assetId: asset._id, approved: !asset.approved })}
+          disabled={approveAsset.isPending}
+          className={
+            asset.approved
+              ? 'text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-900/40 text-emerald-400 transition-colors disabled:opacity-40'
+              : 'text-xs px-2 py-0.5 rounded-full font-medium text-zinc-600 border border-zinc-800 hover:text-emerald-400 hover:border-emerald-900 transition-colors disabled:opacity-40'
+          }
+          title={asset.approved ? 'Approved — click to unapprove' : 'Mark as approved'}
+        >
+          {asset.approved ? '✓ Approved' : '✓'}
+        </button>
         <button
           onClick={() => onDelete(asset._id)}
           className="text-zinc-700 hover:text-red-400 transition-colors text-sm ml-1"
@@ -140,7 +199,34 @@ export function AssetCard({ asset, onToggleStep, onDelete, isSavingGuide }: Asse
         >
           Download {asset.type === 'script' ? '.cs' : asset.type === 'dialogue' ? '.json' : '.png'}
         </button>
+        <button
+          onClick={() => setShowRegenerate((v) => !v)}
+          disabled={isRegenerating}
+          className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {isRegenerating ? '✨ Regenerating…' : '↻ Regenerate'}
+        </button>
       </div>
+
+      {/* Regenerate note */}
+      {showRegenerate && (
+        <div className="flex gap-2 px-4 pb-3">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="What should change?"
+            disabled={isRegenerating}
+            className="flex-1 min-w-0 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-zinc-50 text-xs placeholder:text-zinc-600 focus:outline-none disabled:opacity-40"
+          />
+          <button
+            onClick={handleRegenerate}
+            disabled={isRegenerating || !note.trim()}
+            className="bg-yellow-400 text-zinc-950 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-yellow-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Go
+          </button>
+        </div>
+      )}
 
       {/* Unity guide */}
       <UnityGuide

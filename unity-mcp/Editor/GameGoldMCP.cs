@@ -17,6 +17,14 @@ namespace GameGold.MCP
     {
         private const int Port = 7432;
 
+        // Only these origins may drive the Editor — anything else in a browser gets 403.
+        // Without this, any website the developer visits could call localhost:7432.
+        private static readonly string[] AllowedOrigins =
+        {
+            "https://gamegold.vercel.app",
+            "http://localhost:3000",
+        };
+
         private static HttpListener _listener;
         private static Thread _thread;
         private static bool _running;
@@ -25,6 +33,7 @@ namespace GameGold.MCP
         private static readonly Dictionary<string, Func<string, string>> _tools = new()
         {
             ["scene.list"]           = SceneTools.List,
+            ["scene.new"]            = SceneTools.New,
             ["gameobject.create"]    = GameObjectTools.Create,
             ["gameobject.delete"]    = GameObjectTools.Delete,
             ["gameobject.find"]      = GameObjectTools.Find,
@@ -91,9 +100,19 @@ namespace GameGold.MCP
 
         private static void HandleRequest(HttpListenerContext ctx)
         {
-            ctx.Response.Headers.Add("Access-Control-Allow-Origin", "*");
-            ctx.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-            ctx.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+            var origin = ctx.Request.Headers["Origin"];
+            bool browserRequest = !string.IsNullOrEmpty(origin);
+            bool originAllowed = !browserRequest || Array.IndexOf(AllowedOrigins, origin) >= 0;
+
+            if (originAllowed && browserRequest)
+            {
+                ctx.Response.Headers.Add("Access-Control-Allow-Origin", origin);
+                ctx.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                ctx.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+                // Chrome Private Network Access: HTTPS page → localhost needs this on preflight
+                if (ctx.Request.Headers["Access-Control-Request-Private-Network"] == "true")
+                    ctx.Response.Headers.Add("Access-Control-Allow-Private-Network", "true");
+            }
             ctx.Response.ContentType = "application/json";
 
             var path = ctx.Request.Url.AbsolutePath.TrimStart('/');
@@ -102,7 +121,12 @@ namespace GameGold.MCP
             {
                 string responseJson;
 
-                if (ctx.Request.HttpMethod == "OPTIONS")
+                if (!originAllowed)
+                {
+                    ctx.Response.StatusCode = 403;
+                    responseJson = Error($"Origin not allowed: {origin}");
+                }
+                else if (ctx.Request.HttpMethod == "OPTIONS")
                 {
                     // CORS preflight
                     ctx.Response.StatusCode = 204;

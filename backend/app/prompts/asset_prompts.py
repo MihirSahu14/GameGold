@@ -2,6 +2,7 @@
 Prompts for Phase 3 asset generation. Every artifact ships with a Unity setup
 guide generated in the same LLM call (core GameGold rule).
 """
+from app.prompts.grounding import GROUNDING_RULES
 
 UNITY_GUIDE_RULES = """\
 Unity guide rules:
@@ -11,6 +12,19 @@ Unity guide rules:
 - Steps are written for the EXACT artifact you generated (its name, fields, values).
 - One concrete action per step. No vague steps like "set it up in Unity".
 """
+
+# ─── Regeneration (shared by all three generate prompts) ─────────────────────
+
+def build_regen_block(previous: str, note: str) -> str:
+    """Injected into a generate prompt when the developer regenerates an asset."""
+    return f"""
+PREVIOUS VERSION (revise this — do not start from scratch):
+{previous}
+
+DEVELOPER FEEDBACK (authoritative — must be addressed above all else):
+{note}
+"""
+
 
 # ─── Sprites ──────────────────────────────────────────────────────────────────
 
@@ -33,10 +47,12 @@ Image prompt rules:
 The guide covers: importing the file, Texture Type, Pixels Per Unit
 (32 for pixel art, 100 for illustrated), filter mode (Point for pixel art,
 Bilinear for illustrated), and placing it in a scene.
-"""
+""" + GROUNDING_RULES
 
 
-def build_sprite_prompt(name: str, description: str, style: str, game_context: str) -> str:
+def build_sprite_prompt(
+    name: str, description: str, style: str, game_context: str, regen: str = ""
+) -> str:
     style_text = (
         "pixel art, crisp pixels, limited palette, 32x32 to 64x64 scale"
         if style == "pixel"
@@ -49,7 +65,7 @@ Create the image prompt and Unity guide for this sprite.
 Sprite name: {name}
 Description: {description}
 Art style: {style_text}
-
+{regen}
 Return the JSON object now.
 """
 
@@ -77,10 +93,12 @@ Code rules:
 The guide covers: creating the script file, attaching it to the right GameObject,
 setting each serialized field (with the default values from your code), and any
 required project setup (tags, layers, input axes).
-"""
+""" + GROUNDING_RULES
 
 
-def build_script_prompt(name: str, script_type: str, description: str, game_context: str) -> str:
+def build_script_prompt(
+    name: str, script_type: str, description: str, game_context: str, regen: str = ""
+) -> str:
     context = f"\nGame context:\n{game_context}\n" if game_context else ""
     extra = f"Additional requirements: {description}\n" if description else ""
     return f"""\
@@ -88,7 +106,7 @@ Write the C# script and Unity guide.
 {context}
 Class name: {name}
 Script type: {script_type}
-{extra}
+{extra}{regen}
 Return the JSON object now.
 """
 
@@ -126,16 +144,72 @@ Tree rules:
 The guide covers: saving the exported JSON into Assets/Dialogue/, loading it with
 a DialogueManager script (TextAsset + JsonUtility or Newtonsoft), and wiring a
 trigger (collider or interact key) on the NPC GameObject.
-"""
+""" + GROUNDING_RULES
 
 
-def build_dialogue_prompt(npc_name: str, personality: str, game_context: str) -> str:
+def build_dialogue_prompt(
+    npc_name: str, personality: str, game_context: str, regen: str = ""
+) -> str:
     context = f"\nGame context:\n{game_context}\n" if game_context else ""
     return f"""\
 Create the dialogue tree and Unity guide.
 {context}
 NPC name: {npc_name}
 Personality: {personality}
+{regen}
+Return the JSON object now.
+"""
+
+
+# ─── Asset suggestions from the GDD ──────────────────────────────────────────
+
+SUGGEST_SYSTEM_PROMPT = """\
+You are a game production planner for Unity developers.
+Given excerpts from a game's design document (GDD), propose the concrete assets
+the developer should generate next.
+
+You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
+{
+  "proposals": [
+    {"type": "sprite", "name": "...", "description": "...", "reason": "..."}
+  ]
+}
+
+Proposal rules:
+- 5-12 proposals. "type" is exactly one of: "sprite", "script", "dialogue".
+- Skip anything already covered by the EXISTING ASSETS list — no duplicates or
+  near-duplicates of an existing asset's name or purpose.
+- "description" must be concrete and grounded in the GDD:
+  - sprite: what it looks like, matching the visual style described in the GDD.
+  - script: what behaviour it implements, per the GDD's mechanics.
+  - dialogue: which NPC it is and their personality, per the GDD's characters.
+- "reason" is ONE line citing the specific GDD detail that motivates the proposal.
+- "name": for scripts use a valid C# class name; for dialogue use the NPC's name.
+""" + GROUNDING_RULES
+
+
+def build_suggest_prompt(
+    title: str,
+    genre: str,
+    platform: str,
+    tone: str,
+    sections: dict[str, str],
+    existing_names: list[str],
+) -> str:
+    gdd_text = "\n\n".join(
+        f"[{key.upper()}]\n{text}" for key, text in sections.items() if text
+    )
+    existing = ", ".join(n for n in existing_names if n) or "none yet"
+    return f"""\
+Propose the next assets for this game.
+
+Game: {title}
+Genre: {genre} | Platform: {platform} | Tone: {tone}
+
+GDD excerpts:
+{gdd_text}
+
+EXISTING ASSETS (already generated — do NOT propose these again): {existing}
 
 Return the JSON object now.
 """

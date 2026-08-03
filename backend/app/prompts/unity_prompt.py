@@ -3,6 +3,7 @@ Prompts for Phase 6 Unity MCP integration.
 Claude generates a structured, step-by-step Unity build plan from the project's
 GDD + systems graph + generated assets.
 """
+from app.prompts.grounding import GROUNDING_RULES
 
 UNITY_PLAN_SYSTEM_PROMPT = """\
 You are a senior Unity developer building a game from an AI-generated design document.
@@ -24,7 +25,7 @@ You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
 }
 
 Available tools and their args:
-- scene.new          { name: string, template: "2D"|"3D" }
+- scene.new          { name?: string } — creates and saves a new scene (saved under Assets/Scenes)
 - scene.list         {} — returns current scene hierarchy
 - gameobject.create  { name: string, tag?: string, layer?: string, position?: {x,y,z} }
 - gameobject.delete  { name: string }
@@ -32,8 +33,7 @@ Available tools and their args:
 - component.add      { gameObjectName: string, componentType: string }
 - component.setField { gameObjectName: string, componentType: string, field: string, value: any }
 - asset.createScript { className: string, code: string, path: string }
-- asset.importSprite { name: string, base64: string, path: string, pixelsPerUnit?: number }
-- asset.createMaterial { name: string, shader?: string, color?: string }
+- asset.importSprite { name: string, path: string, pixelsPerUnit?: number }
 - playmode.enter     {}
 - playmode.exit      {}
 
@@ -44,9 +44,12 @@ Rules:
 - Create GameObjects before adding components to them.
 - Create script files (asset.createScript) before attaching them (component.add).
 - Reference exact asset names from the provided asset list in asset steps.
+- asset.importSprite steps must reference sprites by "name" EXACTLY as given in the
+  ASSETS list, and must NOT include a "base64" arg — the image data is injected
+  client-side before execution.
 - category must exactly match one of: scene, gameobject, component, asset, playmode.
 - args must be valid for the chosen tool. Do not invent tool names.
-"""
+""" + GROUNDING_RULES
 
 
 def build_unity_plan_prompt(

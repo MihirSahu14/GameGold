@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
-from bson import ObjectId
 from datetime import datetime
-from app.db.mongodb import get_db
+from app.db.mongodb import get_db, to_object_id
 from app.models.project import ProjectCreate, ProjectUpdate, ProjectOut, ProjectInDB
 from app.routers.auth import get_current_user
 
@@ -45,7 +44,7 @@ async def create_project(data: ProjectCreate, current_user: dict = Depends(get_c
 @router.get("/{project_id}", response_model=ProjectOut, response_model_by_alias=True)
 async def get_project(project_id: str, current_user: dict = Depends(get_current_user)):
     db = get_db()
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": to_object_id(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     check_project_ownership(project, current_user["_id"])
@@ -59,7 +58,8 @@ async def update_project(
     current_user: dict = Depends(get_current_user),
 ):
     db = get_db()
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    oid = to_object_id(project_id)
+    project = await db.projects.find_one({"_id": oid})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     check_project_ownership(project, current_user["_id"])
@@ -68,21 +68,23 @@ async def update_project(
     if update_data:
         update_data["updated_at"] = datetime.utcnow()
         await db.projects.update_one(
-            {"_id": ObjectId(project_id)},
+            {"_id": oid},
             {"$set": update_data},
         )
 
-    updated = await db.projects.find_one({"_id": ObjectId(project_id)})
+    updated = await db.projects.find_one({"_id": oid})
     return ProjectOut(**serialize_project(updated))
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: str, current_user: dict = Depends(get_current_user)):
     db = get_db()
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    oid = to_object_id(project_id)
+    project = await db.projects.find_one({"_id": oid})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     check_project_ownership(project, current_user["_id"])
-    await db.projects.delete_one({"_id": ObjectId(project_id)})
-    # Also delete associated GDD
-    await db.gdds.delete_one({"project_id": project_id})
+    await db.projects.delete_one({"_id": oid})
+    # Cascade: delete everything scoped to this project
+    for coll in (db.gdds, db.systems, db.assets, db.playtests, db.bugs, db.deployments, db.unity_plans):
+        await coll.delete_many({"project_id": project_id})

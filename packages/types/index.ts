@@ -89,6 +89,9 @@ export interface GDD {
   updatedAt: string
 }
 
+/** Generate endpoint may ask clarifying questions instead of returning a GDD */
+export type GDDGenerateResult = GDD | { needsInfo: true; questions: string[] }
+
 // ─── Systems ─────────────────────────────────────────────────────────────────
 
 export interface SystemNode {
@@ -161,12 +164,20 @@ export interface DialogueTree {
   nodes: DialogueNode[]
 }
 
+export interface AssetProposal {
+  type: AssetType
+  name: string
+  description: string
+  reason: string
+}
+
 export interface Asset {
   _id: string
   projectId: string
   type: AssetType
   name: string
   description: string
+  approved: boolean
   unityGuide: UnityGuide
   createdAt: string
   // Sprite fields

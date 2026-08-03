@@ -33,5 +33,7 @@ class UnityBuildPlanInDB(BaseModel):
 
 
 class StepCompleteRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     step_number: int
     completed: bool

@@ -20,7 +20,14 @@ namespace GameGold.MCP
             var type = FindType(compTypeName);
             if (type == null) return GameGoldMCP.Error($"Component type '{compTypeName}' not found");
 
-            var comp = go.GetComponent(type) ?? Undo.AddComponent(go, type);
+            var comp = go.GetComponent(type);
+            if (comp == null)
+            {
+                comp = Undo.AddComponent(go, type);
+                if (comp == null) comp = go.AddComponent(type); // Undo can refuse (e.g. batchmode)
+                if (comp == null)
+                    return GameGoldMCP.Error($"Unity refused to add {type.Name} to '{goName}' — check the Console");
+            }
             return GameGoldMCP.Ok($"Added {type.Name} to '{goName}'");
         }
 

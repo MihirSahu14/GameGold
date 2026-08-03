@@ -1,10 +1,13 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.responses import JSONResponse
 from bson import ObjectId
 from datetime import datetime
-from app.db.mongodb import get_db
+from app.db.mongodb import get_db, to_object_id
 from app.models.gdd import GDDUpdate, GDDOut, GDDInDB, GenerateGDDRequest, RefineGDDRequest, RefinedSectionOut
 from app.routers.auth import get_current_user
-from app.services.claude_service import generate_gdd, refine_gdd_section
+from app.services.claude_service import check_concept_sufficiency, generate_gdd, refine_gdd_section
 
 router = APIRouter(prefix="/projects/{project_id}/gdd", tags=["gdd"])
 
@@ -15,7 +18,7 @@ def serialize_gdd(gdd: dict) -> dict:
 
 
 async def verify_project_access(project_id: str, user_id: str, db) -> dict:
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": to_object_id(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     if str(project["user_id"]) != user_id:
@@ -42,14 +45,28 @@ async def get_gdd(project_id: str, current_user: dict = Depends(get_current_user
 )
 async def generate_gdd_endpoint(
     project_id: str,
-    body: GenerateGDDRequest,
+    body: Optional[GenerateGDDRequest] = None,
     current_user: dict = Depends(get_current_user),
 ):
     db = get_db()
-    await verify_project_access(project_id, current_user["_id"], db)
+    project = await verify_project_access(project_id, current_user["_id"], db)
+
+    body = body or GenerateGDDRequest()
+    concept_card = body.concept_card or project.get("concept_card") or {}
+
+    # Interview mode: no answers yet → check whether the concept is detailed
+    # enough. `answers` present (even {}) means the user already answered/skipped.
+    if body.answers is None:
+        questions = await check_concept_sufficiency(concept_card)
+        if questions:
+            # Response instance bypasses response_model — this route has two shapes.
+            return JSONResponse(
+                status_code=200,
+                content={"needsInfo": True, "questions": questions},
+            )
 
     # Generate all sections with Claude
-    sections = await generate_gdd(body.concept_card)
+    sections = await generate_gdd(concept_card, body.answers or None)
 
     now = datetime.utcnow()
     existing = await db.gdds.find_one({"project_id": project_id})

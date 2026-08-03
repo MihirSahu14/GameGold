@@ -62,8 +62,8 @@ def _summarize_gdd(sections: dict) -> str:
     for key in ("overview", "mechanics", "characters", "visual"):
         text = strip_html(sections.get(key, ""))
         if text:
-            parts.append(f"[{key}] {text[:400]}")
-    return "\n".join(parts)[:2000]
+            parts.append(f"[{key}] {text[:1200]}")
+    return "\n".join(parts)[:5000]
 
 
 def _summarize_systems(nodes: list[dict]) -> str:

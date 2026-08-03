@@ -18,7 +18,7 @@ describe('NodeEditor', () => {
   it('shows placeholder when no node is selected', async () => {
     const { NodeEditor } = await import('@/components/systems/NodeEditor')
     render(<NodeEditor node={null} onUpdate={vi.fn()} />)
-    expect(screen.getByText(/no node selected/i)).toBeInTheDocument()
+    expect(screen.getByText(/select a node/i)).toBeInTheDocument()
   })
 
   it('renders the node label when a node is provided', async () => {

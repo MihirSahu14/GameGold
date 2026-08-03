@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from bson import ObjectId
 from datetime import datetime
 
-from app.db.mongodb import get_db
+from app.db.mongodb import get_db, to_object_id
 from app.models.unity import UnityBuildPlanOut, UnityBuildPlanInDB, StepCompleteRequest
 from app.routers.auth import get_current_user
 from app.services.unity_service import generate_build_plan
@@ -21,7 +21,7 @@ def serialize(doc: dict) -> dict:
 
 
 async def verify_project_access(project_id: str, user_id: str, db) -> dict:
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": to_object_id(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     if str(project["user_id"]) != user_id:

@@ -7,12 +7,14 @@ import {
   useGenerateSprite,
   useGenerateScript,
   useGenerateDialogue,
+  useSuggestAssets,
   useUpdateGuide,
   useDeleteAsset,
 } from '@/lib/queries/useAssets'
 import { AssetCard } from '@/components/assets/AssetCard'
 import { StyleToggle } from '@/components/assets/StyleToggle'
-import type { ArtStyle, AssetType, ScriptType } from '@gamegold/types'
+import { ProposalsPanel, proposalKey, proposalPayload } from '@/components/assets/ProposalsPanel'
+import type { ArtStyle, AssetProposal, AssetType, ScriptType } from '@gamegold/types'
 import { cn } from '@/lib/utils'
 
 const TABS: { key: AssetType; label: string; icon: string }[] = [
@@ -46,10 +48,17 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
   const generateSprite = useGenerateSprite(id)
   const generateScript = useGenerateScript(id)
   const generateDialogue = useGenerateDialogue(id)
+  const suggestAssets = useSuggestAssets(id)
   const updateGuide = useUpdateGuide(id)
   const deleteAsset = useDeleteAsset(id)
 
   const [activeTab, setActiveTab] = useState<AssetType>('sprite')
+
+  // GDD proposals
+  const [proposals, setProposals] = useState<AssetProposal[] | null>(null)
+  const [doneKeys, setDoneKeys] = useState<string[]>([])
+  const [activeKey, setActiveKey] = useState<string | null>(null)
+  const [allProgress, setAllProgress] = useState<{ current: number; total: number } | null>(null)
 
   // Sprite form
   const [spriteName, setSpriteName] = useState('')
@@ -105,6 +114,58 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
     }
   }
 
+  async function handleSuggest() {
+    try {
+      const result = await suggestAssets.mutateAsync()
+      setProposals(result)
+      setDoneKeys([])
+    } catch (err) {
+      console.error('Suggest failed:', err)
+      alert(errorDetail(err))
+    }
+  }
+
+  async function generateProposal(proposal: AssetProposal) {
+    const key = proposalKey(proposal)
+    setActiveKey(key)
+    try {
+      if (proposal.type === 'sprite') {
+        await generateSprite.mutateAsync({
+          name: proposal.name,
+          description: proposal.description,
+          style: spriteStyle,
+        })
+      } else if (proposal.type === 'script') {
+        await generateScript.mutateAsync({
+          name: proposal.name.replace(/\s+/g, ''),
+          scriptType: 'custom',
+          description: proposal.description,
+        })
+      } else {
+        await generateDialogue.mutateAsync({
+          npcName: proposal.name,
+          personality: proposal.description,
+        })
+      }
+      setDoneKeys((keys) => [...keys, key])
+    } catch (err) {
+      console.error('Proposal generation failed:', err)
+      alert(errorDetail(err))
+    } finally {
+      setActiveKey(null)
+    }
+  }
+
+  async function handleGenerateAll() {
+    // ponytail: sequential on purpose — LLM calls are slow and the backend rate-limits
+    const pending = (proposals ?? []).filter((p) => !doneKeys.includes(proposalKey(p)))
+    for (let i = 0; i < pending.length; i++) {
+      setAllProgress({ current: i + 1, total: pending.length })
+      await generateProposal(pending[i])
+    }
+    setAllProgress(null)
+  }
+
   function handleToggleStep(assetId: string, completed: boolean[]) {
     updateGuide.mutate({ assetId, completed })
   }
@@ -139,7 +200,15 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
             <h1 className="text-zinc-50 font-semibold text-lg">Assets & Unity Guides</h1>
             <p className="text-zinc-500 text-xs mt-0.5">Generate C# scripts, AI-drawn sprites, and dialogue trees. Every asset includes step-by-step Unity setup instructions.</p>
           </div>
-          <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 gap-0.5">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSuggest}
+              disabled={suggestAssets.isPending}
+              className="bg-yellow-400 text-zinc-950 font-semibold px-4 py-2 rounded-lg text-xs hover:bg-yellow-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {suggestAssets.isPending ? '💡 Reading your GDD…' : '💡 Suggest from GDD'}
+            </button>
+            <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 gap-0.5">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
@@ -158,9 +227,23 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
                 </span>
               </button>
             ))}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* GDD proposals */}
+      {proposals && proposals.length > 0 && (
+        <ProposalsPanel
+          proposals={proposals}
+          doneKeys={doneKeys}
+          activeKey={activeKey}
+          allProgress={allProgress}
+          onGenerate={generateProposal}
+          onGenerateAll={handleGenerateAll}
+          onClose={() => setProposals(null)}
+        />
+      )}
 
       {/* Generation form */}
       <div className="px-6 py-4 border-b border-zinc-800 bg-zinc-900/40 flex-shrink-0">
@@ -299,6 +382,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
               <AssetCard
                 key={asset._id}
                 asset={asset}
+                projectId={id}
                 onToggleStep={handleToggleStep}
                 onDelete={handleDelete}
                 isSavingGuide={updateGuide.isPending}

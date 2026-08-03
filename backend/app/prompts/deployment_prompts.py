@@ -4,6 +4,7 @@ Unity build configuration guides. Store page copy and press kit are marketing
 text (no Unity guide); the build guide reuses the same Unity guide rules as
 Phase 3 since it describes real Unity Build Settings / Player Settings steps.
 """
+from app.prompts.grounding import GROUNDING_RULES
 
 UNITY_GUIDE_RULES = """\
 Unity guide rules:
@@ -35,7 +36,7 @@ Copy rules:
   long description structured with clear feature callouts.
 - 5-8 tags relevant to the genre/platform/tone. 4-6 feature bullets.
 - Never invent features not implied by the game context.
-"""
+""" + GROUNDING_RULES
 
 
 def build_store_page_prompt(platform: str, game_context: str) -> str:
@@ -67,7 +68,7 @@ Rules:
 - keyFeatures: 4-6 bullet-ready feature statements.
 - devBlurb: generic placeholder studio bio the developer can edit
   (do not invent a studio name; use "the developer" or similar).
-"""
+""" + GROUNDING_RULES
 
 
 def build_press_kit_prompt(game_context: str) -> str:
@@ -98,7 +99,7 @@ and any platform-specific requirements:
 - webgl: compression format, memory size, template settings.
 - android: minimum API level, keystore creation/signing, package name.
 - ios: bundle identifier, signing team, target iOS version.
-"""
+""" + GROUNDING_RULES
 
 
 def build_build_guide_prompt(platform: str, title: str) -> str:

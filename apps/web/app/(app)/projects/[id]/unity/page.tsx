@@ -109,12 +109,31 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
       return
     }
     setExecutingStep(stepNumber)
-    const result = await executeTool(tool, args)
-    setStepResults(prev => ({ ...prev, [stepNumber]: result }))
-    if (result.success) {
-      await markStep.mutateAsync({ stepNumber, completed: true })
+    try {
+      let toolArgs = args
+      if (tool === 'asset.importSprite') {
+        // The LLM can't know real image data — inject the stored sprite's
+        // data-URI as base64 (the C# side strips the data: prefix).
+        const sprite = sprites.find(a => a.name === args.name)
+        if (!sprite?.url) {
+          setStepResults(prev => ({
+            ...prev,
+            [stepNumber]: { success: false, message: `No sprite asset named "${String(args.name)}" found — generate it in the Assets stage first.` },
+          }))
+          return
+        }
+        toolArgs = { ...args, base64: sprite.url }
+      }
+      const result = await executeTool(tool, toolArgs)
+      setStepResults(prev => ({ ...prev, [stepNumber]: result }))
+      if (result.success) {
+        await markStep.mutateAsync({ stepNumber, completed: true })
+      }
+    } catch {
+      alert('Could not save step progress — check the console.')
+    } finally {
+      setExecutingStep(null)
     }
-    setExecutingStep(null)
   }
 
   return (

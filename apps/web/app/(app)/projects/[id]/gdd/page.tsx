@@ -4,6 +4,7 @@ import { use, useEffect, useState } from 'react'
 import { useProject } from '@/lib/queries/useProjects'
 import { useGDD, useGenerateGDD, useSaveGDD, useRefineGDDSection } from '@/lib/queries/useGDD'
 import { GDDEditor } from '@/components/gdd/GDDEditor'
+import { GDDQuestionsPanel } from '@/components/gdd/GDDQuestionsPanel'
 import type { GDDSections } from '@gamegold/types'
 
 const SECTION_LABELS: { key: keyof GDDSections; label: string; emoji: string }[] = [
@@ -30,6 +31,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
   const [saved, setSaved] = useState(false)
   const [refineInput, setRefineInput] = useState('')
   const [showRefine, setShowRefine] = useState(false)
+  const [questions, setQuestions] = useState<string[] | null>(null)
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -42,10 +44,15 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
   const hasConceptCard = !!project?.conceptCard
   const hasGDD = !!gdd
 
-  async function handleGenerate() {
+  async function handleGenerate(answers?: Record<string, string>) {
     if (!project?.conceptCard) return
     try {
-      await generateGDD.mutateAsync(project.conceptCard)
+      const result = await generateGDD.mutateAsync({ conceptCard: project.conceptCard, answers })
+      if ('needsInfo' in result) {
+        setQuestions(result.questions)
+      } else {
+        setQuestions(null)
+      }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } }
       const msg = e?.response?.data?.detail ?? 'GDD generation failed. Check the browser console for details.'
@@ -54,9 +61,13 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
   }
 
   async function handleSave() {
-    await saveGDD.mutateAsync(localSections as GDDSections)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    try {
+      await saveGDD.mutateAsync(localSections as GDDSections)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch {
+      alert('Save failed. Check the browser console for details.')
+    }
   }
 
   function handleSectionChange(content: string) {
@@ -186,7 +197,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
               </>
             )}
             <button
-              onClick={handleGenerate}
+              onClick={() => handleGenerate()}
               disabled={!hasConceptCard || generateGDD.isPending}
               title={!hasConceptCard ? 'Fill in your Concept Card first' : undefined}
               className="bg-yellow-400 text-zinc-950 font-semibold px-4 py-2 rounded-lg text-sm hover:bg-yellow-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -238,6 +249,13 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
                 Your GDD is generated from your concept. Fill in at least the core loop and unique hook.
               </p>
             </div>
+          ) : questions && !generateGDD.isPending ? (
+            <GDDQuestionsPanel
+              questions={questions}
+              onSubmit={(answers) => handleGenerate(answers)}
+              onSkip={() => handleGenerate({})}
+              disabled={generateGDD.isPending}
+            />
           ) : !hasGDD && !generateGDD.isPending ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-16">
               <div className="text-5xl mb-4">📋</div>
@@ -247,7 +265,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
                 based on your concept card.
               </p>
               <button
-                onClick={handleGenerate}
+                onClick={() => handleGenerate()}
                 className="bg-yellow-400 text-zinc-950 font-semibold px-6 py-3 rounded-xl text-sm hover:bg-yellow-300 transition-colors"
               >
                 ✨ Generate GDD with AI

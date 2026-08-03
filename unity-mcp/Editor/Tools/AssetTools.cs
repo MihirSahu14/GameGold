@@ -7,6 +7,14 @@ namespace GameGold.MCP
 {
     internal static class AssetTools
     {
+        /// <summary>Rejects paths that escape the project's Assets/ folder (absolute, drive, or ..).</summary>
+        private static string SafeAssetPath(string path)
+        {
+            path = path.Replace('\\', '/');
+            if (path.Contains("..") || path.Contains(":") || !path.StartsWith("Assets/")) return null;
+            return path;
+        }
+
         /// <summary>args: { className, code, path } — creates a C# MonoBehaviour file.</summary>
         internal static string CreateScript(string body)
         {
@@ -18,6 +26,8 @@ namespace GameGold.MCP
             if (string.IsNullOrEmpty(className)) return GameGoldMCP.Error("'className' is required");
             if (string.IsNullOrEmpty(code))      return GameGoldMCP.Error("'code' is required");
             if (string.IsNullOrEmpty(path))       path = $"Assets/Scripts/{className}.cs";
+            path = SafeAssetPath(path);
+            if (path == null) return GameGoldMCP.Error("'path' must stay under Assets/");
 
             // Ensure directory exists
             var dir = Path.GetDirectoryName(path);
@@ -42,6 +52,8 @@ namespace GameGold.MCP
 
             if (string.IsNullOrEmpty(base64Data)) return GameGoldMCP.Error("'base64' is required");
             if (string.IsNullOrEmpty(path))        path = $"Assets/Sprites/{name}.png";
+            path = SafeAssetPath(path);
+            if (path == null) return GameGoldMCP.Error("'path' must stay under Assets/");
 
             // Strip data URI prefix if present
             var commaIdx = base64Data.IndexOf(',');

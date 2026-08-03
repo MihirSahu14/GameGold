@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useCallback, useRef } from 'react'
+import { use, useState, useCallback, useEffect, useRef } from 'react'
 import { useGameSystem, useSaveSystem, useAnalyzeBalance } from '@/lib/queries/useSystems'
 import { useProject } from '@/lib/queries/useProjects'
 import { SystemsCanvas, type SystemsCanvasHandle } from '@/components/systems/SystemsCanvas'
@@ -23,6 +23,16 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
     system?.analysisCache ?? null
   )
   const [activeTab, setActiveTab] = useState<PanelTab>('node')
+
+  // Hydrate persisted analysis once the query loads — but never clobber a
+  // fresher in-session result.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (system?.analysisCache && !localAnalysis) {
+      setLocalAnalysis(system.analysisCache)
+    }
+  }, [system, localAnalysis])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const nodes: SystemNode[] = system?.nodes ?? []
   const edges: SystemEdge[] = system?.edges ?? []

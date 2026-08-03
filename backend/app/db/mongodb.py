@@ -1,7 +1,18 @@
+from bson import ObjectId
+from bson.errors import InvalidId
+from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import settings
 
 client: AsyncIOMotorClient | None = None
+
+
+def to_object_id(id_str: str) -> ObjectId:
+    """Convert a path id to ObjectId; malformed ids are a 404, not a 500."""
+    try:
+        return ObjectId(id_str)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=404, detail="Not found")
 
 
 def get_client() -> AsyncIOMotorClient:

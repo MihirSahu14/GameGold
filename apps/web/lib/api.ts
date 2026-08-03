@@ -44,12 +44,15 @@ api.interceptors.request.use((config) => {
 })
 
 // Handle 401 — session expired or missing, redirect to login.
-// Exclude /auth/me because a 401 there means "not logged in" (expected),
-// not "session expired" — AuthProvider handles that case via setUser(null).
+// Exclude auth endpoints where a 401 is an expected outcome the caller handles
+// inline (bad credentials, not logged in) — redirecting would reload the login
+// page and wipe the error message.
+const AUTH_401_EXCLUDED = ['/auth/me', '/auth/login', '/auth/register', '/auth/csrf']
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const isAuthCheck = error.config?.url?.includes('/auth/me')
+    const url: string = error.config?.url ?? ''
+    const isAuthCheck = AUTH_401_EXCLUDED.some((p) => url.includes(p))
     if (error.response?.status === 401 && !isAuthCheck && typeof window !== 'undefined') {
       window.location.href = '/login'
     }

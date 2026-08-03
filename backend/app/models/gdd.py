@@ -41,7 +41,11 @@ class GDDInDB(BaseModel):
 
 
 class GenerateGDDRequest(BaseModel):
-    concept_card: dict
+    # Both optional: concept card falls back to the project's stored card, and
+    # `answers` present (even {}) means "skip the sufficiency check and generate";
+    # absent means "run the check first".
+    concept_card: dict = Field(default_factory=dict)
+    answers: Optional[dict[str, str]] = None
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 

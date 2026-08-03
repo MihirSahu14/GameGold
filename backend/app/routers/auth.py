@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from bson import ObjectId
@@ -28,12 +30,13 @@ async def get_current_user(
     db = get_db()
     try:
         user_id = decode_token(token)
-        user = await db.users.find_one({"_id": ObjectId(user_id)})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        return serialize_user(user)
-    except (JWTError, Exception):
+    except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return serialize_user(user)
 
 
 @router.post("/register", response_model=UserOut, response_model_by_alias=True, status_code=status.HTTP_201_CREATED)
@@ -52,7 +55,7 @@ async def register(request: Request, response: Response, data: UserCreate):
     user_in_db = UserInDB(
         email=data.email,
         username=data.username,
-        hashed_password=hash_password(data.password),
+        hashed_password=await asyncio.to_thread(hash_password, data.password),
     )
 
     result = await db.users.insert_one(user_in_db.model_dump())
@@ -69,7 +72,7 @@ async def login(request: Request, response: Response, data: UserLogin):
     db = get_db()
 
     user = await db.users.find_one({"email": data.email})
-    if not user or not verify_password(data.password, user["hashed_password"]):
+    if not user or not await asyncio.to_thread(verify_password, data.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     user = serialize_user(user)

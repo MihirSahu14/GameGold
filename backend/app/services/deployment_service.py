@@ -109,7 +109,8 @@ async def export_project_bundle(db, project_id: str, title: str) -> bytes:
                 url = asset["url"]
                 if url.startswith("data:") and "base64," in url:
                     encoded = url.split("base64,", 1)[1]
-                    zf.writestr(f"Sprites/{name}.png", base64.b64decode(encoded))
+                    ext = "svg" if url.startswith("data:image/svg") else "png"
+                    zf.writestr(f"Sprites/{name}.{ext}", base64.b64decode(encoded))
             elif asset_type == "dialogue" and asset.get("tree"):
                 zf.writestr(f"Dialogue/{name}.json", json.dumps(asset["tree"], indent=2))
 

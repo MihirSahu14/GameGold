@@ -3,7 +3,7 @@ from bson import ObjectId
 from datetime import datetime
 
 from app.services.llm_utils import strip_html
-from app.db.mongodb import get_db
+from app.db.mongodb import get_db, to_object_id
 from app.models.systems import (
     GameSystemCreate,
     GameSystemOut,
@@ -23,7 +23,7 @@ def serialize_system(doc: dict) -> dict:
 
 
 async def verify_project_access(project_id: str, user_id: str, db) -> dict:
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": to_object_id(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     if str(project["user_id"]) != user_id:
@@ -43,6 +43,8 @@ async def get_system(
     if not doc:
         raise HTTPException(status_code=404, detail="Systems graph not found")
 
+    # ponytail: legacy analyze-only docs lack updated_at — default it instead of 500ing
+    doc.setdefault("updated_at", datetime.utcnow())
     return GameSystemOut(**serialize_system(doc))
 
 
@@ -110,11 +112,27 @@ async def analyze_system(
 
     analysis = await analyze_balance(body.nodes, body.edges, gdd_summary)
 
-    # Cache result on the system doc
-    await db.systems.update_one(
-        {"project_id": project_id},
-        {"$set": {"analysis_cache": analysis.model_dump(by_alias=True)}},
-        upsert=True,
-    )
+    # Cache result on the system doc; if the graph was never saved,
+    # insert a full valid doc instead of a cache-only phantom.
+    now = datetime.utcnow()
+    existing = await db.systems.find_one({"project_id": project_id})
+    if existing:
+        await db.systems.update_one(
+            {"project_id": project_id},
+            {"$set": {"analysis_cache": analysis.model_dump(by_alias=True), "updated_at": now}},
+        )
+    else:
+        system_in_db = GameSystemInDB(
+            project_id=project_id,
+            nodes=body.nodes,
+            edges=body.edges,
+            analysis_cache=analysis,
+        )
+        await db.systems.insert_one(system_in_db.model_dump())
+        # Mirror first-save behavior so the stage still advances
+        await db.projects.update_one(
+            {"_id": to_object_id(project_id)},
+            {"$set": {"stage": "systems", "updated_at": now}},
+        )
 
     return analysis

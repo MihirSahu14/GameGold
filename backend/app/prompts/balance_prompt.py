@@ -1,3 +1,5 @@
+from app.prompts.grounding import GROUNDING_RULES
+
 BALANCE_SYSTEM_PROMPT = """\
 You are an expert game balance designer with 20+ years of experience across all genres.
 Your task: analyze a game's systems graph and identify balance issues.
@@ -10,7 +12,7 @@ The JSON must have exactly these four keys, each containing an array of strings:
   - suggestions: concrete fixes for each issue found (pair each fix to an issue)
 
 If no issues exist for a category, return an empty array.
-"""
+""" + GROUNDING_RULES
 
 
 def build_balance_prompt(

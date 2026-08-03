@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 from bson import ObjectId
 from datetime import datetime
 
-from app.db.mongodb import get_db
+from app.db.mongodb import get_db, to_object_id
 from app.models.deployment import (
     DeploymentOut,
     DeploymentInDB,
@@ -36,7 +36,7 @@ def serialize_item(doc: dict) -> dict:
 
 
 async def verify_project_access(project_id: str, user_id: str, db) -> dict:
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": to_object_id(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     if str(project["user_id"]) != user_id:
@@ -59,7 +59,7 @@ async def build_game_context(db, project_id: str) -> str:
     gdd = await db.gdds.find_one({"project_id": project_id})
     if not gdd or not gdd.get("sections"):
         return ""
-    return strip_html(gdd["sections"].get("overview", ""))[:2000]
+    return strip_html(gdd["sections"].get("overview", ""))[:5000]
 
 
 async def insert_and_return(db, item: DeploymentInDB) -> DeploymentOut:
@@ -178,7 +178,7 @@ async def update_guide(
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
 
-    doc = await db.deployments.find_one({"_id": ObjectId(item_id), "project_id": project_id})
+    doc = await db.deployments.find_one({"_id": to_object_id(item_id), "project_id": project_id})
     if not doc or doc.get("type") != "buildGuide":
         raise HTTPException(status_code=404, detail="Build guide not found")
 
@@ -203,7 +203,7 @@ async def delete_deployment_item(
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
 
-    result = await db.deployments.delete_one({"_id": ObjectId(item_id), "project_id": project_id})
+    result = await db.deployments.delete_one({"_id": to_object_id(item_id), "project_id": project_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Deployment item not found")
 

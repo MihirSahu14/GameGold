@@ -6,6 +6,8 @@
   --font-sans: var(--font-inter);
   --font-pixel: var(--font-pixel);
   --font-mono: var(--font-space-mono);
+  --font-geist: var(--font-geist);
+  --font-geist-mono: var(--font-geist-mono);
 
   /* ── Remap zinc scale → GameGold dark palette ── */
   --color-zinc-50:  #eaf2ff;
@@ -45,6 +47,12 @@ body {
 
 ::selection {
   background: #4ea8ff;
+  color: #07090d;
+}
+
+/* v2 landing uses gold as its single accent */
+#gg-v2 ::selection {
+  background: #f5b82e;
   color: #07090d;
 }
 

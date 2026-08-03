@@ -182,6 +182,7 @@ def test_analyze_returns_balance_analysis(client, mock_db, monkeypatch):
 def test_analyze_caches_result_on_system_doc(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     mock_db.gdds.find_one.return_value = None
+    mock_db.systems.find_one.return_value = _make_system_doc()
 
     mock_completion = MagicMock(return_value=_make_litellm_response(CANNED_BALANCE_TEXT))
     monkeypatch.setattr("litellm.completion", mock_completion)
@@ -193,6 +194,52 @@ def test_analyze_caches_result_on_system_doc(client, mock_db, monkeypatch):
     mock_db.systems.update_one.assert_called_once()
     call_args = mock_db.systems.update_one.call_args
     assert "analysis_cache" in call_args[0][1]["$set"]
+    mock_db.systems.insert_one.assert_not_called()
+
+
+def test_analyze_before_first_save_inserts_full_doc(client, mock_db, monkeypatch):
+    """Analyze on an unsaved graph inserts a complete system doc, not a cache-only phantom."""
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = None
+    mock_db.systems.find_one.return_value = None
+
+    mock_completion = MagicMock(return_value=_make_litellm_response(CANNED_BALANCE_TEXT))
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    resp = client.post(
+        f"/projects/{TEST_PROJECT_ID}/systems/analyze",
+        json={"nodes": SAMPLE_NODES, "edges": SAMPLE_EDGES},
+    )
+    assert resp.status_code == 200
+    mock_db.systems.insert_one.assert_called_once()
+    doc = mock_db.systems.insert_one.call_args[0][0]
+    assert len(doc["nodes"]) == 2
+    assert len(doc["edges"]) == 1
+    assert doc["analysis_cache"] is not None
+    assert "updated_at" in doc
+    mock_db.systems.update_one.assert_not_called()
+    # Stage still advances even though save never ran
+    mock_db.projects.update_one.assert_called_once()
+    assert mock_db.projects.update_one.call_args[0][1]["$set"]["stage"] == "systems"
+
+
+def test_get_systems_survives_legacy_phantom_doc(client, mock_db):
+    """Old analyze-only docs (no nodes/edges/updated_at) must not 500."""
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.systems.find_one.return_value = {
+        "_id": ObjectId(),
+        "project_id": TEST_PROJECT_ID,
+        "analysis_cache": None,
+    }
+
+    resp = client.get(f"/projects/{TEST_PROJECT_ID}/systems")
+    assert resp.status_code == 200
+    assert resp.json()["nodes"] == []
+
+
+def test_invalid_project_id_returns_404(client, mock_db):
+    resp = client.get("/projects/not-an-objectid/systems")
+    assert resp.status_code == 404
 
 
 def test_analyze_uses_gdd_summary_when_available(client, mock_db, monkeypatch):

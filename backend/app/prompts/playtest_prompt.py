@@ -2,6 +2,7 @@
 Phase 4 — AI playtest simulation prompt. The LLM role-plays a player persona
 walking through the game (from the GDD + systems graph) and reports what broke.
 """
+from app.prompts.grounding import GROUNDING_RULES
 
 PLAYTEST_SYSTEM_PROMPT = """\
 You are an expert QA lead and game playtester. You simulate a full playthrough
@@ -29,7 +30,7 @@ Rules:
 - Every balanceSuggestion needs a specific, actionable fix and a plausible
   unityPath (prefab/GameObject > Component > field).
 - Empty arrays are fine when a category has no findings.
-"""
+""" + GROUNDING_RULES
 
 PERSONA_DESCRIPTIONS = {
     "casual": (

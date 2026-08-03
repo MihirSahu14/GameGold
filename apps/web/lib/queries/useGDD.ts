@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { GDD, GDDSections, ConceptCard } from '@gamegold/types'
+import type { GDD, GDDSections, GDDGenerateResult, ConceptCard } from '@gamegold/types'
 
 // ─── Fetch GDD ────────────────────────────────────────────────────────────────
 export function useGDD(projectId: string) {
@@ -24,11 +24,13 @@ export function useGDD(projectId: string) {
 export function useGenerateGDD(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (conceptCard: ConceptCard) => {
-      const res = await api.post<GDD>(`/projects/${projectId}/gdd/generate`, { conceptCard })
+    mutationFn: async (payload: { conceptCard: ConceptCard; answers?: Record<string, string> }) => {
+      const res = await api.post<GDDGenerateResult>(`/projects/${projectId}/gdd/generate`, payload)
       return res.data
     },
     onSuccess: (data) => {
+      // Interview mode: needsInfo means no GDD was generated — leave caches untouched
+      if ('needsInfo' in data) return
       queryClient.setQueryData(['gdd', projectId], data)
       // Backend advances project stage to 'gdd' on first generation — refresh project so sidebar unlocks
       void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })

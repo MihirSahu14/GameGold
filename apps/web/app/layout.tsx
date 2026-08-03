@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
-import { Inter, Press_Start_2P, Space_Mono } from 'next/font/google'
+import { Geist, Geist_Mono, Inter, Press_Start_2P, Space_Mono } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
+const geist = Geist({ subsets: ['latin'], variable: '--font-geist', display: 'swap' })
+const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono', display: 'swap' })
 const pressStart2P = Press_Start_2P({
   subsets: ['latin'],
   weight: '400',
@@ -26,7 +28,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { readonly children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${pressStart2P.variable} ${spaceMono.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${pressStart2P.variable} ${spaceMono.variable} ${geist.variable} ${geistMono.variable} h-full antialiased`}
+    >
       <body className="min-h-full flex flex-col">
         <Providers>{children}</Providers>
       </body>

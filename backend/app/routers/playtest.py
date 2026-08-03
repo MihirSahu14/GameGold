@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from bson import ObjectId
 from datetime import datetime
 
-from app.db.mongodb import get_db
+from app.db.mongodb import get_db, to_object_id
 from app.models.playtest import (
     RunPlaytestRequest,
     PlaytestReportOut,
@@ -27,7 +27,7 @@ def serialize(doc: dict) -> dict:
 
 
 async def verify_project_access(project_id: str, user_id: str, db) -> dict:
-    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    project = await db.projects.find_one({"_id": to_object_id(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     if str(project["user_id"]) != user_id:
@@ -77,10 +77,10 @@ async def run_simulation(
     gdd_summary = ""
     if gdd and gdd.get("sections"):
         parts = [
-            strip_html(gdd["sections"].get(key, ""))
+            strip_html(gdd["sections"].get(key, ""))[:1200]
             for key in ("overview", "mechanics", "progression", "levels")
         ]
-        gdd_summary = "\n".join(p for p in parts if p)[:4000]
+        gdd_summary = "\n".join(p for p in parts if p)[:5000]
 
     system = await db.systems.find_one({"project_id": project_id})
     systems_summary = ""
@@ -120,7 +120,7 @@ async def delete_report(
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
     result = await db.playtests.delete_one(
-        {"_id": ObjectId(report_id), "project_id": project_id}
+        {"_id": to_object_id(report_id), "project_id": project_id}
     )
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -176,7 +176,7 @@ async def update_bug(
     updates["updated_at"] = datetime.utcnow()
 
     result = await db.bugs.update_one(
-        {"_id": ObjectId(bug_id), "project_id": project_id},
+        {"_id": to_object_id(bug_id), "project_id": project_id},
         {"$set": updates},
     )
     if result.matched_count == 0:
@@ -194,6 +194,6 @@ async def delete_bug(
 ):
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
-    result = await db.bugs.delete_one({"_id": ObjectId(bug_id), "project_id": project_id})
+    result = await db.bugs.delete_one({"_id": to_object_id(bug_id), "project_id": project_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Bug not found")

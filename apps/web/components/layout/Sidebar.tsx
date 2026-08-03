@@ -51,7 +51,9 @@ export function Sidebar() {
   const projectStage = activeProject?.stage as ProjectStage | undefined
 
   async function handleLogout() {
-    await logoutUser()
+    try {
+      await logoutUser()
+    } catch { /* server logout failed — clear the local session anyway */ }
     setUser(null)
     router.push('/login')
   }

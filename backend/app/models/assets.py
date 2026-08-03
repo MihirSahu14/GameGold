@@ -53,6 +53,8 @@ class GenerateSpriteRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(min_length=1)
     style: ArtStyle = "pixel"
+    regenerate_of: Optional[str] = None
+    note: str = ""
 
 
 class GenerateScriptRequest(BaseModel):
@@ -61,6 +63,8 @@ class GenerateScriptRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     script_type: ScriptType = "custom"
     description: str = ""
+    regenerate_of: Optional[str] = None
+    note: str = ""
 
 
 class GenerateDialogueRequest(BaseModel):
@@ -68,10 +72,18 @@ class GenerateDialogueRequest(BaseModel):
 
     npc_name: str = Field(min_length=1, max_length=100)
     personality: str = Field(min_length=1)
+    regenerate_of: Optional[str] = None
+    note: str = ""
 
 
 class UpdateGuideRequest(BaseModel):
     completed: list[bool]
+
+
+class ApproveAssetRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    approved: bool
 
 
 # ─── Responses / storage ─────────────────────────────────────────────────────
@@ -86,6 +98,7 @@ class AssetOut(BaseModel):
     description: str = ""
     unity_guide: UnityGuide = UnityGuide()
     created_at: datetime
+    approved: bool = False  # old docs lack the field — default keeps them unapproved
     # Sprite
     url: Optional[str] = None
     style: Optional[ArtStyle] = None
@@ -104,9 +117,27 @@ class AssetInDB(BaseModel):
     description: str = ""
     unity_guide: dict[str, Any] = {}
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    approved: bool = False
     url: Optional[str] = None
     style: Optional[ArtStyle] = None
     image_prompt: Optional[str] = None
     code: Optional[str] = None
     script_type: Optional[ScriptType] = None
     tree: Optional[dict[str, Any]] = None
+
+
+# ─── Suggestions (not persisted) ─────────────────────────────────────────────
+
+class AssetProposal(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    type: AssetType
+    name: str
+    description: str
+    reason: str
+
+
+class SuggestAssetsResponse(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    proposals: list[AssetProposal] = []
