@@ -13,7 +13,7 @@ import {
 } from '@/lib/queries/useAssets'
 import { AssetCard } from '@/components/assets/AssetCard'
 import { StyleToggle } from '@/components/assets/StyleToggle'
-import { ProposalsPanel, proposalKey, proposalPayload } from '@/components/assets/ProposalsPanel'
+import { ProposalsPanel, proposalKey } from '@/components/assets/ProposalsPanel'
 import type { ArtStyle, AssetProposal, AssetType, ScriptType } from '@gamegold/types'
 import { cn } from '@/lib/utils'
 
