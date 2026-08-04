@@ -186,3 +186,11 @@ No over-engineering found in B1-B4 — the refresh-rotation, lockout, and reset-
 Deploy note for DZ1 (not a fix task — expected behavior, not a bug): every already-issued access token predates the new `typ` claim, so `decode_token(token, "access")` will reject them on `typ` mismatch the moment this deploys, forcing a hard logout for every currently-logged-in user. Worth a one-line heads-up in the deploy checklist.
 
 Per the task contract, 3 `- [ ] BF1/BF2/BF3` fix tasks appended below — capped at the allowed maximum since all three (reset-flow password strength, missing frontend refresh integration, refresh-endpoint CSRF gap) are independently real and independently fixable in one session each.
+
+## BF1 — Reset flow now enforces B4's password-strength rule
+
+`models/user.py`: `ResetPasswordRequest.new_password` min_length raised 8→10 and now reuses the existing `_check_password_strength` field_validator (same one `UserCreate.password` uses, no duplication) alongside the pre-existing `_check_bcrypt_byte_limit` check.
+
+New test `test_reset_password_rejects_weak_password` (`test_password_reset.py`): a reset with a short/letters-only `newPassword` returns 422 before touching the DB.
+
+`python -m pytest backend/tests -q`: **126 passed** (125 baseline + 1 new, meets required >= 1). `git status` confirms only `backend/app/models/user.py` and `backend/tests/test_password_reset.py` changed — frontend/build untouched.

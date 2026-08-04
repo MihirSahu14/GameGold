@@ -78,6 +78,13 @@ def test_reset_password_sets_new_password_and_rejects_reuse(auth_client, mock_db
     assert resp.status_code == 400
 
 
+def test_reset_password_rejects_weak_password(auth_client, mock_db):
+    resp = auth_client.post(
+        "/auth/reset-password", json={"token": "some-token", "newPassword": "letters"}
+    )
+    assert resp.status_code == 422
+
+
 def test_expired_reset_token_rejected(auth_client, mock_db, monkeypatch):
     monkeypatch.setattr("app.routers.auth.secrets.token_urlsafe", lambda n: "expired-token")
     store = _fake_password_resets(mock_db)

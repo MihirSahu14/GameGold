@@ -65,8 +65,9 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str
-    new_password: str = Field(min_length=8, max_length=72)
+    new_password: str = Field(min_length=10, max_length=72)
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     _validate_password_bytes = field_validator("new_password")(_check_bcrypt_byte_limit)
+    _validate_password_strength = field_validator("new_password")(_check_password_strength)
