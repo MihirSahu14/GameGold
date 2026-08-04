@@ -370,3 +370,23 @@ Added `useProjectSummary(id)` (TanStack Query wrapper over E2a's `GET /projects/
 Added 5 tests to `useProjectSummary.test.ts` (new file): fetch hits the right endpoint, banner message when upstream is newer, null when upstream has no content, null when upstream is older, null for gdd (no upstream).
 
 **Test counts:** `pnpm --filter web test` → **85 passed** (80 prior + 5 new). `python -m pytest backend/tests -q` → **135 passed**, unchanged (backend untouched). `pnpm --filter web build` → clean. Nothing surprising.
+
+## R5 — REVIEW block E (read-only, zero source files changed)
+
+Read the full `080e565..c4bd416` diff (E1a-E2b commits `df5d118`/`968c65a`/`319c1d2`/`7ae9b75`/`c4bd416`), not just the per-task journal summaries.
+
+**E1a no-clobber merge — verified safe.** `extract_system` (`backend/app/routers/systems.py:146-193`) computes `existing_labels = {n["label"] for n in existing_nodes}` from the currently-saved graph and only appends `extracted` nodes whose label is NOT in that set (`merged_nodes = existing_nodes + [n.model_dump() for n in extracted if n.label not in existing_labels]`) — existing nodes are never mutated or dropped, only new labels get appended. 404-without-GDD checked before any LLM call (`sections.py:159-160`). Rate-limited + `project_llm_slot`-wrapped around the LLM call only, matching A1/A2's established pattern.
+
+**E1b — `SystemsCanvas.tsx` and its test file genuinely untouched.** `git diff 080e565..c4bd416 -- apps/web/components/systems/SystemsCanvas.tsx apps/web/components/systems/__tests__/SystemsCanvas.test.tsx` is empty — neither file appears in the diff at all, not just "no net change". Re-ran `pnpm --filter web test`: `SystemsCanvas.test.tsx` still 6/6 passing. The new "Advanced" tab in `systems/page.tsx` renders the exact same `<SystemsCanvas>` JSX block, just wrapped in a tab-visibility conditional.
+
+**E1c — no existing `BalancePanel.test.tsx` test weakened.** Diffed the test file: all 8 original `it(...)` blocks are still present with their original assertions (`/infinite gold loop/i`, `/outscales/i`, `/rush sword/i`, `/cap gold drop rate/i`, etc.) — only the fixture literal (`suggestions: ['...']` → structured objects) and a new required `onAccept={vi.fn()}` prop were added to each render call, which is a genuine shape change, not a coverage cut. 2 new tests appended (Accept button renders, `onAccept` called with the suggestion). Backend `_parse_suggestions` drops malformed entries via `BalanceSuggestion.model_validate()` + catch rather than 500ing — confirmed by reading `balance_service.py` and its matching test.
+
+**E2a stage-unlock removal — did not touch the auth guard.** `git diff 080e565..c4bd416 --stat -- "apps/web/app/(app)/layout.tsx"` is empty — that file was never part of this block's diff. Confirmed independently by reading `Sidebar.tsx`'s diff: it deletes `isStageUnlocked`/`STAGE_ORDER` and the "SOON" branch, replacing the conditional render with a single always-rendered `<Link>` — no change to routing, auth, or any guard logic, purely a UI-gating removal as the task contract specified. `GET /projects/{id}/summary` (`backend/app/routers/projects.py:75-100`) reuses the existing `check_project_ownership` helper (same as every other route in that router) before returning data — no new access-control gap.
+
+**Minor, not worth a fix task — inline `style={{...}}` on the new Sheet/Advanced tab buttons (`systems/page.tsx`) and the whole rewritten `Sidebar.tsx` link.** CLAUDE.md says "No inline styles — Tailwind only," but `git show 080e565:apps/web/app/(app)/projects/[id]/systems/page.tsx` shows this file already used inline `style={{ background: '#0b1018', borderBottom: ... }}` for hex colors and dynamic active-tab borders *before* this block touched it, and `Sidebar.tsx` was already 100% inline-style before E2a — this block's new/changed lines just extend a pre-existing, repo-wide, unrelated-to-this-block pattern rather than introducing a new violation. Fixing it would mean rewriting two files' entire styling approach, well outside E1a-E2b's scope.
+
+Re-ran both suites after reading the full diff (no source edits made): `python -m pytest backend/tests -q` → **135 passed**; `pnpm --filter web test` → **85 passed** (18 files); `git status` → clean, zero files changed by this review.
+
+No over-engineering found — `SystemsSheet.tsx` is a plain table bound to the existing `nodes`/`onSave`, `useProjectSummary.ts`'s `stalenessMessage` is a pure function with no speculative generalization beyond the four wired stages, and the `/summary` endpoint returns exactly the six keys the contract named.
+
+Per the task contract, zero `- [ ] EF*` fix tasks appended — nothing found worth queuing.
