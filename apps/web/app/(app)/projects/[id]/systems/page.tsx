@@ -3,10 +3,12 @@
 import { use, useState, useCallback, useEffect, useRef } from 'react'
 import { useGameSystem, useSaveSystem, useAnalyzeBalance } from '@/lib/queries/useSystems'
 import { useProject } from '@/lib/queries/useProjects'
+import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { SystemsCanvas, type SystemsCanvasHandle } from '@/components/systems/SystemsCanvas'
 import { SystemsSheet } from '@/components/systems/SystemsSheet'
 import { NodeEditor } from '@/components/systems/NodeEditor'
 import { BalancePanel } from '@/components/systems/BalancePanel'
+import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import type { SystemNode, SystemEdge, BalanceAnalysis, SystemBalanceSuggestion } from '@gamegold/types'
 
 type PanelTab = 'node' | 'balance'
@@ -16,6 +18,7 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
   const { id } = use(params)
   const { data: project } = useProject(id)
   const { data: system, isLoading: systemLoading } = useGameSystem(id)
+  const { data: summary } = useProjectSummary(id)
   const saveSystem = useSaveSystem(id)
   const analyzeBalance = useAnalyzeBalance(id)
 
@@ -86,8 +89,15 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
     )
   }
 
+  const systemsStaleMessage = stalenessMessage(summary, 'systems')
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
+      {systemsStaleMessage && (
+        <div className="px-4 pt-3">
+          <StalenessBanner message={systemsStaleMessage} />
+        </div>
+      )}
       {/* View tab switcher */}
       <div className="flex border-b border-zinc-800 shrink-0" style={{ background: '#0b1018' }}>
         <button

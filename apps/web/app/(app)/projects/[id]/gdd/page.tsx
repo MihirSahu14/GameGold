@@ -4,6 +4,8 @@ import { use, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useProject } from '@/lib/queries/useProjects'
 import { useGDD, useGenerateGDD, useSaveGDD, useRefineGDDSection } from '@/lib/queries/useGDD'
+import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
+import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { GDDQuestionsPanel } from '@/components/gdd/GDDQuestionsPanel'
 import type { GDDSections } from '@gamegold/types'
 
@@ -35,6 +37,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
   const { id } = use(params)
   const { data: project } = useProject(id)
   const { data: gdd, isLoading: gddLoading } = useGDD(id)
+  const { data: summary } = useProjectSummary(id)
   const generateGDD = useGenerateGDD(id)
   const saveGDD = useSaveGDD(id)
   const refineSection = useRefineGDDSection(id)
@@ -248,6 +251,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
 
         {/* Editor */}
         <div className="flex-1 overflow-auto p-6">
+          <StalenessBanner message={stalenessMessage(summary, 'gdd')} />
           {gddLoading ? (
             <div className="space-y-3">
               {[...Array(6)].map((_, i) => (

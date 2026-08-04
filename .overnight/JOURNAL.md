@@ -362,3 +362,11 @@ Added tests: backend `test_analyze_suggestions_are_structured_objects` (structur
 Added 2 backend tests in `test_projects_routes.py` (new file, follows `conftest.py`/`test_systems_routes.py` fixture pattern): summary returns all six keys with correct `hasContent` for a project with only a GDD doc, and 404 for an unknown project id.
 
 **Test counts:** `python -m pytest backend/tests -q` → **135 passed** (133 prior + 2 new). `pnpm --filter web test` → **80 passed**, unchanged (Sidebar has no existing tests). `pnpm --filter web build` → clean. Nothing surprising.
+
+## E2b — Staleness banners
+
+Added `useProjectSummary(id)` (TanStack Query wrapper over E2a's `GET /projects/{id}/summary`) plus a pure `stalenessMessage(summary, stage)` helper in the same file, and a shared `StalenessBanner` component (Tailwind, renders nothing on `null`). Wired all four pages (gdd, systems, assets, unity) to show it. `gdd` is first in the `gdd -> systems -> assets -> unity` order so it has no upstream — its `stalenessMessage` call is a permanent no-op, wired anyway since the task's file list named it explicitly. Added `ProjectSummary`/`StageSummary` to `packages/types/index.ts` (E2a had only defined the backend Pydantic models, no shared type existed yet).
+
+Added 5 tests to `useProjectSummary.test.ts` (new file): fetch hits the right endpoint, banner message when upstream is newer, null when upstream has no content, null when upstream is older, null for gdd (no upstream).
+
+**Test counts:** `pnpm --filter web test` → **85 passed** (80 prior + 5 new). `python -m pytest backend/tests -q` → **135 passed**, unchanged (backend untouched). `pnpm --filter web build` → clean. Nothing surprising.

@@ -4,6 +4,8 @@ import { use, useState, useEffect } from 'react'
 import { useProject, useMarkUnityComplete } from '@/lib/queries/useProjects'
 import { useAssets } from '@/lib/queries/useAssets'
 import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP } from '@/lib/queries/useUnity'
+import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
+import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { api } from '@/lib/api'
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
@@ -45,6 +47,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const { id } = use(params)
   const { data: project } = useProject(id)
   const { data: assets } = useAssets(id)
+  const { data: summary } = useProjectSummary(id)
   const markComplete = useMarkUnityComplete(id)
   const { data: plan, isLoading: planLoading } = useUnityPlan(id)
   const generatePlan = useGeneratePlan(id)
@@ -152,6 +155,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
           Use the manual checklist to import assets yourself, or connect to the Unity MCP server for AI-guided step-by-step build execution.
         </p>
       </div>
+
+      <StalenessBanner message={stalenessMessage(summary, 'unity')} />
 
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid #1b2533', marginBottom: '28px' }}>
