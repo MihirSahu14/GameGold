@@ -204,3 +204,11 @@ New tests in `lib/__tests__/api.test.ts`: a 401 followed by a mocked successful 
 `pnpm --filter web test`: **75 passed** (73 baseline + 2 new, meets required >= 73). `pnpm --filter web build`: clean, same 8 routes as before. `git status` confirms only `apps/web/lib/api.ts` and `apps/web/lib/__tests__/api.test.ts` changed — backend untouched.
 
 Note for BF3: this task deliberately does not touch CSRF cookie lifetimes — that gap is still open and is BF3's job.
+
+## BF3 — CSRF gate now covers `/auth/refresh`
+
+`backend/app/core/csrf.py`: `gg_csrf` is now minted with `refresh_expire_days` max-age (was `access_expire_minutes`), so it survives past access-token expiry alongside `gg_refresh`. `CSRFMiddleware.dispatch` now gates on `SESSION_COOKIE in cookies OR REFRESH_COOKIE in cookies` (was session-cookie-only), so a bare refresh call now requires a matching `X-CSRF-Token` header.
+
+`backend/tests/test_auth_refresh.py`: added `test_refresh_without_csrf_header_is_rejected` (valid `gg_refresh` cookie, no CSRF header → 403). Updated `test_logout_all_revokes_every_session`'s tail assertion from 401→403 since re-adding only `gg_refresh` post-logout-all now trips the CSRF gate before the revoked-jti check. `test_logout_revokes_the_presenting_refresh_token` needed no change — logout clears both cookies, so that refresh call still hits the None-check first.
+
+`python -m pytest backend/tests -q`: **127 passed** (baseline 108 + BF1/BF2's prior additions + 1 new here, meets required >= 125). Frontend/build untouched.

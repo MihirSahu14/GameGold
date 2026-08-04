@@ -35,13 +35,17 @@ def generate_csrf_token() -> str:
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     common = dict(secure=settings.cookie_secure, samesite=settings.cookie_samesite)
     access_max_age = settings.access_expire_minutes * 60
+    refresh_max_age = settings.refresh_expire_days * 24 * 60 * 60
     response.set_cookie(SESSION_COOKIE, access_token, httponly=True, max_age=access_max_age, path="/", **common)
-    response.set_cookie(CSRF_COOKIE, generate_csrf_token(), httponly=False, max_age=access_max_age, path="/", **common)
+    # gg_csrf must outlive gg_session so /auth/refresh (called after the access
+    # token expires) still has a CSRF cookie to double-submit against; it's a
+    # public random nonce, so a longer lifetime leaks nothing.
+    response.set_cookie(CSRF_COOKIE, generate_csrf_token(), httponly=False, max_age=refresh_max_age, path="/", **common)
     response.set_cookie(
         REFRESH_COOKIE,
         refresh_token,
         httponly=True,
-        max_age=settings.refresh_expire_days * 24 * 60 * 60,
+        max_age=refresh_max_age,
         path="/auth",
         **common,
     )
@@ -56,7 +60,7 @@ def clear_auth_cookies(response: Response) -> None:
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        has_session_cookie = SESSION_COOKIE in request.cookies
+        has_session_cookie = SESSION_COOKIE in request.cookies or REFRESH_COOKIE in request.cookies
         has_auth_header = "authorization" in request.headers
 
         if (

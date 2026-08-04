@@ -124,7 +124,17 @@ def test_logout_all_revokes_every_session(auth_client, mock_db):
     assert resp.status_code == 204
     assert all(record["revoked"] for record in store.values())
 
-    # session cookie is cleared, so this refresh call isn't CSRF-gated
+    # gg_csrf was cleared too, so re-adding only the refresh cookie now trips
+    # the CSRF gate (BF3) before the revoked-jti check is ever reached.
     auth_client.cookies.set(REFRESH_COOKIE, session_a_refresh)
     resp = auth_client.post("/auth/refresh")
-    assert resp.status_code == 401
+    assert resp.status_code == 403
+
+
+def test_refresh_without_csrf_header_is_rejected(auth_client, mock_db):
+    _fake_refresh_store(mock_db)
+    _login(auth_client, mock_db)
+
+    resp = auth_client.post("/auth/refresh")
+
+    assert resp.status_code == 403
