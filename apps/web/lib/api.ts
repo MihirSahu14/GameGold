@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useToastStore } from '@/store/toastStore'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 const CSRF_COOKIE = 'gg_csrf'
@@ -48,17 +49,29 @@ api.interceptors.request.use((config) => {
 // inline (bad credentials, not logged in) — redirecting would reload the login
 // page and wipe the error message.
 const AUTH_401_EXCLUDED = ['/auth/me', '/auth/login', '/auth/register', '/auth/csrf']
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    const url: string = error.config?.url ?? ''
-    const isAuthCheck = AUTH_401_EXCLUDED.some((p) => url.includes(p))
-    if (error.response?.status === 401 && !isAuthCheck && typeof window !== 'undefined') {
-      window.location.href = '/login'
-    }
-    return Promise.reject(error)
+
+export function handleResponseError(error: {
+  config?: { url?: string }
+  response?: { status?: number; headers?: Record<string, string> }
+}) {
+  if (error.response?.status === 429) {
+    const retryAfter = Number(error.response.headers?.['retry-after'])
+    const message =
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? `Rate limited. Try again in ${retryAfter}s.`
+        : 'Rate limited. Try again shortly.'
+    useToastStore.getState().pushToast(message, 'error')
   }
-)
+
+  const url: string = error.config?.url ?? ''
+  const isAuthCheck = AUTH_401_EXCLUDED.some((p) => url.includes(p))
+  if (error.response?.status === 401 && !isAuthCheck && typeof window !== 'undefined') {
+    window.location.href = '/login'
+  }
+  return Promise.reject(error)
+}
+
+api.interceptors.response.use((response) => response, handleResponseError)
 
 export function apiErrorMessage(err: unknown, fallback: string): string {
   const axiosErr = err as { response?: { data?: { detail?: string } } } | undefined

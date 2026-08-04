@@ -104,3 +104,11 @@ New `app/core/concurrency.py`: `_locks: dict[str, asyncio.Lock]` plus `project_l
 New tests in `tests/test_concurrency_guard.py` (4): two overlapping requests for the same project (fired from two threads against the shared TestClient, first request's mocked service sleeps 0.3s to hold the lock) → exactly one 200 and one 429 with `Retry-After`; two overlapping requests for different projects → both 200, no 429; lock released after a clean `async with` exit; lock released when the body raises.
 
 `python -m pytest backend/tests -q`: **114 passed** (110 after A1 + 4 new, exceeds required >= 2). Nothing surprising — `analyze_system` already called `verify_project_access` so no extra wiring was needed there. Frontend/build untouched (no files outside `backend/` changed).
+
+## A3 — Frontend surfaces 429 as a toast
+
+New `store/toastStore.ts` (Zustand, matches `authStore.ts` pattern): `toasts`, `pushToast(message, kind)`, `dismissToast(id)`, 6000ms auto-dismiss via `setTimeout`. New `components/layout/Toaster.tsx`, `'use client'`, fixed bottom-right stack, Tailwind only, rendered once in `app/(app)/layout.tsx`. In `lib/api.ts` extracted the response-interceptor rejection into a named exported `handleResponseError` (was an inline arrow, untestable without hitting real axios internals) and added a 429 branch before the existing 401 branch: reads `Retry-After` header, pushes an error toast ("Rate limited. Try again in Ns." or "...shortly." when absent/unparseable), still rejects the promise.
+
+New tests: `lib/__tests__/api.test.ts` (3 — 429+Retry-After toasts with the number, 429 with no header doesn't throw, non-429 pushes nothing) and `components/layout/__tests__/Toaster.test.tsx` (3 — empty render, pushed toast renders, dismiss button removes it), 6 new total (required >= 3).
+
+`pnpm --filter web test`: **73 passed** (67 baseline + 6 new). `pnpm --filter web build`: clean, same route table as before. `python -m pytest backend/tests -q`: **114 passed**, unchanged — no backend files touched. Nothing surprising.

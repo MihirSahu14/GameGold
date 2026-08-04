@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/authStore'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { Toaster } from '@/components/layout/Toaster'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore()
@@ -32,6 +33,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen" style={{ background: '#07090d' }}>
       <Sidebar />
       <main className="flex-1 overflow-auto">{children}</main>
+      <Toaster />
     </div>
   )
 }
