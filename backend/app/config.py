@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Image generation (Phase 3) — optional; sprite gen returns a clear error without it
     replicate_api_token: str = ""
 
+    # Password reset email — unset means log-only (no provider wired yet)
+    email_provider: str = ""
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "https://gamegold.vercel.app"]
 

@@ -46,3 +46,16 @@ class UserInDB(BaseModel):
     hashed_password: str
     plan: Literal["free", "pro"] = "free"
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8, max_length=72)
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    _validate_password_bytes = field_validator("new_password")(_check_bcrypt_byte_limit)

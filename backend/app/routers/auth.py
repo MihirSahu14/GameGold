@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import secrets
 from datetime import datetime, timedelta
 
@@ -10,7 +11,14 @@ from app.config import settings
 from app.core.csrf import SESSION_COOKIE, REFRESH_COOKIE, set_auth_cookies, clear_auth_cookies
 from app.core.rate_limit import limiter
 from app.db.mongodb import get_db
-from app.models.user import UserCreate, UserLogin, UserOut, UserInDB
+from app.models.user import (
+    UserCreate,
+    UserLogin,
+    UserOut,
+    UserInDB,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+)
 from app.services.auth_service import (
     hash_password,
     verify_password,
@@ -18,6 +26,7 @@ from app.services.auth_service import (
     create_refresh_token,
     decode_token,
 )
+from app.services.email_sender import send_password_reset
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer(auto_error=False)
@@ -154,6 +163,43 @@ async def logout_all(response: Response, current_user: dict = Depends(get_curren
         {"user_id": current_user["_id"], "revoked": False}, {"$set": {"revoked": True}}
     )
     clear_auth_cookies(response)
+
+
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, response: Response, data: ForgotPasswordRequest):
+    # Always 202, whether or not the email exists — never leak account existence.
+    db = get_db()
+    user = await db.users.find_one({"email": data.email})
+    if user:
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        await db.password_resets.insert_one(
+            {
+                "token_hash": token_hash,
+                "user_id": str(user["_id"]),
+                "expires_at": datetime.utcnow() + timedelta(minutes=30),
+                "used": False,
+            }
+        )
+        await send_password_reset(data.email, f"/reset-password?token={token}")
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("5/minute")
+async def reset_password(request: Request, response: Response, data: ResetPasswordRequest):
+    db = get_db()
+    token_hash = hashlib.sha256(data.token.encode()).hexdigest()
+    record = await db.password_resets.find_one({"token_hash": token_hash})
+    if not record or record.get("used") or record["expires_at"] < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    await db.password_resets.update_one({"token_hash": token_hash}, {"$set": {"used": True}})
+    hashed = await asyncio.to_thread(hash_password, data.new_password)
+    await db.users.update_one({"_id": ObjectId(record["user_id"])}, {"$set": {"hashed_password": hashed}})
+    await db.refresh_tokens.update_many(
+        {"user_id": record["user_id"], "revoked": False}, {"$set": {"revoked": True}}
+    )
 
 
 @router.get("/me", response_model=UserOut, response_model_by_alias=True)
