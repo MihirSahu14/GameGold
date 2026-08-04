@@ -1,3 +1,7 @@
+import logging
+import time
+
+from app.config import settings
 from app.models.gdd import GDDSections
 from app.prompts.gdd_prompt import (
     CONCEPT_CHECK_SYSTEM_PROMPT,
@@ -9,6 +13,23 @@ from app.services.llm_utils import complete, extract_json
 
 GDD_SECTIONS = ["overview", "mechanics", "progression", "levels", "characters", "ui", "audio", "visual"]
 
+perf_logger = logging.getLogger("app.perf")
+
+
+async def _timed_complete(purpose: str, *args, **kwargs) -> str:
+    """Wraps `complete()` to log model, purpose, and elapsed ms — measurement only."""
+    start = time.perf_counter()
+    try:
+        return await complete(*args, **kwargs)
+    finally:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        perf_logger.info(
+            "llm_call model=%s purpose=%s elapsed_ms=%.1f",
+            settings.llm_model,
+            purpose,
+            elapsed_ms,
+        )
+
 
 async def check_concept_sufficiency(concept_card: dict) -> list[str]:
     """
@@ -18,7 +39,8 @@ async def check_concept_sufficiency(concept_card: dict) -> list[str]:
     """
     try:
         data = extract_json(
-            await complete(
+            await _timed_complete(
+                "concept_check",
                 CONCEPT_CHECK_SYSTEM_PROMPT,
                 build_concept_check_prompt(concept_card),
                 max_tokens=500,
@@ -42,7 +64,7 @@ async def generate_gdd(concept_card: dict, answers: dict | None = None) -> GDDSe
             if text
         )
         prompt = build_gdd_prompt(concept_card, section, prior, answers)
-        sections[section] = await complete(GAME_DESIGN_SYSTEM_PROMPT, prompt)
+        sections[section] = await _timed_complete(f"gdd_section:{section}", GAME_DESIGN_SYSTEM_PROMPT, prompt)
 
     return GDDSections(**sections)
 
@@ -55,4 +77,4 @@ async def refine_gdd_section(section_name: str, current_content: str, instructio
         "Apply the requested changes and return the updated section in markdown format. "
         "Keep everything that wasn't changed. Be specific and concrete."
     )
-    return await complete(GAME_DESIGN_SYSTEM_PROMPT, prompt)
+    return await _timed_complete("refine_gdd_section", GAME_DESIGN_SYSTEM_PROMPT, prompt)

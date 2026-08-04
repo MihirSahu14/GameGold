@@ -212,3 +212,20 @@ Note for BF3: this task deliberately does not touch CSRF cookie lifetimes — th
 `backend/tests/test_auth_refresh.py`: added `test_refresh_without_csrf_header_is_rejected` (valid `gg_refresh` cookie, no CSRF header → 403). Updated `test_logout_all_revokes_every_session`'s tail assertion from 401→403 since re-adding only `gg_refresh` post-logout-all now trips the CSRF gate before the revoked-jti check. `test_logout_revokes_the_presenting_refresh_token` needed no change — logout clears both cookies, so that refresh call still hits the None-check first.
 
 `python -m pytest backend/tests -q`: **127 passed** (baseline 108 + BF1/BF2's prior additions + 1 new here, meets required >= 125). Frontend/build untouched.
+
+## C1 — Backend perf measurement only (zero behavior change)
+
+`app/main.py`: new `TimingMiddleware` (stdlib `logging`, logger `app.perf`) added outermost, logs `method`, `path`, `duration_ms` for every request. `services/claude_service.py`: new `_timed_complete(purpose, ...)` wraps `llm_utils.complete()` and logs `model`, `purpose`, `elapsed_ms`; the 3 call sites in this file (`concept_check`, `gdd_section:{section}`, `refine_gdd_section`) now route through it. Left `asset_service.py`/`balance_service.py`/`deployment_service.py`/`unity_service.py`'s own `complete()` calls untouched — out of scope per the task's file list, and `llm_utils.complete()` itself is unmodified so their behavior/timing is unaffected.
+
+New `backend/scripts/perf_probe.py`: builds its own mocked TestClient (reusing `make_cursor`/`make_llm_response`/`TEST_PROJECT` from `tests/conftest.py`) and times 4 representative endpoints over 20 reps each, prints a markdown median-ms table. Starts nothing external (mocked Mongo + mocked `litellm.completion`). Real output from an actual run:
+
+| endpoint | median ms | notes |
+|---|---|---|
+| GET /health | 3.74 | mocked DB, no network |
+| GET /projects | 4.25 | mocked DB, no network |
+| GET /projects/{id}/assets | 4.41 | mocked DB, no network |
+| POST /projects/{id}/gdd/generate | 10.72 | mocked DB + mocked LLM, no network |
+
+New `backend/tests/test_timing_middleware.py` (1 test, `caplog`): a `GET /health` logs exactly one `app.perf` record containing `method=GET`, `path=/health`, `duration_ms=`.
+
+`python -m pytest backend/tests -q`: **128 passed** (127 baseline + 1 new, meets required >= 1). `git status` confirms only `backend/app/main.py`, `backend/app/services/claude_service.py`, `backend/scripts/perf_probe.py` (new), `backend/tests/test_timing_middleware.py` (new) changed — frontend/build untouched. No optimization applied, per contract — C3 is where any perf win gets applied.
