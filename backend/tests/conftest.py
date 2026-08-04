@@ -75,6 +75,11 @@ def mock_db():
     db.users.insert_one = AsyncMock()
     db.users.update_one = AsyncMock()
 
+    db.refresh_tokens = MagicMock()
+    db.refresh_tokens.find_one = AsyncMock(return_value=None)
+    db.refresh_tokens.insert_one = AsyncMock()
+    db.refresh_tokens.update_one = AsyncMock()
+
     db.projects = MagicMock()
     db.projects.find_one = AsyncMock(return_value=None)
     db.projects.insert_one = AsyncMock()

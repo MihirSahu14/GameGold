@@ -13,14 +13,21 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: str) -> str:
-    expire = datetime.utcnow() + timedelta(minutes=settings.jwt_expire_minutes)
-    payload = {"sub": user_id, "exp": expire}
+    expire = datetime.utcnow() + timedelta(minutes=settings.access_expire_minutes)
+    payload = {"sub": user_id, "exp": expire, "typ": "access"}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def decode_token(token: str) -> str:
+def create_refresh_token(user_id: str, jti: str) -> str:
+    expire = datetime.utcnow() + timedelta(days=settings.refresh_expire_days)
+    payload = {"sub": user_id, "exp": expire, "typ": "refresh", "jti": jti}
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_token(token: str, expected_typ: str) -> dict:
     payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    user_id: str | None = payload.get("sub")
-    if user_id is None:
+    if payload.get("sub") is None:
         raise JWTError("Missing sub claim")
-    return user_id
+    if payload.get("typ") != expected_typ:
+        raise JWTError(f"Expected a {expected_typ} token")
+    return payload

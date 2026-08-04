@@ -21,6 +21,7 @@ from app.config import settings
 
 SESSION_COOKIE = "gg_session"
 CSRF_COOKIE = "gg_csrf"
+REFRESH_COOKIE = "gg_refresh"
 CSRF_HEADER = "x-csrf-token"
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -31,23 +32,26 @@ def generate_csrf_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def set_auth_cookies(response: Response, token: str) -> None:
-    max_age = settings.jwt_expire_minutes * 60
-    common = dict(
-        max_age=max_age,
-        path="/",
-        secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    common = dict(secure=settings.cookie_secure, samesite=settings.cookie_samesite)
+    access_max_age = settings.access_expire_minutes * 60
+    response.set_cookie(SESSION_COOKIE, access_token, httponly=True, max_age=access_max_age, path="/", **common)
+    response.set_cookie(CSRF_COOKIE, generate_csrf_token(), httponly=False, max_age=access_max_age, path="/", **common)
+    response.set_cookie(
+        REFRESH_COOKIE,
+        refresh_token,
+        httponly=True,
+        max_age=settings.refresh_expire_days * 24 * 60 * 60,
+        path="/auth",
+        **common,
     )
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, **common)
-    response.set_cookie(CSRF_COOKIE, generate_csrf_token(), httponly=False, **common)
 
 
 def clear_auth_cookies(response: Response) -> None:
-    for name in (SESSION_COOKIE, CSRF_COOKIE):
-        response.delete_cookie(
-            name, path="/", secure=settings.cookie_secure, samesite=settings.cookie_samesite
-        )
+    common = dict(secure=settings.cookie_secure, samesite=settings.cookie_samesite)
+    response.delete_cookie(SESSION_COOKIE, path="/", **common)
+    response.delete_cookie(CSRF_COOKIE, path="/", **common)
+    response.delete_cookie(REFRESH_COOKIE, path="/auth", **common)
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):

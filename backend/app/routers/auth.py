@@ -1,14 +1,23 @@
 import asyncio
+import secrets
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from bson import ObjectId
 from jose import JWTError
-from app.core.csrf import SESSION_COOKIE, set_auth_cookies, clear_auth_cookies
+from app.config import settings
+from app.core.csrf import SESSION_COOKIE, REFRESH_COOKIE, set_auth_cookies, clear_auth_cookies
 from app.core.rate_limit import limiter
 from app.db.mongodb import get_db
 from app.models.user import UserCreate, UserLogin, UserOut, UserInDB
-from app.services.auth_service import hash_password, verify_password, create_access_token, decode_token
+from app.services.auth_service import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer(auto_error=False)
@@ -17,6 +26,20 @@ security = HTTPBearer(auto_error=False)
 def serialize_user(user: dict) -> dict:
     user["_id"] = str(user["_id"])
     return user
+
+
+async def issue_tokens(db, response: Response, user_id: str) -> None:
+    """Mint an access/refresh pair, record the refresh jti, and set cookies."""
+    jti = secrets.token_urlsafe(32)
+    await db.refresh_tokens.insert_one(
+        {
+            "jti": jti,
+            "user_id": user_id,
+            "expires_at": datetime.utcnow() + timedelta(days=settings.refresh_expire_days),
+            "revoked": False,
+        }
+    )
+    set_auth_cookies(response, create_access_token(user_id), create_refresh_token(user_id, jti))
 
 
 async def get_current_user(
@@ -29,7 +52,7 @@ async def get_current_user(
 
     db = get_db()
     try:
-        user_id = decode_token(token)
+        user_id = decode_token(token, "access")["sub"]
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
@@ -64,7 +87,7 @@ async def register(request: Request, response: Response, data: UserCreate):
     user = await db.users.find_one({"_id": result.inserted_id})
     user = serialize_user(user)
 
-    set_auth_cookies(response, create_access_token(user["_id"]))
+    await issue_tokens(db, response, user["_id"])
     return UserOut(**user)
 
 
@@ -78,8 +101,35 @@ async def login(request: Request, response: Response, data: UserLogin):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     user = serialize_user(user)
-    set_auth_cookies(response, create_access_token(user["_id"]))
+    await issue_tokens(db, response, user["_id"])
     return UserOut(**user)
+
+
+@router.post("/refresh", response_model=UserOut, response_model_by_alias=True)
+async def refresh(request: Request, response: Response):
+    db = get_db()
+    token = request.cookies.get(REFRESH_COOKIE)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        payload = decode_token(token, "refresh")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    jti = payload.get("jti")
+    record = await db.refresh_tokens.find_one({"jti": jti})
+    if not record or record.get("revoked"):
+        raise HTTPException(status_code=401, detail="Refresh token revoked or unknown")
+
+    user_id = payload["sub"]
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    await db.refresh_tokens.update_one({"jti": jti}, {"$set": {"revoked": True}})
+    await issue_tokens(db, response, user_id)
+    return UserOut(**serialize_user(user))
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
