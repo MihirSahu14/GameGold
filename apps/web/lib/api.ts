@@ -50,8 +50,8 @@ api.interceptors.request.use((config) => {
 // page and wipe the error message.
 const AUTH_401_EXCLUDED = ['/auth/me', '/auth/login', '/auth/register', '/auth/csrf']
 
-export function handleResponseError(error: {
-  config?: { url?: string }
+export async function handleResponseError(error: {
+  config?: { url?: string; [key: string]: unknown }
   response?: { status?: number; headers?: Record<string, string> }
 }) {
   if (error.response?.status === 429) {
@@ -65,8 +65,19 @@ export function handleResponseError(error: {
 
   const url: string = error.config?.url ?? ''
   const isAuthCheck = AUTH_401_EXCLUDED.some((p) => url.includes(p))
-  if (error.response?.status === 401 && !isAuthCheck && typeof window !== 'undefined') {
-    window.location.href = '/login'
+  const isRefreshCall = url.includes('/auth/refresh')
+  if (error.response?.status === 401 && !isAuthCheck && !isRefreshCall) {
+    if (error.config) {
+      try {
+        await axios.post(`${API_URL}/auth/refresh`, null, { withCredentials: true })
+        return api.request(error.config)
+      } catch {
+        // refresh failed — fall through to redirect below
+      }
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login'
+    }
   }
   return Promise.reject(error)
 }

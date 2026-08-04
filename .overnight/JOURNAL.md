@@ -194,3 +194,13 @@ Per the task contract, 3 `- [ ] BF1/BF2/BF3` fix tasks appended below — capped
 New test `test_reset_password_rejects_weak_password` (`test_password_reset.py`): a reset with a short/letters-only `newPassword` returns 422 before touching the DB.
 
 `python -m pytest backend/tests -q`: **126 passed** (125 baseline + 1 new, meets required >= 1). `git status` confirms only `backend/app/models/user.py` and `backend/tests/test_password_reset.py` changed — frontend/build untouched.
+
+## BF2 — Frontend now refreshes the access token on 401 instead of hard-logging-out
+
+`apps/web/lib/api.ts`: `handleResponseError` is now `async`. On a 401 that isn't in `AUTH_401_EXCLUDED` and isn't itself `/auth/refresh` (loop guard), it fires one plain `axios.post('/auth/refresh', null, {withCredentials: true})` (bypassing the `api` instance's own interceptors) and, on success, retries the original request via `api.request(error.config)` and resolves with that result. If the refresh call itself rejects, falls through to the existing redirect-to-`/login` behavior unchanged.
+
+New tests in `lib/__tests__/api.test.ts`: a 401 followed by a mocked successful `/auth/refresh` retries the original request and returns its result without touching `window.location`; a 401 where `/auth/refresh` also rejects still redirects to `/login`.
+
+`pnpm --filter web test`: **75 passed** (73 baseline + 2 new, meets required >= 73). `pnpm --filter web build`: clean, same 8 routes as before. `git status` confirms only `apps/web/lib/api.ts` and `apps/web/lib/__tests__/api.test.ts` changed — backend untouched.
+
+Note for BF3: this task deliberately does not touch CSRF cookie lifetimes — that gap is still open and is BF3's job.
