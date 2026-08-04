@@ -332,3 +332,11 @@ Added `POST /projects/{id}/systems/extract`: pulls the GDD (overview/mechanics/p
 Added 3 tests to `test_systems_routes.py`: 404 without GDD, merge adds new nodes, no-clobber of an existing node sharing a label. No existing tests touched.
 
 **Test counts:** `python -m pytest backend/tests -q` → **131 passed** (128 prior + 3 new). `pnpm --filter web test` → **75 passed**, unchanged. `pnpm --filter web build` → clean. Nothing surprising — GDD/systems models and prompt conventions were already consistent enough that this was a straight extension, no existing code needed rework.
+
+## E1b — Systems sheet as default view
+
+Added `SystemsSheet.tsx`: a table view (rows = nodes, columns = label/type/stats) with inline-editable cells. Label and type edits fire immediately via `onSave`; stats (a comma-separated `key=value` text field, parsed into `node.data`) commit on blur. Wired into `systems/page.tsx` as a new top-level tab switcher — "Sheet" (default) and "Advanced" (the existing canvas + node/balance side panel, moved in unchanged). Both tabs share the existing `handleSave` callback into `useSaveSystem`; no new mutation added.
+
+Added 3 tests in `SystemsSheet.test.tsx` (create): rows render from nodes, a label edit calls `onSave` with the patched node array, a stats-cell blur calls `onSave` with parsed numeric stats. All 6 `SystemsCanvas.test.tsx` tests pass unmodified; `SystemsCanvas.tsx` itself was not touched.
+
+**Test counts:** `pnpm --filter web test` → **78 passed** (75 prior + 3 new). `python -m pytest backend/tests -q` → **131 passed**, unchanged (backend untouched). `pnpm --filter web build` → clean. Nothing surprising.

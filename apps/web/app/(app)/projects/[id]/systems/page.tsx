@@ -4,11 +4,13 @@ import { use, useState, useCallback, useEffect, useRef } from 'react'
 import { useGameSystem, useSaveSystem, useAnalyzeBalance } from '@/lib/queries/useSystems'
 import { useProject } from '@/lib/queries/useProjects'
 import { SystemsCanvas, type SystemsCanvasHandle } from '@/components/systems/SystemsCanvas'
+import { SystemsSheet } from '@/components/systems/SystemsSheet'
 import { NodeEditor } from '@/components/systems/NodeEditor'
 import { BalancePanel } from '@/components/systems/BalancePanel'
 import type { SystemNode, SystemEdge, BalanceAnalysis } from '@gamegold/types'
 
 type PanelTab = 'node' | 'balance'
+type ViewTab = 'sheet' | 'advanced'
 
 export default function SystemsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -23,6 +25,7 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
     system?.analysisCache ?? null
   )
   const [activeTab, setActiveTab] = useState<PanelTab>('node')
+  const [viewTab, setViewTab] = useState<ViewTab>('sheet')
 
   // Hydrate persisted analysis once the query loads — but never clobber a
   // fresher in-session result.
@@ -72,7 +75,33 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden">
+      {/* View tab switcher */}
+      <div className="flex border-b border-zinc-800 shrink-0" style={{ background: '#0b1018' }}>
+        <button
+          onClick={() => setViewTab('sheet')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+            viewTab === 'sheet' ? 'text-zinc-50' : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+          style={{ borderBottom: viewTab === 'sheet' ? '2px solid #4ea8ff' : '2px solid transparent' }}
+        >
+          📋 Sheet
+        </button>
+        <button
+          onClick={() => setViewTab('advanced')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+            viewTab === 'advanced' ? 'text-zinc-50' : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+          style={{ borderBottom: viewTab === 'advanced' ? '2px solid #4ea8ff' : '2px solid transparent' }}
+        >
+          🧭 Advanced
+        </button>
+      </div>
+
+      {viewTab === 'sheet' ? (
+        <SystemsSheet nodes={nodes} edges={edges} onSave={handleSave} />
+      ) : (
+      <div className="flex flex-1 overflow-hidden">
       {/* Canvas — takes remaining space */}
       <div className="flex-1 relative">
         <SystemsCanvas
@@ -148,6 +177,8 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
           )}
         </div>
       </div>
+      </div>
+      )}
     </div>
   )
 }
