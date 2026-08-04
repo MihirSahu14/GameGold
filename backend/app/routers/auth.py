@@ -36,7 +36,9 @@ async def get_current_user(
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
-    return serialize_user(user)
+    user = serialize_user(user)
+    request.state.user_id = user["_id"]
+    return user
 
 
 @router.post("/register", response_model=UserOut, response_model_by_alias=True, status_code=status.HTTP_201_CREATED)

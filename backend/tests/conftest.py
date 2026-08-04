@@ -145,6 +145,9 @@ def client(mock_db, monkeypatch):
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
 
+    from app.core.rate_limit import limiter
+    limiter.reset()
+
     app.dependency_overrides[get_current_user] = lambda: TEST_USER
 
     with TestClient(app) as c:

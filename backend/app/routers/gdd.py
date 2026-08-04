@@ -1,9 +1,10 @@
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
 from bson import ObjectId
 from datetime import datetime
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.gdd import GDDUpdate, GDDOut, GDDInDB, GenerateGDDRequest, RefineGDDRequest, RefinedSectionOut
 from app.routers.auth import get_current_user
@@ -43,7 +44,10 @@ async def get_gdd(project_id: str, current_user: dict = Depends(get_current_user
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def generate_gdd_endpoint(
+    request: Request,
+    response: Response,
     project_id: str,
     body: Optional[GenerateGDDRequest] = None,
     current_user: dict = Depends(get_current_user),

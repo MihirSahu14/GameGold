@@ -1,10 +1,11 @@
 import io
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
 from bson import ObjectId
 from datetime import datetime
 
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.deployment import (
     DeploymentOut,
@@ -90,7 +91,10 @@ async def list_deployment_items(
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def create_store_page(
+    request: Request,
+    response: Response,
     project_id: str,
     body: GenerateStorePageRequest,
     current_user: dict = Depends(get_current_user),
@@ -116,7 +120,10 @@ async def create_store_page(
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def create_press_kit(
+    request: Request,
+    response: Response,
     project_id: str,
     body: GeneratePressKitRequest,
     current_user: dict = Depends(get_current_user),
@@ -142,7 +149,10 @@ async def create_press_kit(
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def create_build_guide(
+    request: Request,
+    response: Response,
     project_id: str,
     body: GenerateBuildGuideRequest,
     current_user: dict = Depends(get_current_user),

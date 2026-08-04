@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
 from datetime import datetime
 
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.playtest import (
     RunPlaytestRequest,
@@ -64,7 +65,10 @@ async def list_reports(
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def run_simulation(
+    request: Request,
+    response: Response,
     project_id: str,
     body: RunPlaytestRequest,
     current_user: dict = Depends(get_current_user),

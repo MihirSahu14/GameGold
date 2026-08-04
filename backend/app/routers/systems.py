@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, Response, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
 from datetime import datetime
 
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.services.llm_utils import strip_html
 from app.db.mongodb import get_db, to_object_id
 from app.models.systems import (
@@ -94,7 +95,10 @@ async def save_system(
 
 
 @router.post("/analyze", response_model=BalanceAnalysisOut, response_model_by_alias=True)
+@limiter.limit(LLM_RATE_LIMIT)
 async def analyze_system(
+    request: Request,
+    response: Response,
     project_id: str,
     body: AnalyzeRequest,
     current_user: dict = Depends(get_current_user),

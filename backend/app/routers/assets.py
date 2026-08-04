@@ -1,9 +1,10 @@
 import json
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
 from datetime import datetime
 
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.assets import (
     ApproveAssetRequest,
@@ -105,7 +106,10 @@ async def list_assets(
 # ─── Suggest (GDD-derived proposals, not persisted) ──────────────────────────
 
 @router.post("/suggest", response_model=SuggestAssetsResponse, response_model_by_alias=True)
+@limiter.limit(LLM_RATE_LIMIT)
 async def suggest_project_assets(
+    request: Request,
+    response: Response,
     project_id: str,
     current_user: dict = Depends(get_current_user),
 ):
@@ -141,7 +145,10 @@ async def suggest_project_assets(
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def create_sprite(
+    request: Request,
+    response: Response,
     project_id: str,
     body: GenerateSpriteRequest,
     current_user: dict = Depends(get_current_user),
@@ -205,7 +212,10 @@ async def create_sprite(
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def create_script(
+    request: Request,
+    response: Response,
     project_id: str,
     body: GenerateScriptRequest,
     current_user: dict = Depends(get_current_user),
@@ -259,7 +269,10 @@ async def create_script(
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def create_dialogue(
+    request: Request,
+    response: Response,
     project_id: str,
     body: GenerateDialogueRequest,
     current_user: dict = Depends(get_current_user),
