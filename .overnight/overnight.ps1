@@ -30,7 +30,7 @@ if ($LASTEXITCODE -eq 0) {
 git checkout -b $branch
 if ($LASTEXITCODE -ne 0) { Write-Host 'FATAL: could not create branch.' -ForegroundColor Red; exit 1 }
 git add -A
-git commit -m 'chore: overnight baseline snapshot'
+git commit --allow-empty -m 'chore: overnight baseline snapshot'
 if ($LASTEXITCODE -ne 0) { Write-Host 'FATAL: baseline commit failed.' -ForegroundColor Red; exit 1 }
 Log "Baseline committed on $branch"
 
@@ -39,7 +39,8 @@ Log "Baseline committed on $branch"
 $env:PATH = "$repo\backend\.venv\Scripts;$env:PATH"
 $env:PYTHONPATH = "$repo\backend"
 
-$allowedTools = 'Read,Edit,Write,Glob,Grep,Bash(python:*),Bash(pnpm:*),Bash(git status:*),Bash(git diff:*)'
+# git log is read-only and required by the R* review tasks to resolve a block's commit range.
+$allowedTools = 'Read,Edit,Write,Glob,Grep,Bash(python:*),Bash(pnpm:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*)'
 
 $innerPrompt = @'
 You are one autonomous iteration of an unattended overnight loop in the GameGold repo. No human is watching.
@@ -54,7 +55,10 @@ STRICT RULES:
    - backend:  python -m pytest backend/tests -q
    - frontend: pnpm --filter web test
    - build:    pnpm --filter web build
-   Baseline that must not regress: backend 102 passed, frontend 54 passed, build clean.
+   Baseline that must not regress: backend 108 passed, frontend 67 passed, build clean.
+   The wrapper gates check exit code only, NOT counts - a suite that still passes with
+   tests deleted looks identical to it. Deleting or skipping a test to go green is a
+   task failure even if every gate passes.
 7. When finished, edit that task line in .overnight/TASKS.md: "- [x]" if complete and tests green, "- [!] <short reason>" if you could not finish it.
 8. Append 2-4 lines to .overnight/JOURNAL.md: task id, what changed, real test counts, anything surprising.
 9. Then STOP. Do not begin the next task.
@@ -80,7 +84,17 @@ function Commit-Note([string]$msg) {
     git commit -m 'chore: overnight wrapper note' | Out-Null
 }
 
-$failCount = @{}
+$failCount  = @{}
+$abortCount = @{}
+
+function Park-Task([string]$taskId, [string]$taskLine, [string]$reasonSuffix, [string]$noteMsg) {
+    # Called AFTER Reset-ToCheckpoint so the tracked-file edit survives the reset.
+    $raw = [System.IO.File]::ReadAllText($tasksFile)
+    $raw = $raw.Replace($taskLine, ($taskLine -replace '^- \[ \]', '- [!]') + " <- wrapper: $reasonSuffix")
+    Set-Content -Path $tasksFile -Value $raw -Encoding utf8
+    Commit-Note $noteMsg
+}
+
 $deadline = (Get-Date).AddHours($Hours)
 Log "Running until $deadline or until no '- [ ]' tasks remain."
 
@@ -93,13 +107,16 @@ while ((Get-Date) -lt $deadline) {
     Log "=== Iteration: $taskId ==="
 
     Set-Content -Path $promptFile -Value $innerPrompt -Encoding ascii
-    cmd /c "type `"$promptFile`" | claude -p --permission-mode acceptEdits --max-turns 60 --model sonnet --allowedTools `"$allowedTools`" --disallowedTools `"Task,Agent`" > `"$iterOut`" 2>&1"
+    cmd /c "type `"$promptFile`" | claude -p --permission-mode acceptEdits --max-turns 90 --model sonnet --allowedTools `"$allowedTools`" --disallowedTools `"Task,Agent`" > `"$iterOut`" 2>&1"
     $claudeExit = $LASTEXITCODE
     Get-Content $iterOut | Add-Content -Path $log
     $outText = ''
     if (Test-Path $iterOut) { $outText = [System.IO.File]::ReadAllText($iterOut) }
 
-    if ($outText -match 'usage limit|rate limit|resets at|limit will reset') {
+    # ponytail: only a FAILED session can be rate-limited. A green session whose output merely
+    # discusses rate limiting (T3a/T3b/T3c literally do) must not be mistaken for one and discarded.
+    # Bare 'rate limit' dropped from the pattern for the same reason - it's task vocabulary now.
+    if ($claudeExit -ne 0 -and $outText -match 'usage limit|resets at|limit will reset') {
         Log 'Rate limit detected. Discarding partial work, sleeping 10 minutes, retrying same task in a fresh session.'
         Reset-ToCheckpoint
         Start-Sleep -Seconds 600
@@ -108,7 +125,14 @@ while ((Get-Date) -lt $deadline) {
     if ($claudeExit -ne 0) {
         Log "claude exited $claudeExit. Resetting to last checkpoint and continuing."
         Reset-ToCheckpoint
-        Commit-Note "$taskId aborted (claude exit $claudeExit); work discarded."
+        if (-not $abortCount.ContainsKey($taskId)) { $abortCount[$taskId] = 0 }
+        $abortCount[$taskId]++
+        if ($abortCount[$taskId] -ge 3) {
+            # ponytail: mirror the red-gate 3-strike so a task that keeps aborting can't starve the queue
+            Park-Task $taskId $taskLine "aborted 3x (claude exit $claudeExit)" "$taskId marked [!] after 3 aborts (exit $claudeExit); moving on."
+        } else {
+            Commit-Note "$taskId aborted (attempt $($abortCount[$taskId]), claude exit $claudeExit); work discarded."
+        }
         continue
     }
 
@@ -129,13 +153,39 @@ while ((Get-Date) -lt $deadline) {
         Log "$taskId gates red (attempt $($failCount[$taskId])) - work discarded."
         if ($failCount[$taskId] -ge 3) {
             # ponytail: 3 strikes then park the task, or one broken task eats the whole night
-            $raw = [System.IO.File]::ReadAllText($tasksFile)
-            $raw = $raw.Replace($taskLine, ($taskLine -replace '^- \[ \]', '- [!]') + ' <- wrapper: 3 failed attempts')
-            Set-Content -Path $tasksFile -Value $raw -Encoding utf8
-            Commit-Note "$taskId marked [!] after 3 red-gate attempts; moving on."
+            Park-Task $taskId $taskLine '3 failed attempts' "$taskId marked [!] after 3 red-gate attempts; moving on."
         } else {
             Commit-Note "$taskId attempt $($failCount[$taskId]) failed gates; work discarded."
         }
     }
 }
 Log 'Overnight run finished.'
+
+# --- Push the branch, then open a PR against main. NEVER pushes main itself:
+#     Render and Vercel track main, so pushing this branch deploys nothing. ------
+git push -u origin $branch
+if ($LASTEXITCODE -ne 0) {
+    Log 'WARNING: branch push failed - review and push manually.'
+} else {
+    $slug  = (git remote get-url origin) -replace '^.*github\.com[:/]', '' -replace '\.git$', ''
+    $prUrl = "https://github.com/$slug/compare/main...$($branch)?expand=1"
+
+    # gh's MSI installs here but a non-interactive shell may not have refreshed PATH yet.
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+        $env:PATH = "$env:ProgramFiles\GitHub CLI;$env:PATH"
+    }
+    # ponytail: fall back to the compare URL rather than failing the run. gh is only
+    # authenticated if `gh auth login` was run once by hand - it cannot be automated.
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        gh auth status *> $null
+        if ($LASTEXITCODE -eq 0) {
+            $body = "Automated overnight run on $branch. Gates (pytest/vitest/build) passed for every committed task. See .overnight/JOURNAL.md for per-task notes. Squash-merge to collapse the wrapper-note commits."
+            gh pr create --base main --head $branch --title "Overnight run $branch" --body $body 2>&1 | ForEach-Object { Log $_ }
+            if ($LASTEXITCODE -eq 0) { Log 'PR opened.' } else { Log "PR creation failed - open it here: $prUrl" }
+        } else {
+            Log "gh is installed but not authenticated (run 'gh auth login' once). Open the PR here: $prUrl"
+        }
+    } else {
+        Log "gh not found. Open the PR here: $prUrl"
+    }
+}
