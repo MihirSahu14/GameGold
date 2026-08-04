@@ -161,17 +161,31 @@ while ((Get-Date) -lt $deadline) {
 }
 Log 'Overnight run finished.'
 
-# --- Push the branch and print a one-click PR link. NEVER pushes main: Render and
-#     Vercel track main, so pushing this branch deploys nothing. -----------------
-# ponytail: gh CLI isn't installed, so we print GitHub's compare URL instead of
-# opening the PR via API. `winget install GitHub.cli` + `gh auth login` once if you
-# want a real auto-opened PR.
+# --- Push the branch, then open a PR against main. NEVER pushes main itself:
+#     Render and Vercel track main, so pushing this branch deploys nothing. ------
 git push -u origin $branch
-if ($LASTEXITCODE -eq 0) {
-    $slug = (git remote get-url origin) -replace '^.*github\.com[:/]', '' -replace '\.git$', ''
-    $prUrl = "https://github.com/$slug/compare/main...$($branch)?expand=1"
-    Log "Branch pushed. Open the PR here:"
-    Log $prUrl
-} else {
+if ($LASTEXITCODE -ne 0) {
     Log 'WARNING: branch push failed - review and push manually.'
+} else {
+    $slug  = (git remote get-url origin) -replace '^.*github\.com[:/]', '' -replace '\.git$', ''
+    $prUrl = "https://github.com/$slug/compare/main...$($branch)?expand=1"
+
+    # gh's MSI installs here but a non-interactive shell may not have refreshed PATH yet.
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+        $env:PATH = "$env:ProgramFiles\GitHub CLI;$env:PATH"
+    }
+    # ponytail: fall back to the compare URL rather than failing the run. gh is only
+    # authenticated if `gh auth login` was run once by hand - it cannot be automated.
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        gh auth status *> $null
+        if ($LASTEXITCODE -eq 0) {
+            $body = "Automated overnight run on $branch. Gates (pytest/vitest/build) passed for every committed task. See .overnight/JOURNAL.md for per-task notes. Squash-merge to collapse the wrapper-note commits."
+            gh pr create --base main --head $branch --title "Overnight run $branch" --body $body 2>&1 | ForEach-Object { Log $_ }
+            if ($LASTEXITCODE -eq 0) { Log 'PR opened.' } else { Log "PR creation failed - open it here: $prUrl" }
+        } else {
+            Log "gh is installed but not authenticated (run 'gh auth login' once). Open the PR here: $prUrl"
+        }
+    } else {
+        Log "gh not found. Open the PR here: $prUrl"
+    }
 }
