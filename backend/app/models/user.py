@@ -1,3 +1,5 @@
+import re
+
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 from typing import Literal
@@ -12,12 +14,21 @@ def _check_bcrypt_byte_limit(password: str) -> str:
     return password
 
 
+def _check_password_strength(password: str) -> str:
+    if not re.search(r"[A-Za-z]", password):
+        raise ValueError("Password must contain at least one letter")
+    if not re.search(r"\d", password):
+        raise ValueError("Password must contain at least one digit")
+    return password
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     username: str = Field(min_length=2, max_length=32)
-    password: str = Field(min_length=8, max_length=72)
+    password: str = Field(min_length=10, max_length=72)
 
     _validate_password_bytes = field_validator("password")(_check_bcrypt_byte_limit)
+    _validate_password_strength = field_validator("password")(_check_password_strength)
 
 
 class UserLogin(BaseModel):

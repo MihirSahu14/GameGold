@@ -31,6 +31,9 @@ from app.services.email_sender import send_password_reset
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer(auto_error=False)
 
+LOGIN_LOCKOUT_THRESHOLD = 8
+LOGIN_LOCKOUT_MINUTES = 15
+
 
 def serialize_user(user: dict) -> dict:
     user["_id"] = str(user["_id"])
@@ -105,9 +108,28 @@ async def register(request: Request, response: Response, data: UserCreate):
 async def login(request: Request, response: Response, data: UserLogin):
     db = get_db()
 
+    attempt = await db.login_attempts.find_one({"email": data.email})
+    locked_until = attempt.get("locked_until") if attempt else None
+    if locked_until and locked_until > datetime.utcnow():
+        retry_after = max(int((locked_until - datetime.utcnow()).total_seconds()), 1)
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     user = await db.users.find_one({"email": data.email})
     if not user or not await asyncio.to_thread(verify_password, data.password, user["hashed_password"]):
+        failed_count = (attempt.get("failed_count", 0) if attempt else 0) + 1
+        update = {"failed_count": failed_count}
+        if failed_count >= LOGIN_LOCKOUT_THRESHOLD:
+            update["locked_until"] = datetime.utcnow() + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+        await db.login_attempts.update_one({"email": data.email}, {"$set": update}, upsert=True)
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    await db.login_attempts.update_one(
+        {"email": data.email}, {"$set": {"failed_count": 0, "locked_until": None}}, upsert=True
+    )
 
     user = serialize_user(user)
     await issue_tokens(db, response, user["_id"])

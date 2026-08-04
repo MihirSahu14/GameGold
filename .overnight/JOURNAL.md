@@ -156,3 +156,11 @@ New `services/email_sender.py`: `send_password_reset(email, reset_url)` logs via
 New `tests/test_password_reset.py` (3): unknown email → 202 with zero `password_resets` writes; a valid token sets the password and is rejected on reuse (also asserts the user update and refresh-token revocation each fired exactly once); an expired token is rejected 400. Used a local in-memory fake for `mock_db.password_resets` (same pattern as B1's `_fake_refresh_store`) plus monkeypatching `app.routers.auth.secrets.token_urlsafe` to recover the raw token for the reset call, since only its hash is stored.
 
 `python -m pytest backend/tests -q`: **122 passed** (119 baseline + 3 new, meets required >= 3). Frontend/build untouched — `git status` confirms only `backend/` files changed (`config.py`, `models/user.py`, `routers/auth.py`, new `services/email_sender.py`, new `tests/test_password_reset.py`).
+
+## B4 — Password strength and login lockout
+
+`models/user.py`: `UserCreate.password` min_length raised 8→10, plus new `_check_password_strength` field_validator requiring at least one letter and one digit. `routers/auth.py`: `login` now checks a new `login_attempts` collection (`{email, failed_count, locked_until}`) before verifying credentials — a locked email gets 429 with `Retry-After` immediately; each failed attempt increments `failed_count` and sets `locked_until` (+15min) once it hits 8 (`LOGIN_LOCKOUT_THRESHOLD`); a success resets both fields. Existing IP-based `@limiter.limit("10/minute")` on login untouched. `tests/conftest.py`: added default `db.login_attempts` AsyncMock (find_one/update_one) to `mock_db` — required since login now touches it unconditionally.
+
+New `tests/test_auth_lockout.py` (3, local in-memory fake for `login_attempts` like B1/B3's pattern): weak password (letters only) rejected 422; 8 failed logins then a 9th returns 429 with `Retry-After`; a successful login after some failures clears the counter.
+
+`python -m pytest backend/tests -q`: **125 passed** (122 baseline + 3 new, meets required >= 3). Frontend/build untouched — `git status` confirms only `backend/` files changed.
