@@ -96,3 +96,11 @@ New tests in `tests/test_rate_limit.py` (2): authenticated user floods `systems/
 - wrapper 08-03 07:07: T3 aborted (claude exit 1); work discarded.
 - wrapper 08-03 07:14: T3 aborted (claude exit 1); work discarded.
 - wrapper 08-03 07:23: T3 aborted (claude exit 1); work discarded.
+
+## A2 — Per-project LLM concurrency guard
+
+New `app/core/concurrency.py`: `_locks: dict[str, asyncio.Lock]` plus `project_llm_slot(project_id)` async context manager — raises `HTTPException(429, Retry-After: 5)` immediately if the project's lock is already held, else holds it for the body. `ponytail:` comment on the in-memory-dict-is-single-process-only ceiling, Redis noted as the upgrade. Wrapped the LLM call only (not DB reads/writes around it) in all 13 endpoints A1 decorated: gdd generate, systems analyze, assets suggest/sprites/scripts/dialogue, playtest run, deployment store-page/press-kit/build-guide, unity plan/generate.
+
+New tests in `tests/test_concurrency_guard.py` (4): two overlapping requests for the same project (fired from two threads against the shared TestClient, first request's mocked service sleeps 0.3s to hold the lock) → exactly one 200 and one 429 with `Retry-After`; two overlapping requests for different projects → both 200, no 429; lock released after a clean `async with` exit; lock released when the body raises.
+
+`python -m pytest backend/tests -q`: **114 passed** (110 after A1 + 4 new, exceeds required >= 2). Nothing surprising — `analyze_system` already called `verify_project_access` so no extra wiring was needed there. Frontend/build untouched (no files outside `backend/` changed).

@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
 from datetime import datetime
 
+from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.assets import (
@@ -131,7 +132,8 @@ async def suggest_project_assets(
     existing_names = [d.get("name", "") for d in existing]
 
     try:
-        proposals = await suggest_assets(project, sections, existing_names)
+        async with project_llm_slot(project_id):
+            proposals = await suggest_assets(project, sections, existing_names)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     return SuggestAssetsResponse(proposals=proposals)
@@ -166,14 +168,15 @@ async def create_sprite(
 
     game_context = await build_game_context(db, project_id, "visual")
     try:
-        image_prompt, guide = await generate_sprite_assets(
-            body.name, body.description, body.style, game_context, regen
-        )
-        try:
-            url = await generate_sprite_image(image_prompt, body.style)
-        except SpriteGenerationError:
-            # No Replicate key — fall back to LLM-generated pixel art SVG
-            url = await generate_svg_sprite(body.name, image_prompt, body.style)
+        async with project_llm_slot(project_id):
+            image_prompt, guide = await generate_sprite_assets(
+                body.name, body.description, body.style, game_context, regen
+            )
+            try:
+                url = await generate_sprite_image(image_prompt, body.style)
+            except SpriteGenerationError:
+                # No Replicate key — fall back to LLM-generated pixel art SVG
+                url = await generate_svg_sprite(body.name, image_prompt, body.style)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -230,9 +233,10 @@ async def create_script(
 
     game_context = await build_game_context(db, project_id, "mechanics")
     try:
-        code, guide = await generate_script_asset(
-            body.name, body.script_type, body.description, game_context, regen
-        )
+        async with project_llm_slot(project_id):
+            code, guide = await generate_script_asset(
+                body.name, body.script_type, body.description, game_context, regen
+            )
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -287,9 +291,10 @@ async def create_dialogue(
 
     game_context = await build_game_context(db, project_id, "characters")
     try:
-        tree, guide = await generate_dialogue_asset(
-            body.npc_name, body.personality, game_context, regen
-        )
+        async with project_llm_slot(project_id):
+            tree, guide = await generate_dialogue_asset(
+                body.npc_name, body.personality, game_context, regen
+            )
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

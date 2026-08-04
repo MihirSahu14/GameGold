@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 from bson import ObjectId
 from datetime import datetime
 
+from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.deployment import (
@@ -104,7 +105,8 @@ async def create_store_page(
 
     game_context = await build_game_context(db, project_id)
     try:
-        data = await generate_store_page(body.platform, game_context)
+        async with project_llm_slot(project_id):
+            data = await generate_store_page(body.platform, game_context)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -133,7 +135,8 @@ async def create_press_kit(
 
     game_context = await build_game_context(db, project_id)
     try:
-        data = await generate_press_kit(game_context)
+        async with project_llm_slot(project_id):
+            data = await generate_press_kit(game_context)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -161,7 +164,8 @@ async def create_build_guide(
     project = await verify_project_access(project_id, current_user["_id"], db)
 
     try:
-        guide = await generate_build_guide(body.platform, project.get("title", ""))
+        async with project_llm_slot(project_id):
+            guide = await generate_build_guide(body.platform, project.get("title", ""))
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

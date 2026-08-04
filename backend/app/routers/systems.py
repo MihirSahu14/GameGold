@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
 from datetime import datetime
 
+from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.services.llm_utils import strip_html
 from app.db.mongodb import get_db, to_object_id
@@ -114,7 +115,8 @@ async def analyze_system(
         mechanics = strip_html(gdd["sections"].get("mechanics", ""))
         gdd_summary = f"{overview}\n{mechanics}".strip()
 
-    analysis = await analyze_balance(body.nodes, body.edges, gdd_summary)
+    async with project_llm_slot(project_id):
+        analysis = await analyze_balance(body.nodes, body.edges, gdd_summary)
 
     # Cache result on the system doc; if the graph was never saved,
     # insert a full valid doc instead of a cache-only phantom.
