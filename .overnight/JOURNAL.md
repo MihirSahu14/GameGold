@@ -112,3 +112,21 @@ New `store/toastStore.ts` (Zustand, matches `authStore.ts` pattern): `toasts`, `
 New tests: `lib/__tests__/api.test.ts` (3 — 429+Retry-After toasts with the number, 429 with no header doesn't throw, non-429 pushes nothing) and `components/layout/__tests__/Toaster.test.tsx` (3 — empty render, pushed toast renders, dismiss button removes it), 6 new total (required >= 3).
 
 `pnpm --filter web test`: **73 passed** (67 baseline + 6 new). `pnpm --filter web build`: clean, same route table as before. `python -m pytest backend/tests -q`: **114 passed**, unchanged — no backend files touched. Nothing surprising.
+
+## R1 — REVIEW block A (read-only, zero source files changed)
+
+Read the full `9067e51..510488e` diff (A1/A2/A3 commits `02c5be9`/`d0982ab`/`510488e`), not just the per-task journal summaries.
+
+**Correctness/security checks performed:**
+- `user_or_ip_key` (`backend/app/core/rate_limit.py`) falls back to `get_remote_address` when `request.state.user_id` is unset. `register`/`login` (`backend/app/routers/auth.py:43,70`) never depend on `get_current_user`, so `request.state.user_id` is never set on those calls — their existing `5/minute`/`10/minute` IP limits are provably untouched.
+- Every LLM-calling route from the A1 contract carries `@limiter.limit(LLM_RATE_LIMIT)` + `request: Request` and is wrapped in `async with project_llm_slot(project_id):` around only the LLM call: gdd generate (`routers/gdd.py:48`), systems analyze (`routers/systems.py:98`), assets suggest/sprites/scripts/dialogue (`routers/assets.py:109,150,218,276`), playtest run (`routers/playtest.py:69`), deployment store-page/press-kit/build-guide (`routers/deployment.py:95,125,155`), unity plan (`routers/unity.py:54`) — 9 endpoints, none missed, none over-wrapped (DB reads/writes stay outside the lock).
+- Ownership check (`verify_project_access`) runs before `project_llm_slot` acquisition on every one of those routes, so an unauthenticated or non-owning caller can never consume another project's concurrency slot or another user's rate-limit budget — confirmed by reading each handler, not just A1/A2's own summaries.
+- Dependency-resolution order confirmed by reading `get_current_user` (`routers/auth.py:21-38`): it's a `Depends()` parameter on every decorated route, and FastAPI resolves all `Depends()` before invoking the `@limiter.limit`-wrapped endpoint body, so `request.state.user_id` is always set before the limiter's key function reads it. No race.
+- `project_llm_slot` (`backend/app/core/concurrency.py:12-23`) releases its lock on both the success and exception path (`async with lock:` inside the `if not lock.locked()` guard) — verified by the two new lock-release tests in `test_concurrency_guard.py:75-84`, both re-run green.
+- `handleResponseError` (`apps/web/lib/api.ts`) still rejects the promise after pushing a toast, so no caller's existing 401/error handling changed behavior.
+
+**Findings: none.** Re-ran both suites: `python -m pytest backend/tests -q` → **114 passed**; `pnpm --filter web test` → **73 passed**; `pnpm --filter web build` → clean. All match the counts each task already logged, `git status` shows zero source changes from this review.
+
+No over-engineering found — `project_llm_slot`'s in-memory `_locks` dict already carries a `ponytail:` comment naming the single-process ceiling; it grows one entry per distinct project ever touched but each entry is a bare `asyncio.Lock()` and project counts are small, not worth a fix task.
+
+Per the task contract, zero `- [ ] AF*` fix tasks appended — nothing found worth queuing.
