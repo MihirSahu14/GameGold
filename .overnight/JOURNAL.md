@@ -390,3 +390,40 @@ Re-ran both suites after reading the full diff (no source edits made): `python -
 No over-engineering found — `SystemsSheet.tsx` is a plain table bound to the existing `nodes`/`onSave`, `useProjectSummary.ts`'s `stalenessMessage` is a pure function with no speculative generalization beyond the four wired stages, and the `/summary` endpoint returns exactly the six keys the contract named.
 
 Per the task contract, zero `- [ ] EF*` fix tasks appended — nothing found worth queuing.
+
+## DZ1 — Deploy checklist (no files changed except this entry, nothing deployed)
+
+`git status`/`git diff --stat` clean, no drift since R5. Re-ran both suites before writing this: `python -m pytest backend/tests -q` → **135 passed** (21.7s); `pnpm --filter web test` → **85 passed** / 18 files (11.6s); `pnpm --filter web build` → clean, same 14 routes. `render.yaml` has not been touched since `3138da1` (predates this whole overnight run, `git log --oneline -- render.yaml`) — no start-command or build-command change to roll out.
+
+**Manual checklist for Mihir (awake, before/while deploying):**
+
+1. **Hard logout for every currently-logged-in user is expected, not a bug.** B1 added a `typ` claim to access tokens; every token minted before this deploy lacks it, so `decode_token(token, "access")` rejects them on `typ` mismatch the instant this ships. Everyone gets bounced to `/login` once. (Flagged originally in R2, line 186 above.)
+
+2. **`backend/.env` vars that are `sync: false` in `render.yaml` — confirm still set in the Render dashboard, nothing new added this run:**
+   - `MONGODB_URL` — unchanged.
+   - `LLM_API_KEY` — unchanged (Groq key for the deployed `LLM_MODEL=groq/llama-3.3-70b-versatile`; swap to `claude-sonnet-4-6` + an Anthropic key only when intentionally moving to prod-tier LLM per CLAUDE.md).
+   - `REPLICATE_API_TOKEN` — unchanged, still optional (Phase 3 sprite gen only).
+   - `JWT_SECRET` is `generateValue: true` (Render-managed), not `sync: false` — no action needed.
+   - No new required env var was introduced this run. `email_provider` (B3) defaults to `""` (log-only reset emails) and is NOT in `render.yaml` — leave unset unless Mihir wants to wire a real provider (Resend/SES) by hand per the `ponytail:` comment in `backend/app/services/email_sender.py`.
+
+3. **CORS origin allowlist — matches the deployed Vercel origin, no action needed.** `render.yaml:25` sets `CORS_ORIGINS='["https://gamegold.vercel.app"]'`; `backend/app/config.py:38`'s default (`localhost:3000` + the same Vercel origin) is a superset used for local dev only. The C# Unity package's own allowlist (`unity-mcp/Editor/GameGoldMCP.cs:22-26`) independently lists the same two origins — confirmed in D0. Nothing in this run changed any of these three lists.
+
+4. **New MongoDB collections created this run — none have an index today; add before/at deploy if traffic makes the missing index bite:**
+   - `refresh_tokens` (B1) — `{jti, user_id, expires_at, revoked}`. Every `/auth/refresh`, logout, and logout-all call does a `find_one`/`update_one`/`update_many` keyed by `jti` or `user_id`. Recommend a unique index on `jti` and a non-unique index on `user_id`; a TTL index on `expires_at` (`expireAfterSeconds: 0`) would auto-prune expired/revoked rows instead of growing forever.
+   - `password_resets` (B3) — `{token_hash, user_id, expires_at, used}`. Looked up by `token_hash` on every reset attempt. Recommend a unique index on `token_hash` and a TTL index on `expires_at`.
+   - `login_attempts` (B4) — `{email, failed_count, locked_until}`. Looked up by `email` on every login. Recommend a unique index on `email` (one row per email, upserted).
+   - None of these are load-bearing for correctness at current traffic (Mongo full-collection-scans are fine at this scale) — this is a "add before it matters" note, not a blocker, consistent with A2's `ponytail:` comment on the in-memory concurrency lock also being a single-process-scale tradeoff.
+
+5. **Manual smoke-test script to run against production after merging (in order):**
+   1. Register a new account → confirm redirected into the app, session cookie set.
+   2. Log out, log back in with the same credentials → confirm success.
+   3. Generate a GDD for a fresh project → confirm the "AI is a collaborator" editable/versioned output appears.
+   4. Wait 16+ minutes without any API call, then perform any authenticated action (e.g. open the dashboard) → confirm the access-token refresh (BF2) transparently re-authenticates instead of bouncing to `/login`.
+   5. Trigger `/auth/forgot-password` for a real inbox → confirm the reset URL appears in Render's logs (no email provider wired, per item 2 above) and that `POST /auth/reset-password` with it sets a new password.
+   6. Fire 21 rapid LLM requests (e.g. GDD generate) inside one minute as one user → confirm the 21st returns 429 with `Retry-After` (A1) and that a second, different user is unaffected concurrently (A2).
+   7. Open the Systems page → confirm it defaults to the new Sheet tab (E1b) and the Advanced/ReactFlow tab still renders and edits correctly.
+   8. Run a Balance analysis → confirm suggestions render as structured cards with a working Accept button (E1c).
+   9. Confirm every Sidebar stage link is clickable regardless of project stage (E2a) and that navigating to Assets after editing the GDD shows the new staleness banner (E2b).
+   10. With the Unity Editor open and connected (6000.2.8f1 per PLAN.md), generate a Unity plan and execute at least one `gameobject.create` step end-to-end — this is the one flow D0/R4 could not verify without a live Editor.
+
+Nothing deployed, nothing pushed, no source file changed by this task — `git status` after writing this entry is still clean save for this JOURNAL.md edit.
