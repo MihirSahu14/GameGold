@@ -55,7 +55,10 @@ STRICT RULES:
    - backend:  python -m pytest backend/tests -q
    - frontend: pnpm --filter web test
    - build:    pnpm --filter web build
-   Baseline that must not regress: backend 102 passed, frontend 54 passed, build clean.
+   Baseline that must not regress: backend 108 passed, frontend 67 passed, build clean.
+   The wrapper gates check exit code only, NOT counts - a suite that still passes with
+   tests deleted looks identical to it. Deleting or skipping a test to go green is a
+   task failure even if every gate passes.
 7. When finished, edit that task line in .overnight/TASKS.md: "- [x]" if complete and tests green, "- [!] <short reason>" if you could not finish it.
 8. Append 2-4 lines to .overnight/JOURNAL.md: task id, what changed, real test counts, anything surprising.
 9. Then STOP. Do not begin the next task.
