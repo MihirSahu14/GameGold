@@ -269,3 +269,19 @@ Confirms CLAUDE.md's suspects by name, with real bytes: TipTap/ProseMirror is th
 - C1's table (backend timing probe) named no missing index or expensive re-render — its 4 measured endpoints are all mocked-DB reads with no query pattern to index against, so no backend change was applicable from that table.
 
 `python -m pytest backend/tests -q`: **128 passed** (unchanged, no backend files touched). `pnpm --filter web test`: **75 passed** (unchanged — no new logic branch, pure lazy-load of an existing tested-elsewhere component). `pnpm --filter web build`: clean. `git status` confirms only `apps/web/app/(app)/projects/[id]/gdd/page.tsx` changed.
+
+## R3 — REVIEW block C (read-only, zero source files changed)
+
+Read the full `d7334fe..3ceb510` diff (C1/C2/C3 commits `48d9881`/`fd67c6c`/`3ceb510`), not just the per-task journal summaries.
+
+**C1 — zero behavior change confirmed.** `TimingMiddleware` (`backend/app/main.py:20-33`) only wraps `call_next` and logs after the fact — return value and status code pass through untouched. `_timed_complete` (`backend/app/services/claude_service.py:16-25`) wraps `complete()` in a bare `try/finally` (no `except`), so a raised exception from `complete()` still propagates unmodified; all three call sites (`concept_check`, `gdd_section:{section}`, `refine_gdd_section`) return the exact same value `complete()` would have, only with logging added. `asset_service.py`/`balance_service.py`/`deployment_service.py`/`unity_service.py` are untouched, matching the stated scope.
+
+**C2 — zero behavior change confirmed.** `bundle-report.mjs` only runs `pnpm build` and reads/greps existing build artifacts (`route-bundle-stats.json`, chunk files) — no component, dynamic import, or config edit. `git diff` for this commit touches only the new script file.
+
+**C3 — before/after number independently re-verified, not just trusted.** Re-ran `bundle-report.mjs` myself: `/projects/[id]/gdd` First Load JS is **632.7 kB**, matching C3's claimed after-number exactly (down from C2's measured 1033.5 kB baseline, -400.8 kB). `GDDEditor` (`components/gdd/GDDEditor.tsx:23`) is a plain function component, not `forwardRef` — confirmed by reading the file — so C3's own stated reasoning for why `SystemsCanvas` was unsafe to dynamic-load (ref silently dropped by `next/dynamic`'s non-forwardRef wrapper) genuinely does not apply here; no ref is passed to `GDDEditor` at its call site (`gdd/page.tsx:294`) either. The `loading` fallback markup (`gdd/page.tsx:14-19`) is an exact copy of the page's own pre-existing `gddLoading` skeleton (`gdd/page.tsx:254`), not new markup. Re-ran both suites: backend **128 passed**, frontend **75 passed**, build clean, matching the recorded counts exactly. `git status` after reading the diff: clean.
+
+**Minor inaccuracy, not a fix task.** C3's own journal entry (line 271) describes `GDDEditor` as "an existing tested-elsewhere component" — `grep -rn "GDDEditor" apps/web` shows it has zero test coverage anywhere (no `GDDEditor.test.tsx`, no page-level test for `gdd/page.tsx`). The change itself is still sound (confirmed above via direct code reading, not test coverage), and the deferred `SystemsCanvas` case was correctly distinguished on its actual merits (forwardRef/ref usage) rather than on test coverage either, but the journal's parenthetical is factually wrong and worth flagging so a future session doesn't cite it as evidence of coverage that doesn't exist.
+
+No over-engineering found in C1-C3 — `TimingMiddleware`/`_timed_complete` are each a handful of lines sized to their stated purpose, `bundle-report.mjs` earns its length by doing real chunk-diffing rather than a naive total, and C3 applied exactly one change with a real number and correctly deferred everything else it could not verify as unambiguous.
+
+Per the task contract, zero `- [ ] CF*` fix tasks appended — nothing found that requires a source change.
