@@ -1,6 +1,13 @@
 import uuid
 
-from app.models.systems import BalanceAnalysisOut, SystemNodeIn, SystemEdgeIn
+from pydantic import ValidationError
+
+from app.models.systems import (
+    BalanceAnalysisOut,
+    BalanceSuggestion,
+    SystemNodeIn,
+    SystemEdgeIn,
+)
 from app.prompts.balance_prompt import BALANCE_SYSTEM_PROMPT, build_balance_prompt
 from app.prompts.systems_extract_prompt import (
     SYSTEMS_EXTRACT_SYSTEM_PROMPT,
@@ -9,6 +16,19 @@ from app.prompts.systems_extract_prompt import (
 from app.services.llm_utils import complete, extract_json
 
 VALID_NODE_TYPES = {"entity", "mechanic", "event", "state"}
+
+
+def _parse_suggestions(raw) -> list[BalanceSuggestion]:
+    """Skip malformed suggestion entries instead of 500ing on bad LLM output."""
+    if not isinstance(raw, list):
+        return []
+    suggestions = []
+    for item in raw:
+        try:
+            suggestions.append(BalanceSuggestion.model_validate(item))
+        except (ValidationError, TypeError):
+            continue
+    return suggestions
 
 
 async def analyze_balance(
@@ -23,7 +43,7 @@ async def analyze_balance(
         exploits=data.get("exploits", []),
         power_creep=data.get("powerCreep", []),
         dominant_strategies=data.get("dominantStrategies", []),
-        suggestions=data.get("suggestions", []),
+        suggestions=_parse_suggestions(data.get("suggestions", [])),
     )
 
 

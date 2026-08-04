@@ -179,6 +179,61 @@ def test_analyze_returns_balance_analysis(client, mock_db, monkeypatch):
     assert "analyzedAt" in data
 
 
+def test_analyze_suggestions_are_structured_objects(client, mock_db, monkeypatch):
+    """Suggestions are {nodeLabel, stat, currentValue, suggestedValue, rationale} objects, not prose strings."""
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = None
+
+    mock_completion = MagicMock(return_value=_make_litellm_response(CANNED_BALANCE_TEXT))
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    resp = client.post(
+        f"/projects/{TEST_PROJECT_ID}/systems/analyze",
+        json={"nodes": SAMPLE_NODES, "edges": SAMPLE_EDGES},
+    )
+    assert resp.status_code == 200
+    suggestion = resp.json()["suggestions"][0]
+    assert suggestion["nodeLabel"] == "Enemy"
+    assert suggestion["stat"] == "goldDrop"
+    assert suggestion["currentValue"] == 50
+    assert suggestion["suggestedValue"] == 10
+    assert "rationale" in suggestion
+
+
+def test_analyze_skips_malformed_suggestions_without_500(client, mock_db, monkeypatch):
+    """A suggestion missing required fields is dropped, not a 500."""
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = None
+
+    malformed = {
+        "exploits": [],
+        "powerCreep": [],
+        "dominantStrategies": [],
+        "suggestions": [
+            {"nodeLabel": "Enemy"},  # missing stat/currentValue/suggestedValue/rationale
+            "not even an object",
+            {
+                "nodeLabel": "Sword",
+                "stat": "damage",
+                "currentValue": 30,
+                "suggestedValue": 15,
+                "rationale": "valid entry",
+            },
+        ],
+    }
+    mock_completion = MagicMock(return_value=_make_litellm_response(json.dumps(malformed)))
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    resp = client.post(
+        f"/projects/{TEST_PROJECT_ID}/systems/analyze",
+        json={"nodes": SAMPLE_NODES, "edges": SAMPLE_EDGES},
+    )
+    assert resp.status_code == 200
+    suggestions = resp.json()["suggestions"]
+    assert len(suggestions) == 1
+    assert suggestions[0]["nodeLabel"] == "Sword"
+
+
 def test_analyze_caches_result_on_system_doc(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     mock_db.gdds.find_one.return_value = None

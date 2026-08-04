@@ -117,11 +117,19 @@ export interface GameSystem {
   analysisCache?: BalanceAnalysis
 }
 
+export interface SystemBalanceSuggestion {
+  nodeLabel: string
+  stat: string
+  currentValue: number
+  suggestedValue: number
+  rationale: string
+}
+
 export interface BalanceAnalysis {
   exploits: string[]
   powerCreep: string[]
   dominantStrategies: string[]
-  suggestions: string[]
+  suggestions: SystemBalanceSuggestion[]
   analyzedAt: string
 }
 

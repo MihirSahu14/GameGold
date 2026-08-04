@@ -340,3 +340,15 @@ Added `SystemsSheet.tsx`: a table view (rows = nodes, columns = label/type/stats
 Added 3 tests in `SystemsSheet.test.tsx` (create): rows render from nodes, a label edit calls `onSave` with the patched node array, a stats-cell blur calls `onSave` with parsed numeric stats. All 6 `SystemsCanvas.test.tsx` tests pass unmodified; `SystemsCanvas.tsx` itself was not touched.
 
 **Test counts:** `pnpm --filter web test` → **78 passed** (75 prior + 3 new). `python -m pytest backend/tests -q` → **131 passed**, unchanged (backend untouched). `pnpm --filter web build` → clean. Nothing surprising.
+
+## E1c — Structured balance suggestions with Accept
+
+`BalanceAnalysisOut.suggestions` changed from `list[str]` to a new `BalanceSuggestion` Pydantic model `{nodeLabel, stat, currentValue, suggestedValue, rationale}`. `balance_service._parse_suggestions()` runs `BalanceSuggestion.model_validate()` per item and silently drops anything that fails (missing fields, wrong types, non-dict entries) instead of 500ing on bad LLM output. `balance_prompt.py` now asks the LLM for that exact object shape, referencing an existing node label + stat key. Frontend: `BalancePanel` renders each suggestion with an Accept button; `systems/page.tsx` wires Accept to patch the matching node's `data[stat]` and save through the existing `useSaveSystem` mutation — no new mutation added.
+
+Naming deviation from the task text: the task asked for a type literally named `BalanceSuggestion` in `packages/types/index.ts`, but that name is already taken by an unrelated playtest type (`{issue, fix, unityPath}`, used by `PlaytestReport.balanceSuggestions`). Reusing it would have been a silent shape collision, so the new systems type is `SystemBalanceSuggestion` instead. The backend Pydantic model is still named `BalanceSuggestion` — Python has no such collision since it lives in a different module.
+
+Updated (not weakened) tests whose fixtures encoded the old string-array shape, since the shape itself genuinely changed: `conftest.py`'s `CANNED_BALANCE_JSON["suggestions"]`, `test_balance_service.py::test_analyze_returns_balance_analysis`, `test_systems_models.py::test_balance_analysis_out_validates_lists`, `apps/web/lib/queries/__tests__/useSystems.test.ts`'s mock, and `BalancePanel.test.tsx`'s `FULL_ANALYSIS` + every render call (new required `onAccept` prop). Same assertions, new data shape — none had their coverage reduced.
+
+Added tests: backend `test_analyze_suggestions_are_structured_objects` (structured shape returned) and `test_analyze_skips_malformed_suggestions_without_500` (mixed valid/invalid entries — only the valid one survives, no 500) in `test_systems_routes.py`; frontend `renders an Accept button for each suggestion` and `calls onAccept with the suggestion when Accept is clicked` in `BalancePanel.test.tsx`.
+
+**Test counts:** `python -m pytest backend/tests -q` → **133 passed** (131 prior + 2 new). `pnpm --filter web test` → **80 passed** (78 prior + 2 new). `pnpm --filter web build` → clean. Nothing surprising beyond the `BalanceSuggestion` naming collision above.

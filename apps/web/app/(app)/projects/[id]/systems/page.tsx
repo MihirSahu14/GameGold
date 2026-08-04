@@ -7,7 +7,7 @@ import { SystemsCanvas, type SystemsCanvasHandle } from '@/components/systems/Sy
 import { SystemsSheet } from '@/components/systems/SystemsSheet'
 import { NodeEditor } from '@/components/systems/NodeEditor'
 import { BalancePanel } from '@/components/systems/BalancePanel'
-import type { SystemNode, SystemEdge, BalanceAnalysis } from '@gamegold/types'
+import type { SystemNode, SystemEdge, BalanceAnalysis, SystemBalanceSuggestion } from '@gamegold/types'
 
 type PanelTab = 'node' | 'balance'
 type ViewTab = 'sheet' | 'advanced'
@@ -56,6 +56,18 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
       alert('Balance analysis failed — check the console.')
     }
   }, [analyzeBalance, nodes, edges])
+
+  const handleAcceptSuggestion = useCallback(
+    (suggestion: SystemBalanceSuggestion) => {
+      const updatedNodes = nodes.map((n) =>
+        n.label === suggestion.nodeLabel
+          ? { ...n, data: { ...n.data, [suggestion.stat]: suggestion.suggestedValue } }
+          : n
+      )
+      saveSystem.mutate({ nodes: updatedNodes, edges })
+    },
+    [nodes, edges, saveSystem]
+  )
 
   const handleNodeUpdate = useCallback(
     (updatedNode: SystemNode) => {
@@ -173,6 +185,7 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
               analysis={localAnalysis}
               isLoading={analyzeBalance.isPending}
               onReanalyze={handleAnalyze}
+              onAccept={handleAcceptSuggestion}
             />
           )}
         </div>

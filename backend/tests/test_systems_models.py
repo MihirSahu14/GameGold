@@ -98,16 +98,24 @@ def test_game_system_out_camel_case_json():
 def test_balance_analysis_out_validates_lists():
     from app.models.systems import BalanceAnalysisOut
 
+    suggestion = {
+        "nodeLabel": "Enemy",
+        "stat": "goldDrop",
+        "currentValue": 50,
+        "suggestedValue": 10,
+        "rationale": "cap the drop rate",
+    }
     analysis = BalanceAnalysisOut(
         exploits=["exploit1"],
         power_creep=["creep1"],
         dominant_strategies=["strat1"],
-        suggestions=["fix1"],
+        suggestions=[suggestion],
     )
     assert analysis.exploits == ["exploit1"]
     assert analysis.power_creep == ["creep1"]
     assert analysis.dominant_strategies == ["strat1"]
-    assert analysis.suggestions == ["fix1"]
+    assert analysis.suggestions[0].node_label == "Enemy"
+    assert analysis.suggestions[0].suggested_value == 10
 
 
 def test_balance_analysis_out_camel_case_json():

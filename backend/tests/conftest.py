@@ -201,7 +201,22 @@ CANNED_BALANCE_JSON = {
     "exploits": ["Player can farm infinite gold by looping Enemy → Currency edge"],
     "powerCreep": ["Sword damage scales 3× faster than Enemy HP"],
     "dominantStrategies": ["Rushing Sword item trivialises early game"],
-    "suggestions": ["Cap Currency drop rate per enemy", "Normalize Sword damage curve"],
+    "suggestions": [
+        {
+            "nodeLabel": "Enemy",
+            "stat": "goldDrop",
+            "currentValue": 50,
+            "suggestedValue": 10,
+            "rationale": "Cap Currency drop rate per enemy to close the farming loop",
+        },
+        {
+            "nodeLabel": "Sword",
+            "stat": "damage",
+            "currentValue": 30,
+            "suggestedValue": 15,
+            "rationale": "Normalize Sword damage curve so it doesn't outscale enemy HP",
+        },
+    ],
 }
 
 CANNED_BALANCE_TEXT = json.dumps(CANNED_BALANCE_JSON)
