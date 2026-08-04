@@ -1,11 +1,24 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useProject } from '@/lib/queries/useProjects'
 import { useGDD, useGenerateGDD, useSaveGDD, useRefineGDDSection } from '@/lib/queries/useGDD'
-import { GDDEditor } from '@/components/gdd/GDDEditor'
 import { GDDQuestionsPanel } from '@/components/gdd/GDDQuestionsPanel'
 import type { GDDSections } from '@gamegold/types'
+
+// TipTap/ProseMirror is ~413 kB of this route's First Load JS (measured by C2) — only
+// needed once a GDD actually exists, so load it on demand instead of on every page visit.
+const GDDEditor = dynamic(() => import('@/components/gdd/GDDEditor').then((m) => m.GDDEditor), {
+  ssr: false,
+  loading: () => (
+    <div className="space-y-3">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className={`h-4 bg-zinc-900 rounded animate-pulse ${i === 0 ? 'w-64' : i % 3 === 0 ? 'w-3/4' : 'w-full'}`} />
+      ))}
+    </div>
+  ),
+})
 
 const SECTION_LABELS: { key: keyof GDDSections; label: string; emoji: string }[] = [
   { key: 'overview', label: 'Overview', emoji: '📌' },
