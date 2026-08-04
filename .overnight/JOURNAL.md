@@ -324,3 +324,11 @@ Re-ran both suites myself rather than trusting recorded counts: `python -m pytes
 All three spot-checked claims hold. D0's remaining "not verified" items (live Render/Vercel deploy status, real LLM JSON output from Groq/Claude, an actual Unity Editor round-trip) are not source-code defects — they're manual verification that no in-session code change can close, and DZ1 (close-out) already exists specifically to produce a manual smoke-test checklist for exactly this. Writing a DFx task that says "go click Connect in Unity 6000.2.8f1" would violate the "no external process" constraint every other task in this block has honored, and a task to "add more defensive code" against an unverified-but-not-known-broken LLM output path would be speculative, not a fix for a found bug.
 
 **Conclusion: the Unity end-to-end flow is genuinely working at the code level per D0's recon, independently confirmed here. Zero `- [ ] DF*` fix tasks appended**, per the task contract's explicit allowance for this outcome.
+
+## E1a — Backend systems extract endpoint
+
+Added `POST /projects/{id}/systems/extract`: pulls the GDD (overview/mechanics/progression), calls a new `extract_systems()` in `balance_service.py` (new prompt file `systems_extract_prompt.py`, follows the `balance_prompt.py` convention) to get `SystemNodeIn` nodes, and merges into the saved graph — existing nodes win on label conflict, only genuinely new labels get appended. 404s with a clear message if no GDD exists. Rate-limited + wrapped in `project_llm_slot` like `/analyze`.
+
+Added 3 tests to `test_systems_routes.py`: 404 without GDD, merge adds new nodes, no-clobber of an existing node sharing a label. No existing tests touched.
+
+**Test counts:** `python -m pytest backend/tests -q` → **131 passed** (128 prior + 3 new). `pnpm --filter web test` → **75 passed**, unchanged. `pnpm --filter web build` → clean. Nothing surprising — GDD/systems models and prompt conventions were already consistent enough that this was a straight extension, no existing code needed rework.

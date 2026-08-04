@@ -1,6 +1,14 @@
+import uuid
+
 from app.models.systems import BalanceAnalysisOut, SystemNodeIn, SystemEdgeIn
 from app.prompts.balance_prompt import BALANCE_SYSTEM_PROMPT, build_balance_prompt
+from app.prompts.systems_extract_prompt import (
+    SYSTEMS_EXTRACT_SYSTEM_PROMPT,
+    build_extract_prompt,
+)
 from app.services.llm_utils import complete, extract_json
+
+VALID_NODE_TYPES = {"entity", "mechanic", "event", "state"}
 
 
 async def analyze_balance(
@@ -17,3 +25,27 @@ async def analyze_balance(
         dominant_strategies=data.get("dominantStrategies", []),
         suggestions=data.get("suggestions", []),
     )
+
+
+async def extract_systems(gdd_summary: str) -> list[SystemNodeIn]:
+    """Extract SystemNodeIn nodes from a GDD summary via the LLM. Caller merges
+    the result into the existing graph; existing nodes always win on label conflict."""
+    prompt = build_extract_prompt(gdd_summary)
+    data = extract_json(await complete(SYSTEMS_EXTRACT_SYSTEM_PROMPT, prompt, max_tokens=2000))
+
+    nodes = []
+    for i, n in enumerate(data.get("nodes", [])):
+        node_type = n.get("type")
+        label = n.get("label")
+        if node_type not in VALID_NODE_TYPES or not label:
+            continue
+        nodes.append(
+            SystemNodeIn(
+                id=f"extract-{uuid.uuid4().hex[:8]}",
+                type=node_type,
+                label=label,
+                data=n.get("stats") or {},
+                position={"x": 200.0 * (i % 5), "y": 300.0 + 150.0 * (i // 5)},
+            )
+        )
+    return nodes
