@@ -133,7 +133,26 @@ async def refresh(request: Request, response: Response):
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(response: Response):
+async def logout(request: Request, response: Response):
+    db = get_db()
+    token = request.cookies.get(REFRESH_COOKIE)
+    if token:
+        try:
+            jti = decode_token(token, "refresh").get("jti")
+            await db.refresh_tokens.update_one({"jti": jti}, {"$set": {"revoked": True}})
+        except JWTError:
+            pass
+    clear_auth_cookies(response)
+
+
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+async def logout_all(response: Response, current_user: dict = Depends(get_current_user)):
+    # ponytail: access tokens stay stateless and simply expire within 15 minutes;
+    # a denylist is the upgrade only if sub-15-minute revocation is ever required.
+    db = get_db()
+    await db.refresh_tokens.update_many(
+        {"user_id": current_user["_id"], "revoked": False}, {"$set": {"revoked": True}}
+    )
     clear_auth_cookies(response)
 
 

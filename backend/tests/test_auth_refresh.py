@@ -37,9 +37,15 @@ def _fake_refresh_store(mock_db) -> dict:
         if record:
             record.update(update["$set"])
 
+    async def update_many(query, update):
+        for record in store.values():
+            if record.get("user_id") == query.get("user_id") and record.get("revoked") == query.get("revoked"):
+                record.update(update["$set"])
+
     mock_db.refresh_tokens.insert_one = AsyncMock(side_effect=insert_one)
     mock_db.refresh_tokens.find_one = AsyncMock(side_effect=find_one)
     mock_db.refresh_tokens.update_one = AsyncMock(side_effect=update_one)
+    mock_db.refresh_tokens.update_many = AsyncMock(side_effect=update_many)
     return store
 
 
@@ -88,4 +94,37 @@ def test_refresh_token_rejected_when_used_as_access_token(auth_client, mock_db):
 
     resp = auth_client.get("/auth/me", headers={"Authorization": f"Bearer {refresh_token}"})
 
+    assert resp.status_code == 401
+
+
+def test_logout_revokes_the_presenting_refresh_token(auth_client, mock_db):
+    store = _fake_refresh_store(mock_db)
+    _login(auth_client, mock_db)
+    jti = next(iter(store))
+    csrf_token = auth_client.cookies[CSRF_COOKIE]
+
+    logout_resp = auth_client.post("/auth/logout", headers={"X-CSRF-Token": csrf_token})
+    assert logout_resp.status_code == 204
+    assert store[jti]["revoked"] is True
+
+    # session cookie is cleared, so the refresh call below isn't CSRF-gated
+    resp = auth_client.post("/auth/refresh")
+    assert resp.status_code == 401
+
+
+def test_logout_all_revokes_every_session(auth_client, mock_db):
+    store = _fake_refresh_store(mock_db)
+    _login(auth_client, mock_db)  # session A
+    session_a_refresh = auth_client.cookies[REFRESH_COOKIE]
+
+    _login(auth_client, mock_db)  # session B (overwrites auth_client's cookies)
+    csrf_token = auth_client.cookies[CSRF_COOKIE]
+
+    resp = auth_client.post("/auth/logout-all", headers={"X-CSRF-Token": csrf_token})
+    assert resp.status_code == 204
+    assert all(record["revoked"] for record in store.values())
+
+    # session cookie is cleared, so this refresh call isn't CSRF-gated
+    auth_client.cookies.set(REFRESH_COOKIE, session_a_refresh)
+    resp = auth_client.post("/auth/refresh")
     assert resp.status_code == 401

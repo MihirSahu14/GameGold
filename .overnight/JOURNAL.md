@@ -140,3 +140,11 @@ Surprise: none of the frontend or CSRF-exemption logic needed to change — beca
 `tests/conftest.py`: added a bare `db.refresh_tokens` mock (find_one/insert_one/update_one) to `mock_db` — required by the new endpoints, not previously in the fixture. New `tests/test_auth_refresh.py` (3, via a small in-memory dict backing `refresh_tokens` since the default AsyncMock doesn't persist across calls): refresh rotates the pair and marks the old jti revoked; a revoked/replayed refresh cookie is rejected 401; a refresh token presented as a bearer access token is rejected 401.
 
 `python -m pytest backend/tests -q`: **117 passed** (114 baseline + 3 new, meets required >= 3). Frontend/build untouched — no files outside `backend/` changed.
+
+## B2 — Real logout revocation
+
+`auth.py`: `logout` now reads the `gg_refresh` cookie, decodes it as a refresh token, and marks that jti revoked in `refresh_tokens` before clearing cookies (swallows `JWTError` — a missing/already-invalid refresh token still lets logout succeed). New `POST /auth/logout-all` (behind `get_current_user`) revokes every non-revoked `refresh_tokens` row for the current user via `update_many`, then clears cookies; carries the `ponytail:` comment from the task contract noting access tokens stay stateless and simply expire within 15 minutes.
+
+`tests/test_auth_refresh.py`: extended `_fake_refresh_store` with an `update_many` side effect (matches on `user_id`+`revoked` like the real Mongo query); 2 new tests — logout revokes the presenting session's jti and a subsequent refresh 401s, logout-all revokes both of two logged-in sessions and a second session's stashed refresh token also 401s afterward.
+
+`python -m pytest backend/tests -q`: **119 passed** (117 baseline + 2 new, meets required >= 2). Frontend/build untouched — no files outside `backend/` changed.
