@@ -229,3 +229,32 @@ New `backend/scripts/perf_probe.py`: builds its own mocked TestClient (reusing `
 New `backend/tests/test_timing_middleware.py` (1 test, `caplog`): a `GET /health` logs exactly one `app.perf` record containing `method=GET`, `path=/health`, `duration_ms=`.
 
 `python -m pytest backend/tests -q`: **128 passed** (127 baseline + 1 new, meets required >= 1). `git status` confirms only `backend/app/main.py`, `backend/app/services/claude_service.py`, `backend/scripts/perf_probe.py` (new), `backend/tests/test_timing_middleware.py` (new) changed — frontend/build untouched. No optimization applied, per contract — C3 is where any perf win gets applied.
+
+## C2 — Frontend load measurement only (zero behavior change)
+
+Surprise: this Next.js/Turbopack version (16.2.6) no longer prints the classic "Route / Size / First Load JS" table to build stdout at all — the build output above only lists route names with static/dynamic markers, no sizes. The real numbers still exist as a build artifact: `.next/diagnostics/route-bundle-stats.json`, one entry per route with `firstLoadUncompressedJsBytes` and the exact list of chunk files making up that route's first load.
+
+New `apps/web/scripts/bundle-report.mjs`: runs `pnpm build`, reads that diagnostic file, sorts routes by size, and for each route diffs its chunk list against the lightest route's (`/_not-found`) chunk list to isolate route-*specific* chunks (excluding shared framework/layout chunks). For the top contributor chunks per route it greps the chunk's own text for known library markers (`prosemirror`/`tiptap`, `reactflow`, `framer-motion`/`motion`, `lucide`, `marked`) to name what's pulling the bundle up. Touches nothing else — no dynamic imports, no component edits.
+
+Real table from an actual `pnpm exec node apps/web/scripts/bundle-report.mjs` run:
+
+| route | First Load JS | biggest contributors |
+|---|---|---|
+| /projects/[id]/gdd | 1033.5 kB | 0p.d1gmy9urvn.js (412.8 kB, **TipTap/ProseMirror+marked**) |
+| /projects/[id]/systems | 802.2 kB | 03q720bvb6ns-.js (154.7 kB, **ReactFlow**) |
+| /v2 | 721.4 kB | 0.ndtgl5f1i1e.js (127.0 kB, **Framer Motion+lucide-react**) |
+| /projects/[id]/assets | 666.8 kB | 181os5~49.t9c.js (26.7 kB, shared route-group chunk, no single suspect) |
+| /projects/[id]/playtesting | 660.8 kB | 181os5~49.t9c.js (26.7 kB), 09vv_yehnso_a.js (15.0 kB) |
+| /projects/[id]/deployment | 660.0 kB | 181os5~49.t9c.js (26.7 kB), 16h_mn.wrrvy..js (14.2 kB) |
+| /projects/[id]/unity | 635.6 kB | 0c_fyupsj4k_n.js (16.6 kB) |
+| /projects/[id]/concept | 627.1 kB | 0tj6m0nldbrk_.js (8.1 kB) |
+| /dashboard | 625.5 kB | 0~b6sdra7ir.8.js (19.4 kB) |
+| / | 624.4 kB | 14f2w.13j4diu.js (30.0 kB, **Framer Motion**) |
+| /projects/[id] | 619.0 kB | (no route-unique chunks vs. baseline) |
+| /register | 604.9 kB | 15qz5w_p-3mih.js (10.1 kB) |
+| /login | 604.4 kB | 0ybuflgxzv9x~.js (9.7 kB) |
+| /_not-found | 594.4 kB | baseline route (used as the shared-chunk floor) |
+
+Confirms CLAUDE.md's suspects by name, with real bytes: TipTap/ProseMirror is the single largest offender (~413 kB on `/projects/[id]/gdd` alone), ReactFlow is second (~155 kB on `/projects/[id]/systems`), Framer Motion shows up on both `/v2` (~127 kB) and `/` (~30 kB, smaller because that route imports less of it).
+
+`python -m pytest backend/tests -q`: **128 passed**. `pnpm --filter web test`: **75 passed** (both match the counts already on record above — this task adds no tests, it's pure measurement, no new logic branch to cover). `pnpm --filter web build`: clean, same 14 routes. `git status` confirms only `apps/web/scripts/bundle-report.mjs` (new) changed — no component, no dynamic import, zero behavior change anywhere else.
