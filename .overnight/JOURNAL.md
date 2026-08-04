@@ -310,3 +310,17 @@ Walked the real user flow (generate plan → deliver to Editor → execute each 
 **Bottom line:** at the code level (prompt↔tool-registry contract, CORS allowlist, path safety, camelCase alias, executor error handling) the Unity flow reads as genuinely fixed and consistent with PLAN.md's 2026-07-28 audit — nothing regressed since. The open question is deployment/live-verification, not source correctness, so R4 should weigh whether any DFx task is even warranted versus rolling the deploy-verification question into DZ1.
 
 Per the task contract, zero `- [ ] CF*` fix tasks appended — nothing found that requires a source change.
+
+## R4 — REVIEW D0's inventory (read-only, zero source files changed)
+
+Independently spot-checked D0's three highest-impact claims against the actual code, not just trusted the journal summary:
+
+- **Tool-name contract.** Re-read `backend/app/prompts/unity_prompt.py:27-38` (11 tools: scene.new/list, gameobject.create/delete/find, component.add/setField, asset.createScript/importSprite, playmode.enter/exit) against `unity-mcp/Editor/GameGoldMCP.cs:33-46` (`_tools` dict, same 11 keys). Confirmed 1:1 match both directions — no tool the prompt can emit is missing from the C# registry, no dead registry entry the prompt never uses.
+- **CORS allowlist.** `GameGoldMCP.cs:22-26` allows `https://gamegold.vercel.app` and `http://localhost:3000`. `backend/app/config.py:38` default `cors_origins` matches both. `render.yaml:25-26` sets the deployed backend's `CORS_ORIGINS` to `["https://gamegold.vercel.app"]` only — a subset of the C# allowlist, which is correct (the deployed frontend only ever runs from the Vercel origin; localhost:3000 is for local dev against the same C# listener).
+- **`StepCompleteRequest` camelCase alias.** `backend/app/models/unity.py:35-39` still carries `model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)`. The prior "every completion 422s" bug is not reproduced.
+
+Re-ran both suites myself rather than trusting recorded counts: `python -m pytest backend/tests -q` → **128 passed**; `pnpm --filter web test` → **75 passed** (16 files). `git status` clean, matches D0's own report.
+
+All three spot-checked claims hold. D0's remaining "not verified" items (live Render/Vercel deploy status, real LLM JSON output from Groq/Claude, an actual Unity Editor round-trip) are not source-code defects — they're manual verification that no in-session code change can close, and DZ1 (close-out) already exists specifically to produce a manual smoke-test checklist for exactly this. Writing a DFx task that says "go click Connect in Unity 6000.2.8f1" would violate the "no external process" constraint every other task in this block has honored, and a task to "add more defensive code" against an unverified-but-not-known-broken LLM output path would be speculative, not a fix for a found bug.
+
+**Conclusion: the Unity end-to-end flow is genuinely working at the code level per D0's recon, independently confirmed here. Zero `- [ ] DF*` fix tasks appended**, per the task contract's explicit allowance for this outcome.
