@@ -1,10 +1,31 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 from app.db.mongodb import get_db, to_object_id
 from app.models.project import ProjectCreate, ProjectUpdate, ProjectOut, ProjectInDB
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+class StageSummary(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    has_content: bool
+    updated_at: Optional[datetime] = None
+
+
+class ProjectSummaryOut(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    gdd: StageSummary
+    systems: StageSummary
+    assets: StageSummary
+    playtest: StageSummary
+    unity: StageSummary
+    deployment: StageSummary
 
 
 def serialize_project(project: dict) -> dict:
@@ -49,6 +70,34 @@ async def get_project(project_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Project not found")
     check_project_ownership(project, current_user["_id"])
     return ProjectOut(**serialize_project(project))
+
+
+@router.get("/{project_id}/summary", response_model=ProjectSummaryOut, response_model_by_alias=True)
+async def get_project_summary(project_id: str, current_user: dict = Depends(get_current_user)):
+    db = get_db()
+    project = await db.projects.find_one({"_id": to_object_id(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    check_project_ownership(project, current_user["_id"])
+
+    gdd = await db.gdds.find_one({"project_id": project_id})
+    systems = await db.systems.find_one({"project_id": project_id})
+    unity_plan = await db.unity_plans.find_one({"project_id": project_id})
+    latest_assets = await db.assets.find({"project_id": project_id}).sort("created_at", -1).to_list(length=1)
+    latest_playtests = await db.playtests.find({"project_id": project_id}).sort("created_at", -1).to_list(length=1)
+    latest_deployments = await db.deployments.find({"project_id": project_id}).sort("created_at", -1).to_list(length=1)
+
+    def stage(doc: Optional[dict], field: str) -> StageSummary:
+        return StageSummary(has_content=doc is not None, updated_at=doc.get(field) if doc else None)
+
+    return ProjectSummaryOut(
+        gdd=stage(gdd, "updated_at"),
+        systems=stage(systems, "updated_at"),
+        assets=stage(latest_assets[0] if latest_assets else None, "created_at"),
+        playtest=stage(latest_playtests[0] if latest_playtests else None, "created_at"),
+        unity=stage(unity_plan, "generated_at"),
+        deployment=stage(latest_deployments[0] if latest_deployments else None, "created_at"),
+    )
 
 
 @router.patch("/{project_id}", response_model=ProjectOut, response_model_by_alias=True)

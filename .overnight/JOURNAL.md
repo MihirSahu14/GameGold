@@ -352,3 +352,13 @@ Updated (not weakened) tests whose fixtures encoded the old string-array shape, 
 Added tests: backend `test_analyze_suggestions_are_structured_objects` (structured shape returned) and `test_analyze_skips_malformed_suggestions_without_500` (mixed valid/invalid entries — only the valid one survives, no 500) in `test_systems_routes.py`; frontend `renders an Accept button for each suggestion` and `calls onAccept with the suggestion when Accept is clicked` in `BalancePanel.test.tsx`.
 
 **Test counts:** `python -m pytest backend/tests -q` → **133 passed** (131 prior + 2 new). `pnpm --filter web test` → **80 passed** (78 prior + 2 new). `pnpm --filter web build` → clean. Nothing surprising beyond the `BalanceSuggestion` naming collision above.
+
+## E2a — Remove stage locking and add the project summary endpoint
+
+`Sidebar.tsx`: deleted `isStageUnlocked`/`STAGE_ORDER` and the "SOON" locked branch — every stage link is now a plain `Link`, stage number badge stays as a visual progress marker only. This deliberately overrides the CLAUDE.md "stage-gated UI" design principle; Mihir superseded it with the non-linear hub direction (see E1a-E1c and the E2a/E2b task text itself).
+
+`GET /projects/{id}/summary` added to `backend/app/routers/projects.py` (new `StageSummary`/`ProjectSummaryOut` Pydantic models defined inline in the router, not `models/project.py`, since the task's file list didn't include it and there was nowhere else small enough to warrant a new file). Returns `{hasContent, updatedAt}` for exactly `gdd, systems, assets, playtest, unity, deployment`. `gdd`/`systems` read the existing singleton docs keyed by `project_id` (`updated_at` field); `unity` reads `unity_plans` (`generated_at` field, no `updated_at` on that model); `assets`/`playtest`/`deployment` are multi-doc collections so the endpoint takes the single most-recent doc by `created_at` via the same `.find(...).sort("created_at", -1)` pattern every other router already uses. 404 on unknown/malformed project id via the existing `to_object_id` helper.
+
+Added 2 backend tests in `test_projects_routes.py` (new file, follows `conftest.py`/`test_systems_routes.py` fixture pattern): summary returns all six keys with correct `hasContent` for a project with only a GDD doc, and 404 for an unknown project id.
+
+**Test counts:** `python -m pytest backend/tests -q` → **135 passed** (133 prior + 2 new). `pnpm --filter web test` → **80 passed**, unchanged (Sidebar has no existing tests). `pnpm --filter web build` → clean. Nothing surprising.
