@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
 from datetime import datetime
 
+from app.core.concurrency import project_llm_slot
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.playtest import (
     RunPlaytestRequest,
@@ -64,7 +66,10 @@ async def list_reports(
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def run_simulation(
+    request: Request,
+    response: Response,
     project_id: str,
     body: RunPlaytestRequest,
     current_user: dict = Depends(get_current_user),
@@ -100,7 +105,8 @@ async def run_simulation(
         systems_summary = "\n".join(node_lines + edge_lines)[:2000]
 
     try:
-        report = await run_playtest(project_id, body.persona, gdd_summary, systems_summary)
+        async with project_llm_slot(project_id):
+            report = await run_playtest(project_id, body.persona, gdd_summary, systems_summary)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     # Auth
     jwt_secret: str
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
+    access_expire_minutes: int = 15
+    refresh_expire_days: int = 30
 
     # Auth cookies — frontend (Vercel) and backend (Render) are different
     # domains, so prod cookies must be SameSite=None + Secure. Local dev runs
@@ -29,6 +30,9 @@ class Settings(BaseSettings):
 
     # Image generation (Phase 3) — optional; sprite gen returns a clear error without it
     replicate_api_token: str = ""
+
+    # Password reset email — unset means log-only (no provider wired yet)
+    email_provider: str = ""
 
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "https://gamegold.vercel.app"]

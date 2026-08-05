@@ -34,7 +34,7 @@ async def test_analyze_returns_balance_analysis(monkeypatch):
     assert result.exploits == CANNED_BALANCE_JSON["exploits"]
     assert result.power_creep == CANNED_BALANCE_JSON["powerCreep"]
     assert result.dominant_strategies == CANNED_BALANCE_JSON["dominantStrategies"]
-    assert result.suggestions == CANNED_BALANCE_JSON["suggestions"]
+    assert [s.model_dump(by_alias=True) for s in result.suggestions] == CANNED_BALANCE_JSON["suggestions"]
 
 
 async def test_analyze_handles_empty_graph(monkeypatch):

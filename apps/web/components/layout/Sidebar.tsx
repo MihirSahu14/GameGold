@@ -22,22 +22,6 @@ const STAGE_ITEMS: { href: ProjectStage; label: string; icon: string }[] = [
   { href: 'deployment',  label: 'Deployment',        icon: '🚀' },
 ]
 
-const STAGE_ORDER: ProjectStage[] = [
-  'concept', 'gdd', 'systems', 'assets', 'unity', 'playtesting', 'deployment',
-]
-
-function isStageUnlocked(currentStage: ProjectStage | undefined, target: ProjectStage): boolean {
-  if (!currentStage) return target === 'concept'
-  const current = STAGE_ORDER.indexOf(currentStage)
-  const tgt = STAGE_ORDER.indexOf(target)
-  // Gate only the first three steps (concept → gdd → systems). Once the
-  // project has a systems graph the stage flow is established and all later
-  // stages unlock — forcing sequential progress past that point is friction,
-  // not guidance.
-  if (current >= STAGE_ORDER.indexOf('systems')) return true
-  return tgt <= current + 1
-}
-
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
 
@@ -48,7 +32,6 @@ export function Sidebar() {
   const router = useRouter()
 
   const projectId = activeProject?._id
-  const projectStage = activeProject?.stage as ProjectStage | undefined
 
   async function handleLogout() {
     try {
@@ -141,61 +124,29 @@ export function Sidebar() {
             {STAGE_ITEMS.map((item, i) => {
               const href = `/projects/${projectId}/${item.href}`
               const active = pathname === href
-              const unlocked = isStageUnlocked(projectStage, item.href)
               const stageNum = String(i + 1).padStart(2, '0')
 
               return (
-                <div key={item.href}>
-                  {!unlocked ? (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '8px 10px',
-                        fontSize: '12px',
-                        color: '#2a3a4a',
-                        cursor: 'not-allowed',
-                        borderLeft: '2px solid transparent',
-                      }}
-                    >
-                      <span style={{ fontSize: '10px', color: '#2a3a4a', ...pixel, minWidth: '16px' }}>{stageNum}</span>
-                      <span style={{ fontSize: '13px', opacity: 0.3 }}>{item.icon}</span>
-                      <span style={{ flex: 1 }}>{item.label}</span>
-                      <span
-                        style={{
-                          fontSize: '9px',
-                          color: '#2a3a4a',
-                          background: '#141c27',
-                          padding: '2px 6px',
-                          letterSpacing: '1px',
-                        }}
-                      >
-                        SOON
-                      </span>
-                    </div>
-                  ) : (
-                    <Link
-                      href={href}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '8px 10px',
-                        fontSize: '12px',
-                        textDecoration: 'none',
-                        color: active ? '#eaf2ff' : '#8b97a7',
-                        background: active ? 'rgba(78,168,255,0.1)' : 'transparent',
-                        borderLeft: active ? '2px solid #4ea8ff' : '2px solid transparent',
-                        transition: 'color 0.15s, background 0.15s',
-                      }}
-                    >
-                      <span style={{ fontSize: '10px', color: active ? '#4ea8ff' : '#456079', ...pixel, minWidth: '16px' }}>{stageNum}</span>
-                      <span style={{ fontSize: '13px' }}>{item.icon}</span>
-                      {item.label}
-                    </Link>
-                  )}
-                </div>
+                <Link
+                  key={item.href}
+                  href={href}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    textDecoration: 'none',
+                    color: active ? '#eaf2ff' : '#8b97a7',
+                    background: active ? 'rgba(78,168,255,0.1)' : 'transparent',
+                    borderLeft: active ? '2px solid #4ea8ff' : '2px solid transparent',
+                    transition: 'color 0.15s, background 0.15s',
+                  }}
+                >
+                  <span style={{ fontSize: '10px', color: active ? '#4ea8ff' : '#456079', ...pixel, minWidth: '16px' }}>{stageNum}</span>
+                  <span style={{ fontSize: '13px' }}>{item.icon}</span>
+                  {item.label}
+                </Link>
               )
             })}
           </div>

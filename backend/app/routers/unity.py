@@ -3,10 +3,12 @@ Phase 6 Unity MCP — backend routes.
 The browser executes MCP tool calls directly against localhost:7432 (Unity Editor
 on the developer's machine). This router handles only plan generation + persistence.
 """
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
 from datetime import datetime
 
+from app.core.concurrency import project_llm_slot
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.unity import UnityBuildPlanOut, UnityBuildPlanInDB, StepCompleteRequest
 from app.routers.auth import get_current_user
@@ -49,7 +51,10 @@ async def get_plan(
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def generate_plan(
+    request: Request,
+    response: Response,
     project_id: str,
     current_user: dict = Depends(get_current_user),
 ):
@@ -67,14 +72,15 @@ async def generate_plan(
     system_nodes: list = (system or {}).get("nodes", [])
 
     try:
-        summary, steps = await generate_build_plan(
-            game_title=project.get("title", "Untitled"),
-            genre=project.get("genre", ""),
-            platform=project.get("platform", ""),
-            gdd_sections=gdd_sections,
-            system_nodes=system_nodes,
-            assets=assets,
-        )
+        async with project_llm_slot(project_id):
+            summary, steps = await generate_build_plan(
+                game_title=project.get("title", "Untitled"),
+                genre=project.get("genre", ""),
+                platform=project.get("platform", ""),
+                gdd_sections=gdd_sections,
+                system_nodes=system_nodes,
+                assets=assets,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

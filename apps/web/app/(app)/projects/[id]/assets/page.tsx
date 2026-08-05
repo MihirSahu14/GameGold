@@ -11,9 +11,11 @@ import {
   useUpdateGuide,
   useDeleteAsset,
 } from '@/lib/queries/useAssets'
+import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { AssetCard } from '@/components/assets/AssetCard'
 import { StyleToggle } from '@/components/assets/StyleToggle'
 import { ProposalsPanel, proposalKey } from '@/components/assets/ProposalsPanel'
+import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import type { ArtStyle, AssetProposal, AssetType, ScriptType } from '@gamegold/types'
 import { cn } from '@/lib/utils'
 
@@ -44,6 +46,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
   const { id } = use(params)
   const { data: project } = useProject(id)
   const { data: assets, isLoading } = useAssets(id)
+  const { data: summary } = useProjectSummary(id)
 
   const generateSprite = useGenerateSprite(id)
   const generateScript = useGenerateScript(id)
@@ -186,6 +189,8 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
   const inputClass =
     'bg-zinc-900 border border-zinc-800 px-3 py-2 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none'
 
+  const assetsStaleMessage = stalenessMessage(summary, 'assets')
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       {/* Header */}
@@ -231,6 +236,12 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
           </div>
         </div>
       </div>
+
+      {assetsStaleMessage && (
+        <div className="px-6 pt-3">
+          <StalenessBanner message={assetsStaleMessage} />
+        </div>
+      )}
 
       {/* GDD proposals */}
       {proposals && proposals.length > 0 && (

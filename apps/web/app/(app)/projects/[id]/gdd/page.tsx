@@ -1,11 +1,26 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useProject } from '@/lib/queries/useProjects'
 import { useGDD, useGenerateGDD, useSaveGDD, useRefineGDDSection } from '@/lib/queries/useGDD'
-import { GDDEditor } from '@/components/gdd/GDDEditor'
+import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
+import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { GDDQuestionsPanel } from '@/components/gdd/GDDQuestionsPanel'
 import type { GDDSections } from '@gamegold/types'
+
+// TipTap/ProseMirror is ~413 kB of this route's First Load JS (measured by C2) — only
+// needed once a GDD actually exists, so load it on demand instead of on every page visit.
+const GDDEditor = dynamic(() => import('@/components/gdd/GDDEditor').then((m) => m.GDDEditor), {
+  ssr: false,
+  loading: () => (
+    <div className="space-y-3">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className={`h-4 bg-zinc-900 rounded animate-pulse ${i === 0 ? 'w-64' : i % 3 === 0 ? 'w-3/4' : 'w-full'}`} />
+      ))}
+    </div>
+  ),
+})
 
 const SECTION_LABELS: { key: keyof GDDSections; label: string; emoji: string }[] = [
   { key: 'overview', label: 'Overview', emoji: '📌' },
@@ -22,6 +37,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
   const { id } = use(params)
   const { data: project } = useProject(id)
   const { data: gdd, isLoading: gddLoading } = useGDD(id)
+  const { data: summary } = useProjectSummary(id)
   const generateGDD = useGenerateGDD(id)
   const saveGDD = useSaveGDD(id)
   const refineSection = useRefineGDDSection(id)
@@ -235,6 +251,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
 
         {/* Editor */}
         <div className="flex-1 overflow-auto p-6">
+          <StalenessBanner message={stalenessMessage(summary, 'gdd')} />
           {gddLoading ? (
             <div className="space-y-3">
               {[...Array(6)].map((_, i) => (

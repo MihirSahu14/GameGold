@@ -75,6 +75,15 @@ def mock_db():
     db.users.insert_one = AsyncMock()
     db.users.update_one = AsyncMock()
 
+    db.refresh_tokens = MagicMock()
+    db.refresh_tokens.find_one = AsyncMock(return_value=None)
+    db.refresh_tokens.insert_one = AsyncMock()
+    db.refresh_tokens.update_one = AsyncMock()
+
+    db.login_attempts = MagicMock()
+    db.login_attempts.find_one = AsyncMock(return_value=None)
+    db.login_attempts.update_one = AsyncMock()
+
     db.projects = MagicMock()
     db.projects.find_one = AsyncMock(return_value=None)
     db.projects.insert_one = AsyncMock()
@@ -145,6 +154,9 @@ def client(mock_db, monkeypatch):
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
 
+    from app.core.rate_limit import limiter
+    limiter.reset()
+
     app.dependency_overrides[get_current_user] = lambda: TEST_USER
 
     with TestClient(app) as c:
@@ -189,7 +201,22 @@ CANNED_BALANCE_JSON = {
     "exploits": ["Player can farm infinite gold by looping Enemy → Currency edge"],
     "powerCreep": ["Sword damage scales 3× faster than Enemy HP"],
     "dominantStrategies": ["Rushing Sword item trivialises early game"],
-    "suggestions": ["Cap Currency drop rate per enemy", "Normalize Sword damage curve"],
+    "suggestions": [
+        {
+            "nodeLabel": "Enemy",
+            "stat": "goldDrop",
+            "currentValue": 50,
+            "suggestedValue": 10,
+            "rationale": "Cap Currency drop rate per enemy to close the farming loop",
+        },
+        {
+            "nodeLabel": "Sword",
+            "stat": "damage",
+            "currentValue": 30,
+            "suggestedValue": 15,
+            "rationale": "Normalize Sword damage curve so it doesn't outscale enemy HP",
+        },
+    ],
 }
 
 CANNED_BALANCE_TEXT = json.dumps(CANNED_BALANCE_JSON)

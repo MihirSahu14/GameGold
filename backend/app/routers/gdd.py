@@ -1,9 +1,11 @@
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
 from bson import ObjectId
 from datetime import datetime
+from app.core.concurrency import project_llm_slot
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.gdd import GDDUpdate, GDDOut, GDDInDB, GenerateGDDRequest, RefineGDDRequest, RefinedSectionOut
 from app.routers.auth import get_current_user
@@ -43,7 +45,10 @@ async def get_gdd(project_id: str, current_user: dict = Depends(get_current_user
     response_model_by_alias=True,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(LLM_RATE_LIMIT)
 async def generate_gdd_endpoint(
+    request: Request,
+    response: Response,
     project_id: str,
     body: Optional[GenerateGDDRequest] = None,
     current_user: dict = Depends(get_current_user),
@@ -54,19 +59,20 @@ async def generate_gdd_endpoint(
     body = body or GenerateGDDRequest()
     concept_card = body.concept_card or project.get("concept_card") or {}
 
-    # Interview mode: no answers yet → check whether the concept is detailed
-    # enough. `answers` present (even {}) means the user already answered/skipped.
-    if body.answers is None:
-        questions = await check_concept_sufficiency(concept_card)
-        if questions:
-            # Response instance bypasses response_model — this route has two shapes.
-            return JSONResponse(
-                status_code=200,
-                content={"needsInfo": True, "questions": questions},
-            )
+    async with project_llm_slot(project_id):
+        # Interview mode: no answers yet → check whether the concept is detailed
+        # enough. `answers` present (even {}) means the user already answered/skipped.
+        if body.answers is None:
+            questions = await check_concept_sufficiency(concept_card)
+            if questions:
+                # Response instance bypasses response_model — this route has two shapes.
+                return JSONResponse(
+                    status_code=200,
+                    content={"needsInfo": True, "questions": questions},
+                )
 
-    # Generate all sections with Claude
-    sections = await generate_gdd(concept_card, body.answers or None)
+        # Generate all sections with Claude
+        sections = await generate_gdd(concept_card, body.answers or None)
 
     now = datetime.utcnow()
     existing = await db.gdds.find_one({"project_id": project_id})

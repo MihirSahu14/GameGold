@@ -68,6 +68,20 @@ export interface Project {
   updatedAt: string
 }
 
+export interface StageSummary {
+  hasContent: boolean
+  updatedAt: string | null
+}
+
+export interface ProjectSummary {
+  gdd: StageSummary
+  systems: StageSummary
+  assets: StageSummary
+  playtest: StageSummary
+  unity: StageSummary
+  deployment: StageSummary
+}
+
 // ─── GDD ─────────────────────────────────────────────────────────────────────
 
 export interface GDDSections {
@@ -117,11 +131,19 @@ export interface GameSystem {
   analysisCache?: BalanceAnalysis
 }
 
+export interface SystemBalanceSuggestion {
+  nodeLabel: string
+  stat: string
+  currentValue: number
+  suggestedValue: number
+  rationale: string
+}
+
 export interface BalanceAnalysis {
   exploits: string[]
   powerCreep: string[]
   dominantStrategies: string[]
-  suggestions: string[]
+  suggestions: SystemBalanceSuggestion[]
   analyzedAt: string
 }
 

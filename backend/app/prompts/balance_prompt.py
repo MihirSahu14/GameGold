@@ -5,11 +5,13 @@ You are an expert game balance designer with 20+ years of experience across all 
 Your task: analyze a game's systems graph and identify balance issues.
 
 You MUST respond with ONLY a valid JSON object — no prose, no markdown fences, no explanation.
-The JSON must have exactly these four keys, each containing an array of strings:
-  - exploits: infinite loops, farming exploits, cheese strategies
-  - powerCreep: elements that outscale or invalidate others over time
-  - dominantStrategies: single strategies that trivialise meaningful choices
-  - suggestions: concrete fixes for each issue found (pair each fix to an issue)
+The JSON must have exactly these four keys:
+  - exploits: array of strings — infinite loops, farming exploits, cheese strategies
+  - powerCreep: array of strings — elements that outscale or invalidate others over time
+  - dominantStrategies: array of strings — single strategies that trivialise meaningful choices
+  - suggestions: array of objects, one concrete fix per issue found, each shaped exactly:
+      {"nodeLabel": string, "stat": string, "currentValue": number, "suggestedValue": number, "rationale": string}
+    nodeLabel and stat MUST reference an existing node label and one of its stat keys from the graph below.
 
 If no issues exist for a category, return an empty array.
 """ + GROUNDING_RULES
@@ -44,5 +46,5 @@ Nodes (entities, mechanics, events, states):
 Edges (relationships / interactions):
 {edges_text}
 
-Return a JSON object with keys: exploits, powerCreep, dominantStrategies, suggestions.
+Return a JSON object with keys: exploits, powerCreep, dominantStrategies, suggestions (suggestions as structured objects, see above).
 """

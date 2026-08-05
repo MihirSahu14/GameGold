@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends, Response, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
 from datetime import datetime
 
+from app.core.concurrency import project_llm_slot
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.services.llm_utils import strip_html
 from app.db.mongodb import get_db, to_object_id
 from app.models.systems import (
@@ -12,7 +14,7 @@ from app.models.systems import (
     AnalyzeRequest,
 )
 from app.routers.auth import get_current_user
-from app.services.balance_service import analyze_balance
+from app.services.balance_service import analyze_balance, extract_systems
 
 router = APIRouter(prefix="/projects/{project_id}/systems", tags=["systems"])
 
@@ -94,7 +96,10 @@ async def save_system(
 
 
 @router.post("/analyze", response_model=BalanceAnalysisOut, response_model_by_alias=True)
+@limiter.limit(LLM_RATE_LIMIT)
 async def analyze_system(
+    request: Request,
+    response: Response,
     project_id: str,
     body: AnalyzeRequest,
     current_user: dict = Depends(get_current_user),
@@ -110,7 +115,8 @@ async def analyze_system(
         mechanics = strip_html(gdd["sections"].get("mechanics", ""))
         gdd_summary = f"{overview}\n{mechanics}".strip()
 
-    analysis = await analyze_balance(body.nodes, body.edges, gdd_summary)
+    async with project_llm_slot(project_id):
+        analysis = await analyze_balance(body.nodes, body.edges, gdd_summary)
 
     # Cache result on the system doc; if the graph was never saved,
     # insert a full valid doc instead of a cache-only phantom.
@@ -136,3 +142,55 @@ async def analyze_system(
         )
 
     return analysis
+
+
+@router.post("/extract", response_model=GameSystemOut, response_model_by_alias=True)
+@limiter.limit(LLM_RATE_LIMIT)
+async def extract_system(
+    request: Request,
+    response: Response,
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+
+    gdd = await db.gdds.find_one({"project_id": project_id})
+    if not gdd or not gdd.get("sections"):
+        raise HTTPException(status_code=404, detail="Generate a GDD before extracting systems")
+
+    sections = gdd["sections"]
+    gdd_summary = "\n".join(
+        strip_html(sections.get(key, ""))
+        for key in ("overview", "mechanics", "progression")
+        if sections.get(key)
+    ).strip()
+
+    async with project_llm_slot(project_id):
+        extracted = await extract_systems(gdd_summary)
+
+    now = datetime.utcnow()
+    existing = await db.systems.find_one({"project_id": project_id})
+    existing_nodes = existing.get("nodes", []) if existing else []
+    existing_labels = {n["label"] for n in existing_nodes}
+    merged_nodes = existing_nodes + [
+        n.model_dump() for n in extracted if n.label not in existing_labels
+    ]
+
+    if existing:
+        await db.systems.update_one(
+            {"project_id": project_id},
+            {"$set": {"nodes": merged_nodes, "updated_at": now}},
+        )
+        doc = await db.systems.find_one({"project_id": project_id})
+        return GameSystemOut(**serialize_system(doc))
+
+    response.status_code = status.HTTP_201_CREATED
+    system_in_db = GameSystemInDB(project_id=project_id, nodes=merged_nodes, edges=[])
+    result = await db.systems.insert_one(system_in_db.model_dump())
+    await db.projects.update_one(
+        {"_id": to_object_id(project_id)},
+        {"$set": {"stage": "systems", "updated_at": now}},
+    )
+    doc = await db.systems.find_one({"_id": result.inserted_id})
+    return GameSystemOut(**serialize_system(doc))

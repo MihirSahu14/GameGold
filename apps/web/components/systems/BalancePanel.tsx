@@ -1,11 +1,12 @@
 'use client'
 
-import type { BalanceAnalysis } from '@gamegold/types'
+import type { BalanceAnalysis, SystemBalanceSuggestion } from '@gamegold/types'
 
 interface BalancePanelProps {
   analysis: BalanceAnalysis | null
   isLoading: boolean
   onReanalyze: () => void
+  onAccept: (suggestion: SystemBalanceSuggestion) => void
 }
 
 interface SectionProps {
@@ -36,7 +37,7 @@ function Section({ title, items, color, badge }: SectionProps) {
   )
 }
 
-export function BalancePanel({ analysis, isLoading, onReanalyze }: BalancePanelProps) {
+export function BalancePanel({ analysis, isLoading, onReanalyze, onAccept }: BalancePanelProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full" role="status" aria-label="Analyzing">
@@ -107,12 +108,33 @@ export function BalancePanel({ analysis, isLoading, onReanalyze }: BalancePanelP
           color="text-yellow-400"
           badge="bg-yellow-900/40 text-yellow-400"
         />
-        <Section
-          title="Suggestions"
-          items={analysis.suggestions}
-          color="text-blue-400"
-          badge="bg-blue-900/40 text-blue-400"
-        />
+        {analysis.suggestions.length > 0 && (
+          <div className="mb-4">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2 text-blue-400">
+              Suggestions
+            </p>
+            <ul className="flex flex-col gap-2">
+              {analysis.suggestions.map((s, i) => (
+                <li
+                  key={i}
+                  className="flex flex-col gap-1.5 text-sm text-zinc-300 bg-blue-900/10 rounded-lg p-2.5"
+                >
+                  <span>
+                    <span className="font-mono text-blue-300">{s.nodeLabel}.{s.stat}</span>{' '}
+                    {s.currentValue} → {s.suggestedValue}
+                  </span>
+                  <span className="text-zinc-400 text-xs">{s.rationale}</span>
+                  <button
+                    onClick={() => onAccept(s)}
+                    className="self-start px-2.5 py-1 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded hover:bg-blue-500/30 transition-colors"
+                  >
+                    Accept
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {analysis.analyzedAt && (
           <p className="text-zinc-600 text-xs mt-4">

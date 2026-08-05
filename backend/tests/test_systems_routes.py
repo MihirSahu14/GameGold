@@ -179,6 +179,61 @@ def test_analyze_returns_balance_analysis(client, mock_db, monkeypatch):
     assert "analyzedAt" in data
 
 
+def test_analyze_suggestions_are_structured_objects(client, mock_db, monkeypatch):
+    """Suggestions are {nodeLabel, stat, currentValue, suggestedValue, rationale} objects, not prose strings."""
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = None
+
+    mock_completion = MagicMock(return_value=_make_litellm_response(CANNED_BALANCE_TEXT))
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    resp = client.post(
+        f"/projects/{TEST_PROJECT_ID}/systems/analyze",
+        json={"nodes": SAMPLE_NODES, "edges": SAMPLE_EDGES},
+    )
+    assert resp.status_code == 200
+    suggestion = resp.json()["suggestions"][0]
+    assert suggestion["nodeLabel"] == "Enemy"
+    assert suggestion["stat"] == "goldDrop"
+    assert suggestion["currentValue"] == 50
+    assert suggestion["suggestedValue"] == 10
+    assert "rationale" in suggestion
+
+
+def test_analyze_skips_malformed_suggestions_without_500(client, mock_db, monkeypatch):
+    """A suggestion missing required fields is dropped, not a 500."""
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = None
+
+    malformed = {
+        "exploits": [],
+        "powerCreep": [],
+        "dominantStrategies": [],
+        "suggestions": [
+            {"nodeLabel": "Enemy"},  # missing stat/currentValue/suggestedValue/rationale
+            "not even an object",
+            {
+                "nodeLabel": "Sword",
+                "stat": "damage",
+                "currentValue": 30,
+                "suggestedValue": 15,
+                "rationale": "valid entry",
+            },
+        ],
+    }
+    mock_completion = MagicMock(return_value=_make_litellm_response(json.dumps(malformed)))
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    resp = client.post(
+        f"/projects/{TEST_PROJECT_ID}/systems/analyze",
+        json={"nodes": SAMPLE_NODES, "edges": SAMPLE_EDGES},
+    )
+    assert resp.status_code == 200
+    suggestions = resp.json()["suggestions"]
+    assert len(suggestions) == 1
+    assert suggestions[0]["nodeLabel"] == "Sword"
+
+
 def test_analyze_caches_result_on_system_doc(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     mock_db.gdds.find_one.return_value = None
@@ -270,6 +325,63 @@ def test_analyze_403_wrong_user(client, mock_db):
         json={"nodes": SAMPLE_NODES, "edges": SAMPLE_EDGES},
     )
     assert resp.status_code == 403
+
+
+# ─── POST /projects/{id}/systems/extract ─────────────────────────────────────
+
+def test_extract_404_without_gdd(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = None
+
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/systems/extract")
+    assert resp.status_code == 404
+
+
+def test_extract_merges_new_nodes(client, mock_db, monkeypatch):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = {
+        "project_id": TEST_PROJECT_ID,
+        "sections": {"overview": "A dungeon crawler", "mechanics": "Turn-based combat", "progression": ""},
+    }
+    mock_db.systems.find_one.side_effect = [None, _make_system_doc()]
+    mock_db.systems.insert_one.return_value = MagicMock(inserted_id=ObjectId())
+
+    extract_payload = {
+        "nodes": [
+            {"type": "entity", "label": "Goblin", "stats": {"hp": 20}},
+            {"type": "mechanic", "label": "Dodge Roll", "stats": {}},
+        ]
+    }
+    mock_completion = MagicMock(return_value=_make_litellm_response(json.dumps(extract_payload)))
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/systems/extract")
+    assert resp.status_code == 201
+    doc = mock_db.systems.insert_one.call_args[0][0]
+    labels = {n["label"] for n in doc["nodes"]}
+    assert labels == {"Goblin", "Dodge Roll"}
+
+
+def test_extract_does_not_clobber_existing_node_with_same_label(client, mock_db, monkeypatch):
+    existing = _make_system_doc()  # nodes: Player, Enemy (data={})
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = {
+        "project_id": TEST_PROJECT_ID,
+        "sections": {"overview": "test", "mechanics": "", "progression": ""},
+    }
+    mock_db.systems.find_one.side_effect = [existing, existing]
+
+    extract_payload = {"nodes": [{"type": "entity", "label": "Player", "stats": {"hp": 9999}}]}
+    mock_completion = MagicMock(return_value=_make_litellm_response(json.dumps(extract_payload)))
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/systems/extract")
+    assert resp.status_code == 200
+    call_args = mock_db.systems.update_one.call_args
+    updated_nodes = call_args[0][1]["$set"]["nodes"]
+    player_nodes = [n for n in updated_nodes if n["label"] == "Player"]
+    assert len(player_nodes) == 1
+    assert player_nodes[0]["data"] == {}  # unchanged — existing node wins over LLM's hp: 9999
 
 
 # ─── Auth guard ───────────────────────────────────────────────────────────────

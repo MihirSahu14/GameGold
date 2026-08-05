@@ -1,15 +1,37 @@
+import logging
+import time
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.core.csrf import CSRFMiddleware
 from app.core.rate_limit import limiter
 from app.db.mongodb import connect_db, close_db
 from app.routers import auth, projects, gdd, systems, assets, playtest, deployment, unity
+
+perf_logger = logging.getLogger("app.perf")
+
+
+class TimingMiddleware(BaseHTTPMiddleware):
+    """Logs method, path, and duration for every request — measurement only, no behavior change."""
+
+    async def dispatch(self, request, call_next):
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start) * 1000
+        perf_logger.info(
+            "request method=%s path=%s duration_ms=%.1f",
+            request.method,
+            request.url.path,
+            duration_ms,
+        )
+        return response
 
 
 @asynccontextmanager
@@ -40,6 +62,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Added last so it wraps outermost and times the full request, CORS included.
+app.add_middleware(TimingMiddleware)
 
 # Routers
 app.include_router(auth.router)

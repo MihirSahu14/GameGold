@@ -29,13 +29,23 @@ class GameSystemUpdate(BaseModel):
     edges: list[SystemEdgeIn] = []
 
 
+class BalanceSuggestion(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    node_label: str
+    stat: str
+    current_value: float
+    suggested_value: float
+    rationale: str
+
+
 class BalanceAnalysisOut(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     exploits: list[str] = []
     power_creep: list[str] = []
     dominant_strategies: list[str] = []
-    suggestions: list[str] = []
+    suggestions: list[BalanceSuggestion] = []
     analyzed_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
 
 

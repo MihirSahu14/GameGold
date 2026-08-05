@@ -33,7 +33,9 @@ const MOCK_ANALYSIS = {
   exploits: ['infinite gold loop'],
   powerCreep: [],
   dominantStrategies: ['rush sword'],
-  suggestions: ['cap gold drop rate'],
+  suggestions: [
+    { nodeLabel: 'Enemy', stat: 'goldDrop', currentValue: 50, suggestedValue: 10, rationale: 'cap gold drop rate' },
+  ],
   analyzedAt: '2024-01-01T00:00:00Z',
 }
 
