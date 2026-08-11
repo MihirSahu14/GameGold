@@ -9,4 +9,7 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - run: curl -sf --max-time 60 https://gamegold-api.onrender.com/health
+      # GitHub cron regularly drifts 40min+, so the service is often asleep when we
+      # ping — a cold start takes ~75s, which the old --max-time 60 turned into a
+      # guaranteed failure email. Allow a full cold start plus retries.
+      - run: curl -sf --retry 2 --retry-all-errors --max-time 150 https://gamegold-api.onrender.com/health
