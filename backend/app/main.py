@@ -12,10 +12,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
 from app.core.csrf import CSRFMiddleware
 from app.core.rate_limit import limiter
-from app.db.mongodb import connect_db, close_db
+from app.db.mongodb import connect_db, close_db, get_db
 from app.routers import auth, projects, gdd, systems, assets, playtest, deployment, unity
+from scripts.migrate_stages import migrate as migrate_stages
 
 perf_logger = logging.getLogger("app.perf")
+startup_logger = logging.getLogger("app.startup")
 
 
 class TimingMiddleware(BaseHTTPMiddleware):
@@ -37,6 +39,13 @@ class TimingMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_db()
+    try:
+        # ponytail: scans every project/asset doc each boot — fine at hundreds of
+        # docs; move to a one-off run once prod is fully migrated. Never blocks
+        # startup: ProjectOut's own legacy-stage mapping is the real safety net.
+        await migrate_stages(get_db())
+    except Exception:
+        startup_logger.exception("Stage migration on startup failed; continuing")
     yield
     await close_db()
 

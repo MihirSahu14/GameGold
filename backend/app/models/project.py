@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional, get_args
 from datetime import datetime
 
 GameGenre = Literal[
@@ -12,6 +12,18 @@ GameTone = Literal["dark", "lighthearted", "epic", "comedic", "horror", "atmosph
 ProjectStage = Literal["pitch", "prototype", "slice", "production", "ship", "killed"]
 # The advance ladder. "killed" is terminal and sits off it.
 STAGE_ORDER: list[str] = ["pitch", "prototype", "slice", "production", "ship"]
+NEW_STAGE_IDS: set[str] = set(get_args(ProjectStage))
+# Pre-restructure stage ids. concept/gdd never had a build; everything later
+# had one but no human playtest evidence. Single source of truth: reused by
+# both the read-time validator below and scripts/migrate_stages.py.
+LEGACY_PITCH_STAGES: set[str] = {"concept", "gdd"}
+
+
+def map_legacy_stage(stage: object) -> object:
+    """Map a pre-restructure stage id to its 5-stage equivalent; new ids pass through."""
+    if stage in NEW_STAGE_IDS:
+        return stage
+    return "pitch" if stage in LEGACY_PITCH_STAGES else "prototype"
 PrototypeDecision = Literal["continue", "pivot", "kill"]
 EstimatedScope = Literal["jam", "indie", "mid", "large"]
 
@@ -70,6 +82,10 @@ class ProjectOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    # ponytail: read-time safety net only — the real fix is running the migration
+    # before deploy. This just stops a not-yet-migrated doc from 500ing on read.
+    _map_legacy_stage = field_validator("stage", mode="before")(map_legacy_stage)
 
 
 GateCheck = Literal["comprehension_resolved", "alpha_feature_lock", "beta_content_complete"]

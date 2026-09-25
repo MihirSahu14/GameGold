@@ -35,6 +35,15 @@ def test_provenance_with_no_assets():
     assert "Undisclosed placeholders still in the build: 0" in md
 
 
+def test_provenance_escapes_pipes_and_newlines_in_asset_names():
+    assets = [{"type": "sprite", "name": "Sword | Shield\nCombo"}]
+    md = provenance_markdown("Bee Game", assets)
+    assert "| Sword \\| Shield Combo | yes | no | no |" in md
+    # The row must still be a single well-formed table line — no stray pipe splits it.
+    row = next(line for line in md.splitlines() if line.startswith("| Sword"))
+    assert row.count("|") == 6  # 5 cell separators + 1 escaped pipe inside the name
+
+
 def test_provenance_endpoint_returns_markdown_and_stamps_project(client, mock_db):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     mock_db.assets.find.return_value = make_cursor(ASSETS)

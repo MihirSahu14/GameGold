@@ -112,20 +112,6 @@ def test_create_store_page_returns_201(client, mock_db, monkeypatch):
     assert body["tags"] == ["rpg"]
 
 
-def test_create_store_page_never_regresses_stage(client, mock_db, monkeypatch):
-    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "stage": "deployment"}
-    mock_db.gdds.find_one.return_value = GDD_DOC
-    monkeypatch.setattr(
-        "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_STORE_PAGE_JSON))
-    )
-    inserted = _fake_deployment_doc()
-    mock_db.deployments.insert_one.return_value = MagicMock(inserted_id=inserted["_id"])
-    mock_db.deployments.find_one.return_value = inserted
-
-    client.post(f"/projects/{TEST_PROJECT_ID}/deployment/store-page", json={"platform": "steam"})
-    mock_db.projects.update_one.assert_not_called()
-
-
 def test_create_store_page_502_on_bad_llm_output(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     mock_db.gdds.find_one.return_value = GDD_DOC

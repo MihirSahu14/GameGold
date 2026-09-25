@@ -155,6 +155,7 @@ def client(mock_db, monkeypatch):
     monkeypatch.setattr("app.routers.unity.get_db", lambda: mock_db)
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
+    monkeypatch.setattr("app.main.migrate_stages", AsyncMock(return_value={}))
 
     from app.core.rate_limit import limiter
     limiter.reset()
@@ -179,6 +180,7 @@ def auth_client(mock_db, monkeypatch):
     monkeypatch.setattr("app.routers.auth.get_db", lambda: mock_db)
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
+    monkeypatch.setattr("app.main.migrate_stages", AsyncMock(return_value={}))
     limiter.reset()
 
     with TestClient(app) as c:

@@ -140,22 +140,6 @@ def test_create_script_returns_201_with_code(client, mock_db, monkeypatch):
     assert body["unityGuide"]["completed"] == [False, False]
 
 
-def test_create_script_never_regresses_stage(client, mock_db, monkeypatch):
-    """Project already at 'playtesting' must NOT move back to 'assets'."""
-    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "stage": "playtesting"}
-    monkeypatch.setattr(
-        "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_SCRIPT_JSON))
-    )
-    inserted = _fake_asset_doc()
-    mock_db.assets.insert_one.return_value = MagicMock(inserted_id=inserted["_id"])
-    mock_db.assets.find_one.return_value = inserted
-
-    client.post(
-        f"/projects/{TEST_PROJECT_ID}/assets/scripts",
-        json={"name": "PlayerController"},
-    )
-    mock_db.projects.update_one.assert_not_called()
-
 
 def test_create_script_502_on_bad_llm_output(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT

@@ -29,11 +29,16 @@ def test_project_out_defaults_new_fields_for_legacy_docs():
     assert out.stage_entered_at is None
 
 
-@pytest.mark.parametrize("stage", ["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"])
-def test_project_out_rejects_old_stage_ids(stage):
-    # This is why migrate_stages.py must run before deploy: old ids fail validation → 500 on read.
-    with pytest.raises(ValidationError):
-        ProjectOut(**_project(stage=stage))
+@pytest.mark.parametrize("stage, mapped", [
+    ("concept", "pitch"), ("gdd", "pitch"),
+    ("systems", "prototype"), ("assets", "prototype"), ("unity", "prototype"),
+    ("playtesting", "prototype"), ("deployment", "prototype"),
+])
+def test_project_out_maps_legacy_stage_ids_instead_of_500ing(stage, mapped):
+    # Safety net for migration/deploy ordering: if migrate_stages.py hasn't run yet
+    # against prod Mongo, reading a project must not 500 — it maps on the way out.
+    out = ProjectOut(**_project(stage=stage))
+    assert out.stage == mapped
 
 
 def test_concept_card_caps_pillars_at_three_and_accepts_camel_case():

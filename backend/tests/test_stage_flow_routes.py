@@ -120,3 +120,31 @@ def test_unknown_check_key_is_422(client, mock_db):
     mock_db.projects.find_one.return_value = _project(stage="production")
     resp = client.put(f"/projects/{TEST_PROJECT_ID}/checks", json={"key": "vibes", "value": True})
     assert resp.status_code == 422
+
+
+def test_check_outside_its_stage_is_409(client, mock_db):
+    mock_db.projects.find_one.return_value = _project(stage="pitch")
+    resp = client.put(f"/projects/{TEST_PROJECT_ID}/checks", json={"key": "alpha_feature_lock", "value": True})
+    assert resp.status_code == 409
+    mock_db.projects.update_one.assert_not_called()
+
+
+def test_comprehension_check_requires_slice_stage(client, mock_db):
+    mock_db.projects.find_one.return_value = _project(stage="production")
+    resp = client.put(f"/projects/{TEST_PROJECT_ID}/checks", json={"key": "comprehension_resolved", "value": True})
+    assert resp.status_code == 409
+
+
+def test_unticking_a_check_outside_its_stage_is_also_409(client, mock_db):
+    mock_db.projects.find_one.return_value = _project(stage="slice")
+    resp = client.put(f"/projects/{TEST_PROJECT_ID}/checks", json={"key": "alpha_feature_lock", "value": False})
+    assert resp.status_code == 409
+    mock_db.projects.update_one.assert_not_called()
+
+
+def test_advance_filters_update_on_the_stage_it_read(client, mock_db):
+    project = _project(concept_card=FULL_CARD)
+    mock_db.projects.find_one = AsyncMock(side_effect=[project, {**project, "stage": "prototype"}])
+    client.post(f"/projects/{TEST_PROJECT_ID}/advance")
+    query = mock_db.projects.update_one.call_args[0][0]
+    assert query == {"_id": project["_id"], "stage": "pitch"}

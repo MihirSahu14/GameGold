@@ -39,8 +39,8 @@ Available tools and their args:
 
 Rules:
 - stepNumber must be sequential starting at 1.
-- Generate up to 30 steps — only what the GDD and assets support. Fewer grounded
-  steps beat padding.
+- Generate up to 30 steps — only what the prototype goal and assets support. Fewer
+  grounded steps beat padding.
 - Start with scene.new, then build ONLY what the prototype goal needs — no menus,
   no save systems, no polish, no second mechanic.
 - Anything without a sprite asset is a primitive (cube, quad, capsule) named

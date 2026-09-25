@@ -70,9 +70,10 @@ async def gate_for(db, project: dict) -> GateOut:
     return GateOut(stage=project.get("stage", "pitch"), met=met, missing=missing, total=len(checks))
 
 
-async def set_and_return(db, project: dict, updates: dict) -> ProjectOut:
+async def set_and_return(db, project: dict, updates: dict, extra_filter: Optional[dict] = None) -> ProjectOut:
     updates["updated_at"] = datetime.utcnow()
-    await db.projects.update_one({"_id": project["_id"]}, {"$set": updates})
+    query = {"_id": project["_id"], **(extra_filter or {})}
+    await db.projects.update_one(query, {"$set": updates})
     updated = await db.projects.find_one({"_id": project["_id"]})
     return ProjectOut(**serialize_project(updated))
 
@@ -199,7 +200,10 @@ async def advance_project(project_id: str, current_user: dict = Depends(get_curr
     if not gate.met:
         raise HTTPException(status_code=409, detail="Gate not met: " + "; ".join(gate.missing))
     next_stage = STAGE_ORDER[STAGE_ORDER.index(stage) + 1]
-    return await set_and_return(db, project, {"stage": next_stage, "stage_entered_at": datetime.utcnow()})
+    # Filter on the stage we read the gate for — a concurrent advance can't double-step.
+    return await set_and_return(
+        db, project, {"stage": next_stage, "stage_entered_at": datetime.utcnow()}, extra_filter={"stage": stage}
+    )
 
 
 @router.post("/{project_id}/decision", response_model=ProjectOut, response_model_by_alias=True)
@@ -219,12 +223,21 @@ async def decide_prototype(
     return await set_and_return(db, project, updates)
 
 
+CHECK_STAGE = {
+    "comprehension_resolved": "slice",
+    "alpha_feature_lock": "production",
+    "beta_content_complete": "production",
+}
+
+
 @router.put("/{project_id}/checks", response_model=ProjectOut, response_model_by_alias=True)
 async def set_gate_check(
     project_id: str, body: GateCheckRequest, current_user: dict = Depends(get_current_user)
 ):
     db = get_db()
     project = await load_owned_project(db, project_id, current_user["_id"])
+    if project.get("stage") != CHECK_STAGE[body.key]:
+        raise HTTPException(status_code=409, detail=f"'{body.key}' is only checkable at the {CHECK_STAGE[body.key]} stage")
     updates: dict = {f"gates.{body.key}": body.value}
     if body.key == "alpha_feature_lock":
         # "≥1 session since alpha" needs to know when alpha happened.

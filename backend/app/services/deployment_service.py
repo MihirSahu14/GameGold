@@ -151,6 +151,11 @@ def _yes_no(value: bool) -> str:
     return "yes" if value else "no"
 
 
+def _md_cell(value: object) -> str:
+    """Escape a value for a Markdown table cell: no `|` or newlines to break the row."""
+    return str(value).replace("|", "\\|").replace("\n", " ").replace("\r", "")
+
+
 def provenance_markdown(title: str, assets: list[dict]) -> str:
     lines = [
         f"# {title} — AI content disclosure",
@@ -167,7 +172,7 @@ def provenance_markdown(title: str, assets: list[dict]) -> str:
             continue
         lines += [f"## {category}", "", "| Asset | Placeholder | Replaced | Disclosed |", "|---|---|---|---|"]
         lines += [
-            f"| {a.get('name', '?')} | {_yes_no(a.get('placeholder', True))} "
+            f"| {_md_cell(a.get('name', '?'))} | {_yes_no(a.get('placeholder', True))} "
             f"| {_yes_no(a.get('replaced', False))} | {_yes_no(a.get('disclosed', False))} |"
             for a in group
         ]

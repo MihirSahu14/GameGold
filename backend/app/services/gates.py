@@ -33,9 +33,14 @@ def compute_gate(
             ("Pick a genre", bool(card.get("genre"))),
         ]
     if stage == "prototype":
+        entered = project.get("stage_entered_at") or datetime.min
         return [
             ("Log a playtest session with 3+ testers outside yourself",
-             any((s.get("testers") or 0) >= 3 and s.get("ring") != "self" for s in sessions)),
+             any(
+                 (s.get("testers") or 0) >= 3 and s.get("ring") != "self"
+                 and s.get("created_at") and s["created_at"] > entered
+                 for s in sessions
+             )),
             ("Decide to continue", project.get("prototype_decision") == "continue"),
         ]
     if stage == "slice":

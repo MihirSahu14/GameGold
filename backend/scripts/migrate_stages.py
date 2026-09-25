@@ -6,9 +6,8 @@ Run ONCE against prod Mongo BEFORE the Render deploy (ProjectOut.stage rejects o
 """
 import asyncio
 
-NEW_STAGES = {"pitch", "prototype", "slice", "production", "ship", "killed"}
-# concept/gdd never had a build; everything later had one but no human playtest evidence.
-PITCH_STAGES = {"concept", "gdd"}
+from app.models.project import NEW_STAGE_IDS, map_legacy_stage
+
 ASSET_DEFAULTS = {"placeholder": True, "replaced": False, "disclosed": False}
 
 
@@ -16,8 +15,8 @@ def project_updates(doc: dict) -> dict:
     """The $set for one project doc; {} when it is already migrated."""
     updates: dict = {}
     stage = doc.get("stage", "concept")  # old ProjectInDB default
-    if stage not in NEW_STAGES:
-        updates["stage"] = "pitch" if stage in PITCH_STAGES else "prototype"
+    if stage not in NEW_STAGE_IDS:
+        updates["stage"] = map_legacy_stage(stage)
     card = doc.get("concept_card")
     if isinstance(card, dict):
         for key in ("pillars", "wont_do"):
