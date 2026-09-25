@@ -24,7 +24,7 @@ function useGenerateDeploymentItem<TPayload>(projectId: string, path: string) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['deployment', projectId] })
-      // Backend advances stage to 'deployment' on first item — refresh project so sidebar unlocks
+      // refresh project + gates
       void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
     },
   })
@@ -58,6 +58,7 @@ export function useUpdateDeploymentGuide(projectId: string) {
       queryClient.setQueryData<DeploymentItem[]>(['deployment', projectId], (prev) =>
         prev?.map((item) => (item._id === updated._id ? updated : item)),
       )
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
 }
@@ -80,6 +81,7 @@ export function useDeleteDeploymentItem(projectId: string) {
 
 // ─── Export bundle ────────────────────────────────────────────────────────────
 export function useExportBundle(projectId: string) {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async () => {
       const res = await api.get(`/projects/${projectId}/export`, { responseType: 'blob' })
@@ -88,6 +90,24 @@ export function useExportBundle(projectId: string) {
       const filename = match?.[1] ?? 'game_bundle.zip'
 
       downloadBlob(res.data as Blob, filename)
+    },
+    // The bundle carries AI_DISCLOSURE.md, which satisfies the provenance gate check.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
+    },
+  })
+}
+
+// ─── AI provenance report ─────────────────────────────────────────────────────
+export function useExportProvenance(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.get(`/projects/${projectId}/export/provenance`, { responseType: 'blob' })
+      downloadBlob(res.data as Blob, 'AI_DISCLOSURE.md')
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
 }

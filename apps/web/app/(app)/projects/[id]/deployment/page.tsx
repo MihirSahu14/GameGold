@@ -10,6 +10,7 @@ import {
   useUpdateDeploymentGuide,
   useDeleteDeploymentItem,
   useExportBundle,
+  useExportProvenance,
 } from '@/lib/queries/useDeployment'
 import { StorePageCard } from '@/components/deployment/StorePageCard'
 import { PressKitCard } from '@/components/deployment/PressKitCard'
@@ -54,6 +55,7 @@ export default function DeploymentPage({ params }: { params: Promise<{ id: strin
   const updateGuide = useUpdateDeploymentGuide(id)
   const deleteItem = useDeleteDeploymentItem(id)
   const exportBundle = useExportBundle(id)
+  const exportProvenance = useExportProvenance(id)
 
   const [activeTab, setActiveTab] = useState<Tab>('storePage')
   const [storePlatform, setStorePlatform] = useState<StorePlatform>('steam')
@@ -190,6 +192,10 @@ export default function DeploymentPage({ params }: { params: Promise<{ id: strin
           <ExportPanel
             onExport={() => exportBundle.mutate(undefined, { onError: (err) => toastError(err, 'Export failed.') })}
             isExporting={exportBundle.isPending}
+            onExportDisclosure={() =>
+              exportProvenance.mutate(undefined, { onError: (err) => toastError(err, 'Could not build the AI disclosure.') })
+            }
+            isExportingDisclosure={exportProvenance.isPending}
           />
         ) : isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

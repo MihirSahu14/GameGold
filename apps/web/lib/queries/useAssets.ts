@@ -71,18 +71,22 @@ export function useSuggestAssets(projectId: string) {
   })
 }
 
-// ─── Approve ──────────────────────────────────────────────────────────────────
+// ─── Approve / provenance flags ──────────────────────────────────────────────
+type AssetFlags = Partial<Pick<Asset, 'approved' | 'replaced' | 'disclosed'>>
+
 export function useApproveAsset(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ assetId, approved }: { assetId: string; approved: boolean }) => {
-      const res = await api.patch<Asset>(`/projects/${projectId}/assets/${assetId}`, { approved })
+    mutationFn: async ({ assetId, ...flags }: { assetId: string } & AssetFlags) => {
+      const res = await api.patch<Asset>(`/projects/${projectId}/assets/${assetId}`, flags)
       return res.data
     },
     onSuccess: (updated) => {
       queryClient.setQueryData<Asset[]>(['assets', projectId], (prev) =>
         prev?.map((a) => (a._id === updated._id ? updated : a)),
       )
+      // replaced/disclosed feed the ship gate
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
 }

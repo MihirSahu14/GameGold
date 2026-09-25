@@ -225,6 +225,10 @@ export interface Asset {
   name: string
   description: string
   approved: boolean
+  /** Provenance (ship gate): every generated asset starts as an AI placeholder. */
+  placeholder: boolean
+  replaced: boolean
+  disclosed: boolean
   unityGuide: UnityGuide
   createdAt: string
   // Sprite fields

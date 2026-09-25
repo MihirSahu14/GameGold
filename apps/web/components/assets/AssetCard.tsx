@@ -30,6 +30,12 @@ function download(filename: string, content: string, mime: string) {
   downloadBlob(new Blob([content], { type: mime }), filename)
 }
 
+function flagClass(on: boolean): string {
+  return on
+    ? 'text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-900/40 text-emerald-400 transition-colors disabled:opacity-40'
+    : 'text-xs px-2 py-0.5 rounded-full font-medium text-zinc-600 border border-zinc-800 hover:text-emerald-400 hover:border-emerald-900 transition-colors disabled:opacity-40'
+}
+
 export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGuide }: AssetCardProps) {
   const [copied, setCopied] = useState(false)
   const [showCode, setShowCode] = useState(false)
@@ -119,6 +125,26 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
         >
           {asset.approved ? '✓ Approved' : '✓'}
         </button>
+        {asset.placeholder && (
+          <>
+            <button
+              onClick={() => approveAsset.mutate({ assetId: asset._id, replaced: !asset.replaced })}
+              disabled={approveAsset.isPending}
+              className={flagClass(asset.replaced)}
+              title={asset.replaced ? 'Replaced with final work — click to undo' : 'Mark as replaced'}
+            >
+              {asset.replaced ? '↺ Replaced' : '↺'}
+            </button>
+            <button
+              onClick={() => approveAsset.mutate({ assetId: asset._id, disclosed: !asset.disclosed })}
+              disabled={approveAsset.isPending}
+              className={flagClass(asset.disclosed)}
+              title={asset.disclosed ? 'Disclosed as AI content — click to undo' : 'Mark as disclosed'}
+            >
+              {asset.disclosed ? '⚑ Disclosed' : '⚑'}
+            </button>
+          </>
+        )}
         <button
           onClick={() => onDelete(asset._id)}
           className="text-zinc-700 hover:text-red-400 transition-colors text-sm ml-1"

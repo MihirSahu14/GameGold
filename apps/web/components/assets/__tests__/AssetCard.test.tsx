@@ -151,3 +151,30 @@ describe('AssetCard regenerate', () => {
     )
   })
 })
+
+describe('AssetCard provenance flags', () => {
+  const PLACEHOLDER = { ...SCRIPT_ASSET, placeholder: true, replaced: false, disclosed: false }
+
+  it('PATCHes replaced: true from the placeholder toggle', async () => {
+    mockApi.patch.mockResolvedValueOnce({ data: { ...PLACEHOLDER, replaced: true } })
+    renderCard(PLACEHOLDER)
+    fireEvent.click(screen.getByTitle('Mark as replaced'))
+    await waitFor(() =>
+      expect(mockApi.patch).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/assets/asset1`, { replaced: true }),
+    )
+  })
+
+  it('PATCHes disclosed: true from the disclosure toggle', async () => {
+    mockApi.patch.mockResolvedValueOnce({ data: { ...PLACEHOLDER, disclosed: true } })
+    renderCard(PLACEHOLDER)
+    fireEvent.click(screen.getByTitle('Mark as disclosed'))
+    await waitFor(() =>
+      expect(mockApi.patch).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/assets/asset1`, { disclosed: true }),
+    )
+  })
+
+  it('hides the toggles for non-placeholder assets', () => {
+    renderCard({ ...SCRIPT_ASSET, placeholder: false, replaced: false, disclosed: false })
+    expect(screen.queryByTitle('Mark as replaced')).toBeNull()
+  })
+})
