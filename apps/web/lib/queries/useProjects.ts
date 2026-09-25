@@ -56,6 +56,20 @@ export function useUpdateConceptCard(projectId: string) {
   })
 }
 
+// ─── Update cut list ──────────────────────────────────────────────────────────
+export function useUpdateCutList(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (cutList: string[]) => {
+      const res = await api.patch<Project>(`/projects/${projectId}`, { cutList })
+      return res.data
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['projects', projectId], data)
+    },
+  })
+}
+
 // ─── Delete project ───────────────────────────────────────────────────────────
 export function useDeleteProject() {
   const queryClient = useQueryClient()
