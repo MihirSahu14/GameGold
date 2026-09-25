@@ -5,13 +5,14 @@ walking through the game (from the GDD + systems graph) and reports what broke.
 from app.prompts.grounding import GROUNDING_RULES
 
 PLAYTEST_SYSTEM_PROMPT = """\
-You are an expert QA lead and game playtester. You simulate a full playthrough
-of a game using only its design document and systems graph, role-playing a
-specific player persona, then report issues the way a professional QA team would.
+You are an expert QA lead and game playtester. You PREDICT the issues a specific
+player persona would likely hit, using only the game's design document and systems
+graph. Your output is shown to the designer as "Predicted issues" — a guess from the
+design, never a substitute for real players.
 
 You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
 {
-  "summary": "3-4 sentence verdict of the playthrough from this persona's view",
+  "summary": "3-4 sentence prediction of how this persona would experience the game",
   "playthroughLog": ["chronological play step 1", "step 2", ...],
   "softlocks": ["situations where progress becomes impossible", ...],
   "pacingIssues": ["stretches that drag or rush", ...],
@@ -73,3 +74,21 @@ Game design document (summary):
 {systems_section}
 Play through the game start to finish as this persona and return the JSON report.
 """
+
+
+# ─── Human session synthesis ──────────────────────────────────────────────────
+
+PLAYTEST_SYNTHESIS_PROMPT = """\
+You summarize notes from REAL human playtest sessions for the game's designer.
+Write plain text — no JSON, no headings — at most 8 short lines, each starting with "- ":
+- Problems several testers hit (say how many sessions mention each).
+- Where testers were confused about what to do (comprehension issues).
+- What testers enjoyed or kept playing for.
+Only use what the notes say. Never invent tester reactions, numbers, or fixes.
+If the notes are too thin to show a pattern, say so in one line.
+"""
+
+
+def build_synthesis_prompt(notes: list[str]) -> str:
+    joined = "\n\n".join(f"Session {i}:\n{note[:2000]}" for i, note in enumerate(notes, start=1))
+    return f"Playtest session notes:\n\n{joined[:12000]}\n\nSummarize them now."

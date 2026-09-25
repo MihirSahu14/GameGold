@@ -3,7 +3,12 @@ Phase 4 — AI playtest simulation. One LLM call role-plays a persona through
 the game (GDD + systems graph) and returns a structured QA report.
 """
 from app.models.playtest import PlaytestReportInDB, BalanceSuggestion
-from app.prompts.playtest_prompt import PLAYTEST_SYSTEM_PROMPT, build_playtest_prompt
+from app.prompts.playtest_prompt import (
+    PLAYTEST_SYNTHESIS_PROMPT,
+    PLAYTEST_SYSTEM_PROMPT,
+    build_playtest_prompt,
+    build_synthesis_prompt,
+)
 from app.services.llm_utils import _list, complete, extract_json
 
 
@@ -39,3 +44,11 @@ async def run_playtest(
         fun_highlights=_str_list(data, "funHighlights"),
         balance_suggestions=suggestions,
     )
+
+
+async def synthesize_sessions(notes: list[str]) -> str:
+    """Plain-text summary of human session notes. Raises ValueError on an empty reply."""
+    summary = (await complete(PLAYTEST_SYNTHESIS_PROMPT, build_synthesis_prompt(notes), max_tokens=800)).strip()
+    if not summary:
+        raise ValueError("LLM returned an empty session summary")
+    return summary
