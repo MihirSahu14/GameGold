@@ -178,6 +178,7 @@ def auth_client(mock_db, monkeypatch):
     from app.core.rate_limit import limiter
 
     monkeypatch.setattr("app.routers.auth.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.routers.oauth.get_db", lambda: mock_db)
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
     monkeypatch.setattr("app.main.migrate_stages", AsyncMock(return_value={}))

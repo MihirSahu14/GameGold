@@ -2,7 +2,7 @@ import re
 
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
-from typing import Literal
+from typing import Literal, Optional
 from datetime import datetime
 
 
@@ -54,7 +54,8 @@ class UserOut(BaseModel):
 class UserInDB(BaseModel):
     email: str
     username: str
-    hashed_password: str
+    hashed_password: Optional[str] = None  # None for Google/GitHub-only accounts
+    oauth: dict[str, str] = {}  # provider -> provider user id
     plan: Literal["free", "pro"] = "free"
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

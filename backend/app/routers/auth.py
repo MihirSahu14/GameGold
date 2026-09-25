@@ -122,7 +122,9 @@ async def login(request: Request, response: Response, data: UserLogin):
         )
 
     user = await db.users.find_one({"email": data.email})
-    if not user or not await asyncio.to_thread(verify_password, data.password, user["hashed_password"]):
+    # OAuth-only accounts have no password: same generic 401, same lockout count.
+    hashed = user.get("hashed_password") if user else None
+    if not hashed or not await asyncio.to_thread(verify_password, data.password, hashed):
         # An expired lock or failures older than the window start a fresh count,
         # so one stray failure after a lockout can't immediately re-lock.
         last_failed_at = (attempt or {}).get("last_failed_at")

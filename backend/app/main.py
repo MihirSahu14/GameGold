@@ -13,7 +13,7 @@ from app.config import settings
 from app.core.csrf import CSRFMiddleware
 from app.core.rate_limit import limiter
 from app.db.mongodb import connect_db, close_db, get_db
-from app.routers import auth, projects, gdd, systems, assets, playtest, deployment, unity
+from app.routers import auth, oauth, projects, gdd, systems, assets, playtest, deployment, unity
 from scripts.migrate_stages import migrate as migrate_stages
 
 perf_logger = logging.getLogger("app.perf")
@@ -78,6 +78,7 @@ app.add_middleware(TimingMiddleware)
 
 # Routers
 app.include_router(auth.router)
+app.include_router(oauth.router)
 app.include_router(projects.router)
 app.include_router(gdd.router)
 app.include_router(systems.router)
