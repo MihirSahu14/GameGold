@@ -15,6 +15,9 @@ from tests.conftest import (
     make_llm_response,
 )
 
+# /playtest/run 409s without a GDD — give the LLM-path tests one.
+GDD_DOC = {"project_id": TEST_PROJECT_ID, "sections": {"overview": "Epic roguelike about bees"}}
+
 CANNED_PLAYTEST_JSON = json.dumps(
     {
         "summary": "Fun core loop but the mid-game drags badly for a casual player.",
@@ -74,6 +77,7 @@ def _fake_bug_doc(**overrides) -> dict:
 
 def test_run_playtest_returns_201_report(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = GDD_DOC
     monkeypatch.setattr(
         "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_PLAYTEST_JSON))
     )
@@ -93,6 +97,7 @@ def test_run_playtest_returns_201_report(client, mock_db, monkeypatch):
 
 def test_run_playtest_advances_stage(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = {**TEST_PROJECT, "stage": "assets"}
+    mock_db.gdds.find_one.return_value = GDD_DOC
     monkeypatch.setattr(
         "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_PLAYTEST_JSON))
     )
@@ -130,6 +135,7 @@ def test_run_playtest_includes_gdd_and_systems_context(client, mock_db, monkeypa
 
 def test_run_playtest_502_on_bad_llm_output(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = GDD_DOC
     monkeypatch.setattr(
         "litellm.completion", MagicMock(return_value=make_llm_response("garbage"))
     )

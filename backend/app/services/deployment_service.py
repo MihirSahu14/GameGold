@@ -3,6 +3,7 @@ Phase 5 deployment generation: store page copy, press kit, Unity build guides,
 and the export bundle. The export bundle aggregates existing data (GDD +
 assets) — no LLM call.
 """
+import asyncio
 import base64
 import io
 import json
@@ -18,7 +19,7 @@ from app.prompts.deployment_prompts import (
     build_press_kit_prompt,
     build_build_guide_prompt,
 )
-from app.services.llm_utils import complete, extract_json
+from app.services.llm_utils import _list, complete, extract_json
 
 
 async def generate_store_page(platform: str, game_context: str) -> dict:
@@ -32,8 +33,8 @@ async def generate_store_page(platform: str, game_context: str) -> dict:
         "title": title,
         "short_description": str(data.get("shortDescription", "")).strip(),
         "long_description": str(data.get("longDescription", "")).strip(),
-        "tags": [str(t) for t in data.get("tags", [])],
-        "bullets": [str(b) for b in data.get("bullets", [])],
+        "tags": [str(t) for t in _list(data.get("tags"))],
+        "bullets": [str(b) for b in _list(data.get("bullets"))],
     }
 
 
@@ -45,7 +46,7 @@ async def generate_press_kit(game_context: str) -> dict:
     return {
         "tagline": tagline,
         "description": str(data.get("description", "")).strip(),
-        "key_features": [str(f) for f in data.get("keyFeatures", [])],
+        "key_features": [str(f) for f in _list(data.get("keyFeatures"))],
         "dev_blurb": str(data.get("devBlurb", "")).strip(),
     }
 
@@ -54,7 +55,7 @@ async def generate_build_guide(platform: str, title: str) -> UnityGuide:
     data = extract_json(
         await complete(BUILD_GUIDE_SYSTEM_PROMPT, build_build_guide_prompt(platform, title))
     )
-    steps = [str(s) for s in data.get("steps", [])]
+    steps = [str(s) for s in _list(data.get("steps"))]
     if not steps:
         raise ValueError("LLM returned no build guide steps")
     return UnityGuide(steps=steps, completed=[False] * len(steps))
@@ -80,7 +81,7 @@ def _readme_text(title: str, assets: list[dict]) -> str:
         lines.append("No assets were generated yet.\n")
     for asset in assets:
         guide = asset.get("unity_guide") or {}
-        steps = guide.get("steps", [])
+        steps = _list(guide.get("steps"))
         lines.append(f"## {asset.get('type')}: {asset.get('name')}\n")
         for i, step in enumerate(steps, start=1):
             lines.append(f"{i}. {step}")
@@ -95,7 +96,23 @@ async def export_project_bundle(db, project_id: str, title: str) -> bytes:
     cursor = db.assets.find({"project_id": project_id})
     assets = await cursor.to_list(500)
 
+    # Zipping + base64-decoding sprites is CPU-bound — keep it off the event loop.
+    return await asyncio.to_thread(_build_zip, title, sections, assets)
+
+
+def _build_zip(title: str, sections: dict, assets: list[dict]) -> bytes:
     buffer = io.BytesIO()
+    used: set[str] = set()
+
+    def unique(folder: str, name: str, ext: str) -> str:
+        """Two assets with the same name must not overwrite each other in the zip."""
+        path, n = f"{folder}/{name}.{ext}", 1
+        while path.lower() in used:
+            n += 1
+            path = f"{folder}/{name}_{n}.{ext}"
+        used.add(path.lower())
+        return path
+
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("GDD.md", _gdd_to_markdown(title, sections))
         zf.writestr("README.md", _readme_text(title, assets))
@@ -104,14 +121,15 @@ async def export_project_bundle(db, project_id: str, title: str) -> bytes:
             name = safe_filename(str(asset.get("name", "asset")).replace(" ", "_"))
             asset_type = asset.get("type")
             if asset_type == "script" and asset.get("code"):
-                zf.writestr(f"Scripts/{name}.cs", asset["code"])
+                zf.writestr(unique("Scripts", name, "cs"), asset["code"])
             elif asset_type == "sprite" and asset.get("url"):
                 url = asset["url"]
                 if url.startswith("data:") and "base64," in url:
                     encoded = url.split("base64,", 1)[1]
+                    # SVG-fallback sprites are stored as data:image/svg+xml — keep them .svg
                     ext = "svg" if url.startswith("data:image/svg") else "png"
-                    zf.writestr(f"Sprites/{name}.{ext}", base64.b64decode(encoded))
+                    zf.writestr(unique("Sprites", name, ext), base64.b64decode(encoded))
             elif asset_type == "dialogue" and asset.get("tree"):
-                zf.writestr(f"Dialogue/{name}.json", json.dumps(asset["tree"], indent=2))
+                zf.writestr(unique("Dialogue", name, "json"), json.dumps(asset["tree"], indent=2))
 
     return buffer.getvalue()

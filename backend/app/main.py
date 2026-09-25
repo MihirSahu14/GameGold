@@ -61,6 +61,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],  # export bundle filename
 )
 
 # Added last so it wraps outermost and times the full request, CORS included.

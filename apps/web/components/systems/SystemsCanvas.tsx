@@ -85,6 +85,8 @@ interface SystemsCanvasProps {
 
 export interface SystemsCanvasHandle {
   updateNode: (node: SystemNode) => void
+  /** Map every node's data; canvas state stays the source of truth and autosave persists it. */
+  patchNodes: (fn: (node: SystemNode) => SystemNode) => void
 }
 
 // ─── Inner canvas (must be inside ReactFlowProvider) ─────────────────────────
@@ -102,13 +104,14 @@ function Canvas({ nodes: propNodes, edges: propEdges, onSave, onNodeClick, onAna
     updateNode: (node: SystemNode) => {
       setRfNodes((nds) => nds.map((n) => n.id === node.id ? { ...n, data: node } : n))
     },
+    patchNodes: (fn: (node: SystemNode) => SystemNode) => {
+      setRfNodes((nds) => nds.map((n) => ({ ...n, data: fn(n.data) })))
+    },
   }))
 
-  // Sync prop changes into internal state (e.g. on initial load from DB)
-  useEffect(() => {
-    setRfNodes(propNodes.map(toRfNode))
-    setRfEdges(propEdges.map(toRfEdge))
-  }, []) // only on mount — thereafter we own the state
+  // Initial state comes from props via useNodesState/useEdgesState; thereafter
+  // we own it. (A mount-time re-sync here used to trigger autosave and
+  // overwrite the stored graph — with [] if the load had failed.)
 
   // Debounced auto-save (1 s) whenever nodes/edges change after mount
   useEffect(() => {

@@ -51,10 +51,10 @@ class GenerateSpriteRequest(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     name: str = Field(min_length=1, max_length=100)
-    description: str = Field(min_length=1)
+    description: str = Field(min_length=1, max_length=2000)
     style: ArtStyle = "pixel"
     regenerate_of: Optional[str] = None
-    note: str = ""
+    note: str = Field(default="", max_length=2000)
 
 
 class GenerateScriptRequest(BaseModel):
@@ -62,18 +62,18 @@ class GenerateScriptRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=100)
     script_type: ScriptType = "custom"
-    description: str = ""
+    description: str = Field(default="", max_length=2000)
     regenerate_of: Optional[str] = None
-    note: str = ""
+    note: str = Field(default="", max_length=2000)
 
 
 class GenerateDialogueRequest(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     npc_name: str = Field(min_length=1, max_length=100)
-    personality: str = Field(min_length=1)
+    personality: str = Field(min_length=1, max_length=2000)
     regenerate_of: Optional[str] = None
-    note: str = ""
+    note: str = Field(default="", max_length=2000)
 
 
 class UpdateGuideRequest(BaseModel):

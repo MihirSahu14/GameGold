@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from pydantic.alias_generators import to_camel
-from typing import Optional
+from typing import Annotated, Optional
 from datetime import datetime
 
 
@@ -45,15 +45,17 @@ class GenerateGDDRequest(BaseModel):
     # `answers` present (even {}) means "skip the sufficiency check and generate";
     # absent means "run the check first".
     concept_card: dict = Field(default_factory=dict)
-    answers: Optional[dict[str, str]] = None
+    answers: Optional[dict[Annotated[str, Field(max_length=500)], Annotated[str, Field(max_length=2000)]]] = Field(
+        default=None, max_length=20
+    )
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class RefineGDDRequest(BaseModel):
     section: str
-    current_content: str
-    instructions: str
+    current_content: str = Field(max_length=20000)
+    instructions: str = Field(max_length=2000)
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 

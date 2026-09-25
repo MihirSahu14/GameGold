@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { downloadBlob } from '../utils'
 import type { DeploymentItem, StorePlatform, BuildPlatform } from '@gamegold/types'
 
 // ─── List all deployment items for a project ────────────────────────────────
@@ -86,12 +87,7 @@ export function useExportBundle(projectId: string) {
       const match = disposition?.match(/filename="(.+)"/)
       const filename = match?.[1] ?? 'game_bundle.zip'
 
-      const url = URL.createObjectURL(res.data as Blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      a.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(res.data as Blob, filename)
     },
   })
 }

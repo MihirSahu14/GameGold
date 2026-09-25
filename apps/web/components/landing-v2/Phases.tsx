@@ -29,8 +29,8 @@ const PHASES: Phase[] = [
   {
     number: '04',
     title: 'Unity MCP Server',
-    status: 'Next',
-    desc: 'A C# editor package that runs an HTTP server inside Unity. Claude generates a build plan and executes each step live in the Editor: creating GameObjects, importing sprites, attaching scripts, entering Play mode.',
+    status: 'Live',
+    desc: 'Built and tested live in Unity 6. A C# editor package that runs an HTTP server inside Unity. Claude generates a build plan and executes each step live in the Editor: creating GameObjects, importing sprites, attaching scripts, entering Play mode.',
   },
   {
     number: '05',
@@ -63,8 +63,8 @@ export function Phases() {
                   Concept to shipped, in six phases.
                 </h2>
                 <p className="mt-4 max-w-[60ch] leading-relaxed text-zinc-400">
-                  Every stage of the pipeline lives in one project. Five phases are live today; the
-                  Unity MCP server is next.
+                  Every stage of the pipeline lives in one project. All six phases are live, including the
+                  Unity MCP server.
                 </p>
               </Reveal>
             </div>

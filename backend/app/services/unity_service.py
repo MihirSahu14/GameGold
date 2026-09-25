@@ -6,7 +6,7 @@ browser sends to the local Unity MCP server (localhost:7432).
 """
 from app.models.unity import UnityBuildStep
 from app.prompts.unity_prompt import UNITY_PLAN_SYSTEM_PROMPT, build_unity_plan_prompt
-from app.services.llm_utils import complete, extract_json, strip_html
+from app.services.llm_utils import _list, complete, extract_json, strip_html
 
 
 async def generate_build_plan(
@@ -36,16 +36,25 @@ async def generate_build_plan(
     )
 
     summary = str(data.get("summary", "Unity build plan")).strip()
-    raw_steps = data.get("steps", [])
+    script_names = {str(a.get("name")) for a in assets if a.get("type") == "script"}
 
     steps: list[UnityBuildStep] = []
-    for raw in raw_steps:
+    for raw in _list(data.get("steps")):
         try:
+            tool = str(raw.get("tool", ""))
+            args = dict(raw.get("args") or {})
+            if tool == "asset.createScript":
+                # Only scripts we actually generated; code is injected client-side
+                # from the stored asset, so the model's code (if any) is dropped.
+                if args.get("className") not in script_names:
+                    continue
+                class_name = args["className"]
+                args = {"className": class_name, "path": args.get("path") or f"Assets/Scripts/{class_name}.cs"}
             steps.append(UnityBuildStep(
-                step_number=int(raw.get("stepNumber", len(steps) + 1)),
+                step_number=len(steps) + 1,  # ignore the model's numbering
                 description=str(raw.get("description", "")),
-                tool=str(raw.get("tool", "")),
-                args=dict(raw.get("args") or {}),
+                tool=tool,
+                args=args,
                 category=str(raw.get("category", "gameobject")),
             ))
         except Exception:

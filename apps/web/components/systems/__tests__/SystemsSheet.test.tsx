@@ -30,6 +30,9 @@ describe('SystemsSheet', () => {
     render(<SystemsSheet nodes={SAMPLE_NODES} edges={SAMPLE_EDGES} onSave={onSave} />)
 
     fireEvent.change(screen.getByLabelText('label-n1'), { target: { value: 'Hero' } })
+    // saves on blur, not per keystroke
+    expect(onSave).not.toHaveBeenCalled()
+    fireEvent.blur(screen.getByLabelText('label-n1'))
 
     expect(onSave).toHaveBeenCalledWith(
       [

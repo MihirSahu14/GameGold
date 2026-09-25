@@ -79,10 +79,12 @@ def mock_db():
     db.refresh_tokens.find_one = AsyncMock(return_value=None)
     db.refresh_tokens.insert_one = AsyncMock()
     db.refresh_tokens.update_one = AsyncMock()
+    db.refresh_tokens.find_one_and_update = AsyncMock(return_value=None)
 
     db.login_attempts = MagicMock()
     db.login_attempts.find_one = AsyncMock(return_value=None)
     db.login_attempts.update_one = AsyncMock()
+    db.login_attempts.find_one_and_update = AsyncMock(return_value={"failed_count": 1})
 
     db.projects = MagicMock()
     db.projects.find_one = AsyncMock(return_value=None)

@@ -31,9 +31,9 @@ const PHASES = [
     num: '04',
     color: '#f4c20d',
     icon: '🔌',
-    status: 'NEXT' as const,
+    status: 'COMPLETE' as const,
     title: 'Unity MCP Server',
-    desc: 'A C# Editor package that runs an HTTP server inside Unity. Claude reads your GDD and assets, generates a step-by-step build plan, and the browser executes each step live in the Editor — creating GameObjects, importing sprites, attaching scripts, entering Play mode. No manual drag-and-drop.',
+    desc: 'Built and tested live in Unity 6. A C# Editor package that runs an HTTP server inside Unity. Claude reads your GDD and assets, generates a step-by-step build plan, and the browser executes each step live in the Editor — creating GameObjects, importing sprites, attaching scripts, entering Play mode. No manual drag-and-drop.',
   },
   {
     num: '05',

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from pydantic.alias_generators import to_camel
-from typing import Literal, Optional
+from typing import Literal, Optional, get_args
 from datetime import datetime
 
 GameGenre = Literal[
@@ -10,6 +10,7 @@ GameGenre = Literal[
 GamePlatform = Literal["pc", "mobile", "web", "console", "cross-platform"]
 GameTone = Literal["dark", "lighthearted", "epic", "comedic", "horror", "atmospheric", "realistic"]
 ProjectStage = Literal["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"]
+STAGE_ORDER: list[str] = list(get_args(ProjectStage))
 EstimatedScope = Literal["jam", "indie", "mid", "large"]
 
 
@@ -36,7 +37,7 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
-    title: Optional[str] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=100)
     stage: Optional[ProjectStage] = None
     concept_card: Optional[ConceptCard] = None
 

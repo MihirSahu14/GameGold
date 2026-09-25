@@ -364,7 +364,7 @@ export default function LandingPage() {
         <div style={{ fontSize: '13px', color: '#6b7787' }}>
           Built by{' '}
           <a
-            href="https://mihirsahu.vercel.app"
+            href="https://mihirsahu.dev"
             data-cursor="hover"
             style={{ color: '#4ea8ff', textDecoration: 'none' }}
           >

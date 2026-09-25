@@ -390,7 +390,7 @@ To use it: copy `unity-mcp/` into your Unity project's `Packages/` folder, open 
 
 ## Built By
 
-**Mihir Sahu** — [mihirsahu.vercel.app](https://mihirsahu.vercel.app)
+**Mihir Sahu** — [mihirsahu.dev](https://mihirsahu.dev)
 
 CS Graduate, University of Wisconsin-Madison. Full-stack engineer and game developer bridging the gap between game design and AI-powered software tooling.
 

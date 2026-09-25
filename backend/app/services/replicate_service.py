@@ -33,6 +33,14 @@ async def generate_sprite_image(image_prompt: str, style: str) -> str:
         else "2D illustrated game sprite, clean shapes, "
     )
 
+    try:
+        return await _request_image(style_prefix + image_prompt)
+    except httpx.HTTPError as e:
+        # Network/timeout/HTTP-status failures → SVG fallback, not a 500.
+        raise SpriteGenerationError(f"Replicate request failed: {e}") from e
+
+
+async def _request_image(prompt: str) -> str:
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(
             f"{REPLICATE_API}/models/{IMAGE_MODEL}/predictions",
@@ -42,7 +50,7 @@ async def generate_sprite_image(image_prompt: str, style: str) -> str:
             },
             json={
                 "input": {
-                    "prompt": style_prefix + image_prompt,
+                    "prompt": prompt,
                     "aspect_ratio": "1:1",
                     "output_format": "png",
                     "megapixels": "0.25",

@@ -11,10 +11,23 @@ import litellm
 
 from app.config import settings
 
+LLM_TIMEOUT_SECONDS = 90
+
 
 def strip_html(text: str) -> str:
     """Remove HTML tags (TipTap stores sections as HTML after edits)."""
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
+
+
+def _list(value) -> list:
+    """LLM list fields sometimes come back as a string/dict/null — treat those as empty."""
+    return value if isinstance(value, list) else []
+
+
+def _as_dict(parsed, text: str) -> dict:
+    if not isinstance(parsed, dict):
+        raise ValueError(f"LLM returned JSON that is not an object: {text[:200]!r}")
+    return parsed
 
 
 def _repair_json_strings(text: str) -> str:
@@ -61,7 +74,7 @@ def extract_json(text: str) -> dict:
     # Try plain parse first, then with literal-newline repair
     for attempt in (candidate, _repair_json_strings(candidate)):
         try:
-            return json.loads(attempt)
+            return _as_dict(json.loads(attempt), text)
         except json.JSONDecodeError:
             pass
 
@@ -72,7 +85,7 @@ def extract_json(text: str) -> dict:
         span = candidate[start : end + 1]
         for attempt in (span, _repair_json_strings(span)):
             try:
-                return json.loads(attempt)
+                return _as_dict(json.loads(attempt), text)
             except json.JSONDecodeError:
                 pass
 
@@ -84,6 +97,7 @@ def _call_llm(system_prompt: str, user_prompt: str, max_tokens: int) -> str:
         model=settings.llm_model,
         api_key=settings.llm_api_key,
         max_tokens=max_tokens,
+        timeout=LLM_TIMEOUT_SECONDS,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -94,5 +108,9 @@ def _call_llm(system_prompt: str, user_prompt: str, max_tokens: int) -> str:
 
 async def complete(system_prompt: str, user_prompt: str, max_tokens: int = 1500) -> str:
     """One LLM call via LiteLLM, run off the event loop thread so it doesn't block
-    other requests for the duration of the (often multi-second) call."""
-    return await asyncio.to_thread(_call_llm, system_prompt, user_prompt, max_tokens)
+    other requests for the duration of the (often multi-second) call.
+    Provider/network/timeout errors surface as ValueError so routers return 502."""
+    try:
+        return await asyncio.to_thread(_call_llm, system_prompt, user_prompt, max_tokens)
+    except Exception as e:
+        raise ValueError(f"LLM call failed: {e}") from e

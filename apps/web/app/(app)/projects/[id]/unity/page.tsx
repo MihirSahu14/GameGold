@@ -1,12 +1,14 @@
 'use client'
 
 import { use, useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useProject, useMarkUnityComplete } from '@/lib/queries/useProjects'
 import { useAssets } from '@/lib/queries/useAssets'
-import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP } from '@/lib/queries/useUnity'
+import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, resolveToolArgs, findScriptAsset } from '@/lib/queries/useUnity'
+import { useExportBundle } from '@/lib/queries/useDeployment'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
-import { api } from '@/lib/api'
+import { toastError } from '@/lib/api'
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
@@ -52,27 +54,25 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const { data: plan, isLoading: planLoading } = useUnityPlan(id)
   const generatePlan = useGeneratePlan(id)
   const markStep = useMarkStep(id)
+  const exportBundle = useExportBundle(id)
   const { status: mcpStatus, unityInfo, check: checkMCP, executeTool } = useUnityMCP()
+  const router = useRouter()
 
   const STORAGE_KEY = `unity-checklist-${id}`
-  const [checked, setChecked] = useState<boolean[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        const parsed = JSON.parse(saved) as boolean[]
-        if (Array.isArray(parsed) && parsed.length === SETUP_STEPS.length) return parsed
-      }
-    } catch { /* ignore */ }
-    return Array(SETUP_STEPS.length).fill(false)
-  })
-  const [exporting, setExporting] = useState(false)
+  const [checked, setChecked] = useState<boolean[]>(() => Array(SETUP_STEPS.length).fill(false))
   const [activeTab, setActiveTab] = useState<Tab>('manual')
   const [executingStep, setExecutingStep] = useState<number | null>(null)
   const [stepResults, setStepResults] = useState<Record<number, { success: boolean; message: string }>>({})
 
+  // Read localStorage after mount; reading it during render mismatches the server HTML.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(checked)) } catch { /* ignore */ }
-  }, [checked, STORAGE_KEY])
+    try {
+      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as unknown
+      if (Array.isArray(parsed) && parsed.length === SETUP_STEPS.length) setChecked(parsed as boolean[])
+    } catch { /* ignore */ }
+  }, [STORAGE_KEY])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const sprites  = (assets ?? []).filter(a => a.type === 'sprite')
   const scripts  = (assets ?? []).filter(a => a.type === 'script')
@@ -82,28 +82,37 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const alreadyComplete = project?.stage === 'unity' || project?.stage === 'playtesting' || project?.stage === 'deployment'
 
   function toggleStep(i: number) {
-    setChecked(prev => prev.map((v, idx) => idx === i ? !v : v))
+    const next = checked.map((v, idx) => idx === i ? !v : v)
+    setChecked(next)
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* ignore */ }
   }
 
-  async function handleExport() {
-    setExporting(true)
-    try {
-      const res = await api.get(`/projects/${id}/export`, { responseType: 'blob' })
-      const url = URL.createObjectURL(res.data as Blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${(project?.title ?? 'gamegold').replace(/\s+/g, '_')}_assets.zip`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      alert('Export failed — check the console for details.')
-    } finally {
-      setExporting(false)
-    }
+  function handleExport() {
+    exportBundle.mutate(undefined, { onError: (err) => toastError(err, 'Export failed.') })
   }
 
   async function handleMarkComplete() {
-    try { await markComplete.mutateAsync() } catch { alert('Could not advance stage — check the console.') }
+    try {
+      await markComplete.mutateAsync()
+    } catch (err) {
+      toastError(err, 'Could not advance stage.')
+      return
+    }
+    router.push(`/projects/${id}/playtesting`)
+  }
+
+  async function handleGeneratePlan() {
+    if (plan && !window.confirm('Regenerate the build plan? Step progress will be reset.')) return
+    try {
+      await generatePlan.mutateAsync()
+      setStepResults({})
+    } catch (err) {
+      toastError(err, 'Could not generate the build plan.')
+    }
+  }
+
+  function handleToggleStepDone(stepNumber: number, completed: boolean) {
+    markStep.mutate({ stepNumber, completed }, { onError: (err) => toastError(err, 'Could not save step progress.') })
   }
 
   async function handleExecuteStep(stepNumber: number, tool: string, args: Record<string, unknown>) {
@@ -113,27 +122,19 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     }
     setExecutingStep(stepNumber)
     try {
-      let toolArgs = args
-      if (tool === 'asset.importSprite') {
-        // The LLM can't know real image data — inject the stored sprite's
-        // data-URI as base64 (the C# side strips the data: prefix).
-        const sprite = sprites.find(a => a.name === args.name)
-        if (!sprite?.url) {
-          setStepResults(prev => ({
-            ...prev,
-            [stepNumber]: { success: false, message: `No sprite asset named "${String(args.name)}" found — generate it in the Assets stage first.` },
-          }))
-          return
-        }
-        toolArgs = { ...args, base64: sprite.url }
+      // The LLM can't know file contents — sprite data / script code come from stored assets.
+      const resolved = resolveToolArgs(tool, args, assets ?? [])
+      if ('error' in resolved) {
+        setStepResults(prev => ({ ...prev, [stepNumber]: { success: false, message: resolved.error } }))
+        return
       }
-      const result = await executeTool(tool, toolArgs)
+      const result = await executeTool(tool, resolved.args)
       setStepResults(prev => ({ ...prev, [stepNumber]: result }))
       if (result.success) {
         await markStep.mutateAsync({ stepNumber, completed: true })
       }
-    } catch {
-      alert('Could not save step progress — check the console.')
+    } catch (err) {
+      toastError(err, 'Could not save step progress.')
     } finally {
       setExecutingStep(null)
     }
@@ -249,10 +250,10 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
           <div style={{ display: 'flex', gap: '12px' }}>
             <button
               onClick={handleExport}
-              disabled={exporting || totalAssets === 0}
-              style={{ background: '#141c27', color: '#c8d4e2', border: '1px solid #1b2533', padding: '11px 18px', fontSize: '12px', letterSpacing: '1px', cursor: exporting || totalAssets === 0 ? 'not-allowed' : 'pointer', opacity: totalAssets === 0 ? 0.4 : 1, ...mono }}
+              disabled={exportBundle.isPending || totalAssets === 0}
+              style={{ background: '#141c27', color: '#c8d4e2', border: '1px solid #1b2533', padding: '11px 18px', fontSize: '12px', letterSpacing: '1px', cursor: exportBundle.isPending || totalAssets === 0 ? 'not-allowed' : 'pointer', opacity: totalAssets === 0 ? 0.4 : 1, ...mono }}
             >
-              {exporting ? 'EXPORTING...' : '⬇ DOWNLOAD ALL ASSETS'}
+              {exportBundle.isPending ?'EXPORTING...' : '⬇ DOWNLOAD ALL ASSETS'}
             </button>
             {!alreadyComplete ? (
               <button
@@ -345,7 +346,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                 <div style={{ background: '#0b1018', border: '1px solid #1b2533', padding: '28px', textAlign: 'center' }}>
                   <p style={{ color: '#8b97a7', fontSize: '13px', marginBottom: '16px' }}>No build plan yet. Click below and Claude will read your GDD + assets and generate a step-by-step Unity build plan.</p>
                   <button
-                    onClick={() => generatePlan.mutateAsync()}
+                    onClick={handleGeneratePlan}
                     disabled={generatePlan.isPending}
                     style={{ background: '#4ea8ff', color: '#07090d', border: 'none', padding: '12px 24px', fontSize: '12px', letterSpacing: '1px', fontWeight: 700, cursor: generatePlan.isPending ? 'not-allowed' : 'pointer', ...pixel }}
                   >
@@ -361,7 +362,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                       <p style={{ color: '#8b97a7', fontSize: '12px', margin: 0 }}>{plan.summary}</p>
                     </div>
                     <button
-                      onClick={() => generatePlan.mutateAsync()}
+                      onClick={handleGeneratePlan}
                       disabled={generatePlan.isPending}
                       style={{ background: '#141c27', color: '#8b97a7', border: '1px solid #1b2533', padding: '8px 14px', fontSize: '11px', letterSpacing: '1px', cursor: 'pointer', ...mono }}
                     >
@@ -394,6 +395,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                       const result = stepResults[step.stepNumber]
                       const isRunning = executingStep === step.stepNumber
                       const color = CATEGORY_COLORS[step.category] ?? '#4ea8ff'
+                      const scriptCode = step.tool === 'asset.createScript' ? findScriptAsset(step.args, assets ?? [])?.code : undefined
                       return (
                         <div
                           key={step.stepNumber}
@@ -425,6 +427,19 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                                 {result.success ? '✓' : '✗'} {result.message}
                               </p>
                             )}
+                            {scriptCode && (
+                              <details className="mt-1.5">
+                                <summary className="cursor-pointer text-[11px] text-[#8b97a7]">Show code that will be written</summary>
+                                <pre className="mt-1 max-h-64 overflow-auto border border-[#1b2533] bg-[#07090d] p-2 text-[11px] text-[#c8d4e2]">{scriptCode}</pre>
+                              </details>
+                            )}
+                            <button
+                              onClick={() => handleToggleStepDone(step.stepNumber, !step.completed)}
+                              disabled={markStep.isPending}
+                              className="mt-1 block cursor-pointer border-none bg-transparent p-0 text-[10px] text-[#456079] underline hover:text-[#8b97a7]"
+                            >
+                              {step.completed ? 'mark not done' : 'mark done manually'}
+                            </button>
                           </div>
 
                           {/* Execute button */}

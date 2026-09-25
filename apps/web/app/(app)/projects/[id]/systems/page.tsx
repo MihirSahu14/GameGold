@@ -17,7 +17,7 @@ type ViewTab = 'sheet' | 'advanced'
 export default function SystemsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { data: project } = useProject(id)
-  const { data: system, isLoading: systemLoading } = useGameSystem(id)
+  const { data: system, isLoading: systemLoading, isError, error, refetch } = useGameSystem(id)
   const { data: summary } = useProjectSummary(id)
   const saveSystem = useSaveSystem(id)
   const analyzeBalance = useAnalyzeBalance(id)
@@ -62,14 +62,15 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
 
   const handleAcceptSuggestion = useCallback(
     (suggestion: SystemBalanceSuggestion) => {
-      const updatedNodes = nodes.map((n) =>
+      // Patch the canvas, not the query data — otherwise the canvas autosave
+      // writes its own stale state back and reverts the accepted value.
+      canvasRef.current?.patchNodes((n) =>
         n.label === suggestion.nodeLabel
           ? { ...n, data: { ...n.data, [suggestion.stat]: suggestion.suggestedValue } }
           : n
       )
-      saveSystem.mutate({ nodes: updatedNodes, edges })
     },
-    [nodes, edges, saveSystem]
+    []
   )
 
   const handleNodeUpdate = useCallback(
@@ -85,6 +86,22 @@ export default function SystemsPage({ params }: { params: Promise<{ id: string }
     return (
       <div className="flex h-screen items-center justify-center" style={{ background: '#07090d' }}>
         <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#4ea8ff', borderTopColor: 'transparent' }} />
+      </div>
+    )
+  }
+
+  // 404 just means no graph saved yet. Any other failure must not render an
+  // empty editor whose autosave would overwrite the real graph.
+  if (isError && (error as { response?: { status?: number } }).response?.status !== 404) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-[#07090d]">
+        <p className="text-sm text-zinc-400">Couldn&apos;t load your systems graph.</p>
+        <button
+          onClick={() => void refetch()}
+          className="border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800"
+        >
+          Retry
+        </button>
       </div>
     )
   }

@@ -2,11 +2,10 @@ import json
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
-from datetime import datetime
 
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
-from app.db.mongodb import get_db, to_object_id
+from app.db.mongodb import advance_stage, get_db, to_object_id
 from app.models.assets import (
     ApproveAssetRequest,
     AssetOut,
@@ -31,8 +30,6 @@ from app.services.llm_utils import strip_html
 
 router = APIRouter(prefix="/projects/{project_id}/assets", tags=["assets"])
 
-STAGE_ORDER = ["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"]
-
 
 def serialize_asset(doc: dict) -> dict:
     doc["_id"] = str(doc["_id"])
@@ -46,16 +43,6 @@ async def verify_project_access(project_id: str, user_id: str, db) -> dict:
     if str(project["user_id"]) != user_id:
         raise HTTPException(status_code=403, detail="Not your project")
     return project
-
-
-async def advance_stage(db, project: dict, target: str) -> None:
-    """Move the project stage forward to `target` — never backwards."""
-    current = project.get("stage", "concept")
-    if STAGE_ORDER.index(target) > STAGE_ORDER.index(current):
-        await db.projects.update_one(
-            {"_id": project["_id"]},
-            {"$set": {"stage": target, "updated_at": datetime.utcnow()}},
-        )
 
 
 async def build_game_context(db, project_id: str, extra_section: str) -> str:

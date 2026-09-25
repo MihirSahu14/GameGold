@@ -14,12 +14,22 @@ namespace GameGold.MCP
             var args = SimpleJson.Parse(body);
             var name = args.GetString("name");
 
+            // Validate before touching the open scene
+            if (!string.IsNullOrEmpty(name) && name.IndexOfAny(new[] { '/', '\\', '.', ':' }) >= 0)
+                return GameGoldMCP.Error("'name' must be a plain scene name, not a path");
+
+            // NewScene(Single) discards unsaved changes with no prompt — refuse unless forced
+            if (!args.GetBool("force"))
+            {
+                for (int i = 0; i < SceneManager.sceneCount; i++)
+                    if (SceneManager.GetSceneAt(i).isDirty)
+                        return GameGoldMCP.Error("Save your scene first (or pass force: true to discard unsaved changes)");
+            }
+
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
             if (!string.IsNullOrEmpty(name))
             {
-                if (name.IndexOfAny(new[] { '/', '\\', '.', ':' }) >= 0)
-                    return GameGoldMCP.Error("'name' must be a plain scene name, not a path");
                 if (!System.IO.Directory.Exists("Assets/Scenes"))
                     System.IO.Directory.CreateDirectory("Assets/Scenes");
                 EditorSceneManager.SaveScene(scene, $"Assets/Scenes/{name}.unity");

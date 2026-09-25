@@ -17,6 +17,7 @@ import { BuildGuideCard } from '@/components/deployment/BuildGuideCard'
 import { ExportPanel } from '@/components/deployment/ExportPanel'
 import type { DeploymentType, StorePlatform, BuildPlatform } from '@gamegold/types'
 import { cn } from '@/lib/utils'
+import { toastError } from '@/lib/api'
 
 type Tab = DeploymentType | 'export'
 
@@ -187,7 +188,7 @@ export default function DeploymentPage({ params }: { params: Promise<{ id: strin
       <div className="flex-1 overflow-y-auto p-6">
         {activeTab === 'export' ? (
           <ExportPanel
-            onExport={() => exportBundle.mutate()}
+            onExport={() => exportBundle.mutate(undefined, { onError: (err) => toastError(err, 'Export failed.') })}
             isExporting={exportBundle.isPending}
           />
         ) : isLoading ? (

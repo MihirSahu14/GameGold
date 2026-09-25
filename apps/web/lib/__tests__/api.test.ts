@@ -57,6 +57,7 @@ describe('handleResponseError', () => {
   it('retries the original request after a successful /auth/refresh', async () => {
     const { handleResponseError, api } = await import('@/lib/api')
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({ status: 200, data: {} })
+    const getSpy = vi.spyOn(axios, 'get').mockResolvedValue({ data: { csrf_token: 'new' } })
     const requestSpy = vi.spyOn(api, 'request').mockResolvedValue({ data: 'ok' })
 
     const config = { url: '/projects/1/gdd', method: 'get' }
@@ -70,10 +71,11 @@ describe('handleResponseError', () => {
       null,
       expect.objectContaining({ withCredentials: true }),
     )
-    expect(requestSpy).toHaveBeenCalledWith(config)
+    expect(requestSpy).toHaveBeenCalledWith(expect.objectContaining(config))
     expect(result).toEqual({ data: 'ok' })
 
     postSpy.mockRestore()
+    getSpy.mockRestore()
     requestSpy.mockRestore()
   })
 
@@ -94,6 +96,78 @@ describe('handleResponseError', () => {
 
     expect(window.location.href).toBe('/login')
 
+    postSpy.mockRestore()
+  })
+
+  it('sends X-CSRF-Token on /auth/refresh and picks up the rotated token', async () => {
+    const { refreshSession, setCsrfToken } = await import('@/lib/api')
+    setCsrfToken('old')
+    const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({ status: 200, data: {} })
+    const getSpy = vi.spyOn(axios, 'get').mockResolvedValue({ data: { csrf_token: 'rotated' } })
+
+    await refreshSession()
+
+    expect(postSpy.mock.calls[0][2]).toMatchObject({ headers: { 'X-CSRF-Token': 'old' } })
+    expect(getSpy).toHaveBeenCalledWith(expect.stringContaining('/auth/csrf'), expect.anything())
+
+    // a second refresh now uses the rotated token
+    await refreshSession()
+    expect(postSpy.mock.calls[1][2]).toMatchObject({ headers: { 'X-CSRF-Token': 'rotated' } })
+
+    postSpy.mockRestore()
+    getSpy.mockRestore()
+  })
+
+  it('fetches the CSRF token first when none is in memory', async () => {
+    const { refreshSession, setCsrfToken } = await import('@/lib/api')
+    setCsrfToken(null)
+    const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({ status: 200, data: {} })
+    const getSpy = vi.spyOn(axios, 'get').mockResolvedValue({ data: { csrf_token: 'fetched' } })
+
+    await refreshSession()
+
+    expect(postSpy.mock.calls[0][2]).toMatchObject({ headers: { 'X-CSRF-Token': 'fetched' } })
+
+    postSpy.mockRestore()
+    getSpy.mockRestore()
+  })
+
+  it('shares one in-flight refresh across parallel 401s', async () => {
+    const { handleResponseError, api, setCsrfToken } = await import('@/lib/api')
+    setCsrfToken('t')
+    let release: () => void = () => {}
+    const postSpy = vi.spyOn(axios, 'post').mockImplementation(
+      () => new Promise((resolve) => (release = () => resolve({ status: 200, data: {} }))),
+    )
+    const getSpy = vi.spyOn(axios, 'get').mockResolvedValue({ data: { csrf_token: 't2' } })
+    const requestSpy = vi.spyOn(api, 'request').mockResolvedValue({ data: 'ok' })
+
+    const a = handleResponseError({ config: { url: '/a' }, response: { status: 401, headers: {} } })
+    const b = handleResponseError({ config: { url: '/b' }, response: { status: 401, headers: {} } })
+    await Promise.resolve()
+    release()
+    await Promise.all([a, b])
+
+    expect(postSpy).toHaveBeenCalledTimes(1)
+    expect(requestSpy).toHaveBeenCalledTimes(2)
+
+    postSpy.mockRestore()
+    getSpy.mockRestore()
+    requestSpy.mockRestore()
+  })
+
+  it('does not refresh again when the retried request 401s', async () => {
+    const { handleResponseError } = await import('@/lib/api')
+    const postSpy = vi.spyOn(axios, 'post')
+
+    await expect(
+      handleResponseError({
+        config: { url: '/projects/1/gdd', _retried: true },
+        response: { status: 401, headers: {} },
+      }),
+    ).rejects.toBeDefined()
+
+    expect(postSpy).not.toHaveBeenCalled()
     postSpy.mockRestore()
   })
 })

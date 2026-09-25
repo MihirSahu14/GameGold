@@ -2,14 +2,13 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
-from bson import ObjectId
 from datetime import datetime
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
-from app.db.mongodb import get_db, to_object_id
+from app.db.mongodb import advance_stage, get_db, to_object_id
 from app.models.gdd import GDDUpdate, GDDOut, GDDInDB, GenerateGDDRequest, RefineGDDRequest, RefinedSectionOut
 from app.routers.auth import get_current_user
-from app.services.claude_service import check_concept_sufficiency, generate_gdd, refine_gdd_section
+from app.services.claude_service import GDD_SECTIONS, check_concept_sufficiency, generate_gdd, refine_gdd_section
 
 router = APIRouter(prefix="/projects/{project_id}/gdd", tags=["gdd"])
 
@@ -59,20 +58,23 @@ async def generate_gdd_endpoint(
     body = body or GenerateGDDRequest()
     concept_card = body.concept_card or project.get("concept_card") or {}
 
-    async with project_llm_slot(project_id):
-        # Interview mode: no answers yet → check whether the concept is detailed
-        # enough. `answers` present (even {}) means the user already answered/skipped.
-        if body.answers is None:
-            questions = await check_concept_sufficiency(concept_card)
-            if questions:
-                # Response instance bypasses response_model — this route has two shapes.
-                return JSONResponse(
-                    status_code=200,
-                    content={"needsInfo": True, "questions": questions},
-                )
+    try:
+        async with project_llm_slot(project_id):
+            # Interview mode: no answers yet → check whether the concept is detailed
+            # enough. `answers` present (even {}) means the user already answered/skipped.
+            if body.answers is None:
+                questions = await check_concept_sufficiency(concept_card)
+                if questions:
+                    # Response instance bypasses response_model — this route has two shapes.
+                    return JSONResponse(
+                        status_code=200,
+                        content={"needsInfo": True, "questions": questions},
+                    )
 
-        # Generate all sections with Claude
-        sections = await generate_gdd(concept_card, body.answers or None)
+            # Generate all sections with Claude
+            sections = await generate_gdd(concept_card, body.answers or None)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
     now = datetime.utcnow()
     existing = await db.gdds.find_one({"project_id": project_id})
@@ -90,24 +92,30 @@ async def generate_gdd_endpoint(
         result = await db.gdds.insert_one(gdd_in_db.model_dump())
         gdd = await db.gdds.find_one({"_id": result.inserted_id})
 
-        # Advance project stage to 'gdd'
-        await db.projects.update_one(
-            {"_id": ObjectId(project_id)},
-            {"$set": {"stage": "gdd", "updated_at": now}},
-        )
+        # Advance project stage to 'gdd' (forward-only)
+        await advance_stage(db, project, "gdd")
 
     return GDDOut(**serialize_gdd(gdd))
 
 
 @router.post("/refine", response_model=RefinedSectionOut)
+@limiter.limit(LLM_RATE_LIMIT)
 async def refine_section(
+    request: Request,
+    response: Response,
     project_id: str,
     body: RefineGDDRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    if body.section not in GDD_SECTIONS:
+        raise HTTPException(status_code=422, detail=f"Unknown GDD section: {body.section}")
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
-    content = await refine_gdd_section(body.section, body.current_content, body.instructions)
+    try:
+        async with project_llm_slot(project_id):
+            content = await refine_gdd_section(body.section, body.current_content, body.instructions)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
     return RefinedSectionOut(section=body.section, content=content)
 
 

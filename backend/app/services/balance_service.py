@@ -13,7 +13,7 @@ from app.prompts.systems_extract_prompt import (
     SYSTEMS_EXTRACT_SYSTEM_PROMPT,
     build_extract_prompt,
 )
-from app.services.llm_utils import complete, extract_json
+from app.services.llm_utils import _list, complete, extract_json
 
 VALID_NODE_TYPES = {"entity", "mechanic", "event", "state"}
 
@@ -54,7 +54,9 @@ async def extract_systems(gdd_summary: str) -> list[SystemNodeIn]:
     data = extract_json(await complete(SYSTEMS_EXTRACT_SYSTEM_PROMPT, prompt, max_tokens=2000))
 
     nodes = []
-    for i, n in enumerate(data.get("nodes", [])):
+    for i, n in enumerate(_list(data.get("nodes"))):
+        if not isinstance(n, dict):
+            continue
         node_type = n.get("type")
         label = n.get("label")
         if node_type not in VALID_NODE_TYPES or not label:

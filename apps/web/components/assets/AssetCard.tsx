@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import type { Asset } from '@gamegold/types'
 import { UnityGuide } from './UnityGuide'
+import { downloadBlob, downloadHref } from '@/lib/utils'
+import { toastError } from '@/lib/api'
 import {
   useApproveAsset,
   useGenerateSprite,
@@ -25,13 +27,7 @@ const TYPE_META: Record<Asset['type'], { icon: string; label: string; badge: str
 }
 
 function download(filename: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadBlob(new Blob([content], { type: mime }), filename)
 }
 
 export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGuide }: AssetCardProps) {
@@ -75,7 +71,7 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
       setShowRegenerate(false)
       setNote('')
     } catch (err) {
-      console.error('Regeneration failed:', err)
+      toastError(err, 'Regeneration failed.')
     }
   }
 
@@ -91,10 +87,9 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
     } else if (asset.type === 'dialogue' && asset.tree) {
       download(`${asset.name.replace(/\s+/g, '_')}_dialogue.json`, JSON.stringify(asset.tree, null, 2), 'application/json')
     } else if (asset.type === 'sprite' && asset.url) {
-      const a = document.createElement('a')
-      a.href = asset.url
-      a.download = `${asset.name.replace(/\s+/g, '_')}.png`
-      a.click()
+      // Placeholder sprites are SVG data URIs — don't mislabel them as .png.
+      const ext = asset.url.startsWith('data:image/svg') ? 'svg' : 'png'
+      downloadHref(asset.url, `${asset.name.replace(/\s+/g, '_')}.${ext}`)
     }
   }
 

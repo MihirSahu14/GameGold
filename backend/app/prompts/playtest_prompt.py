@@ -24,7 +24,8 @@ You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
 }
 
 Rules:
-- playthroughLog: 8-15 steps, written in first person, in this persona's voice.
+- playthroughLog: up to 15 steps; only steps the design supports. First person,
+  in this persona's voice.
 - Stay strictly within what the design describes — flag gaps as issues instead
   of inventing content.
 - Every balanceSuggestion needs a specific, actionable fix and a plausible

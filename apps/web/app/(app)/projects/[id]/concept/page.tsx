@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useProject, useUpdateConceptCard } from '@/lib/queries/useProjects'
+import { toastError } from '@/lib/api'
 import type { ConceptCard, GameTone } from '@gamegold/types'
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
@@ -40,7 +41,7 @@ const inputStyle: React.CSSProperties = {
 
 export default function ConceptPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const { data: project, isLoading } = useProject(id)
+  const { data: project, isLoading, isError, refetch } = useProject(id)
   const updateConcept = useUpdateConceptCard(id)
   const router = useRouter()
 
@@ -65,6 +66,17 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
   }, [project?.conceptCard])
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  if (isError) {
+    return (
+      <div className="px-9 py-10 text-[13px] text-[#8b97a7]" style={mono}>
+        <p className="mb-3">Couldn&apos;t load this project.</p>
+        <button onClick={() => void refetch()} className="border border-[#1b2533] px-4 py-2 text-[#c8d4e2] hover:bg-[#141c27]">
+          RETRY
+        </button>
+      </div>
+    )
+  }
+
   if (isLoading || !project) {
     return (
       <div style={{ padding: '40px 36px', ...mono }}>
@@ -81,7 +93,12 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
       tagline, genre: project!.genre, platform: project!.platform,
       tone, coreLoop, uniqueHook, targetAudience, estimatedScope,
     }
-    await updateConcept.mutateAsync(conceptCard)
+    try {
+      await updateConcept.mutateAsync(conceptCard)
+    } catch (err) {
+      toastError(err, 'Could not save the concept card.')
+      return
+    }
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -92,7 +109,12 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
       tagline, genre: project!.genre, platform: project!.platform,
       tone, coreLoop, uniqueHook, targetAudience, estimatedScope,
     }
-    await updateConcept.mutateAsync(conceptCard)
+    try {
+      await updateConcept.mutateAsync(conceptCard)
+    } catch (err) {
+      toastError(err, 'Could not save the concept card.')
+      return
+    }
     router.push(`/projects/${id}/gdd`)
   }
 

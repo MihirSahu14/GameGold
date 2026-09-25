@@ -23,6 +23,38 @@ export function setCsrfToken(token: string | null): void {
   _csrfToken = token
 }
 
+async function loadCsrfToken(): Promise<string | null> {
+  try {
+    const res = await axios.get<{ csrf_token: string }>(`${API_URL}/auth/csrf`, { withCredentials: true })
+    _csrfToken = res.data.csrf_token
+  } catch {
+    _csrfToken = null
+  }
+  return _csrfToken ?? getCookie(CSRF_COOKIE)
+}
+
+// One refresh at a time: the backend revokes the refresh jti on use, so two
+// parallel refreshes would make the second one 401 and log the user out.
+let _refreshPromise: Promise<void> | null = null
+
+export function refreshSession(): Promise<void> {
+  if (!_refreshPromise) {
+    _refreshPromise = (async () => {
+      // /auth/refresh is CSRF-checked (the gg_refresh cookie counts as a session).
+      const csrf = _csrfToken ?? getCookie(CSRF_COOKIE) ?? (await loadCsrfToken())
+      await axios.post(`${API_URL}/auth/refresh`, null, {
+        withCredentials: true,
+        headers: csrf ? { 'X-CSRF-Token': csrf } : {},
+      })
+      // Refresh rotates gg_csrf — pick up the new value before retrying anything.
+      await loadCsrfToken()
+    })().finally(() => {
+      _refreshPromise = null
+    })
+  }
+  return _refreshPromise
+}
+
 function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
@@ -67,10 +99,12 @@ export async function handleResponseError(error: {
   const isAuthCheck = AUTH_401_EXCLUDED.some((p) => url.includes(p))
   const isRefreshCall = url.includes('/auth/refresh')
   if (error.response?.status === 401 && !isAuthCheck && !isRefreshCall) {
-    if (error.config) {
+    // Retry once only — a request that 401s right after a good refresh must not loop.
+    if (error.config && !error.config._retried) {
       try {
-        await axios.post(`${API_URL}/auth/refresh`, null, { withCredentials: true })
-        return api.request(error.config)
+        await refreshSession()
+        const retry: typeof error.config = { ...error.config, _retried: true }
+        return api.request(retry)
       } catch {
         // refresh failed — fall through to redirect below
       }
@@ -91,4 +125,11 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
     return axiosErr.response.data?.detail ?? fallback
   }
   return 'Could not reach the server — it may be down, or the request was blocked by CORS. Check the browser console for details.'
+}
+
+/** Show a failed request as an error toast. */
+export function toastError(err: unknown, fallback: string): void {
+  // 429s were already toasted by the response interceptor.
+  if ((err as { response?: { status?: number } } | undefined)?.response?.status === 429) return
+  useToastStore.getState().pushToast(apiErrorMessage(err, fallback), 'error')
 }

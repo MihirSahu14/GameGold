@@ -9,7 +9,7 @@ Guidelines:
 - Balance creativity with feasibility given the stated scope
 - Use markdown formatting: headings (##), bullet points, tables where appropriate
 - Write in plain text with markdown — no JSON, no special formatting outside of markdown
-- Each section should be 200-600 words, substantive but focused
+- Write only what the provided game details support — a short grounded section beats a padded one
 """ + GROUNDING_RULES
 
 
@@ -119,9 +119,32 @@ Rules:
 """
 
 
+# Fixed questions for concepts too thin to check (no core loop, no hook) and
+# the fail-closed fallback when the LLM sufficiency check itself errors.
+DEFAULT_CLARIFYING_QUESTIONS = [
+    "What does the player do minute to minute — what is the core gameplay loop?",
+    "What makes this game different from others in its genre — what is the unique hook?",
+    "Who is the player character, and what is the setting?",
+    "How does the player progress — levels, unlocks, story beats, or something else?",
+    "Who is the target audience, and how long is a typical play session?",
+]
+
+
 def build_concept_check_prompt(concept_card: dict) -> str:
     return (
         "Review this concept card for sufficiency.\n\n"
         f"CONCEPT CARD:\n{format_concept_card(concept_card)}\n\n"
         "Return the JSON object now."
+    )
+
+
+# ─── Section refinement ───────────────────────────────────────────────────────
+
+def build_refine_prompt(section_name: str, current_content: str, instructions: str) -> str:
+    return (
+        f"You are refining the **{section_name}** section of a Game Design Document.\n\n"
+        f"Current content:\n{current_content}\n\n"
+        f"Developer's instructions: {instructions}\n\n"
+        "Apply the requested changes and return the updated section in markdown format. "
+        "Keep everything that wasn't changed. Be specific and concrete."
     )

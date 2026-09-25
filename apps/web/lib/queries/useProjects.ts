@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { Project, ConceptCard } from '@gamegold/types'
+import type { Project, ProjectCreate, ConceptCard } from '@gamegold/types'
 
 // ─── Fetch all projects ───────────────────────────────────────────────────────
 export function useProjects() {
@@ -29,7 +29,7 @@ export function useProject(id: string) {
 export function useCreateProject() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (data: Partial<Project>) => {
+    mutationFn: async (data: ProjectCreate) => {
       const res = await api.post<Project>('/projects', data)
       return res.data
     },

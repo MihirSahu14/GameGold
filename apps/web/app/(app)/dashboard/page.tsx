@@ -28,7 +28,7 @@ const selectStyle: React.CSSProperties = {
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
-  const { data: projects, isLoading } = useProjects()
+  const { data: projects, isLoading, isError, refetch } = useProjects()
   const createProject = useCreateProject()
   const router = useRouter()
   const [showModal, setShowModal] = useState(false)
@@ -90,6 +90,13 @@ export default function DashboardPage() {
               style={{ height: '160px', background: '#0b1018', border: '1px solid #1b2533', animation: 'pulse 2s ease-in-out infinite' }}
             />
           ))}
+        </div>
+      ) : isError ? (
+        <div className="text-[13px] text-[#8b97a7]">
+          <p className="mb-3">Couldn&apos;t load your games.</p>
+          <button onClick={() => void refetch()} className="border border-[#1b2533] px-4 py-2 text-[#c8d4e2] hover:bg-[#141c27]">
+            RETRY
+          </button>
         </div>
       ) : projects && projects.length > 0 ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>

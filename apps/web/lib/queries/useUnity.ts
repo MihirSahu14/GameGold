@@ -1,27 +1,43 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useCallback } from 'react'
 import { api } from '../api'
+import type { Asset, UnityBuildPlan } from '@gamegold/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface UnityBuildStep {
-  stepNumber: number
-  description: string
-  tool: string
-  args: Record<string, unknown>
-  category: 'scene' | 'gameobject' | 'component' | 'asset' | 'playmode'
-  completed: boolean
-}
-
-export interface UnityBuildPlan {
-  _id: string
-  projectId: string
-  steps: UnityBuildStep[]
-  summary: string
-  generatedAt: string
-}
-
 export type ToolResult = { success: boolean; message: string; data?: unknown }
+
+// The plan never carries file contents — inject them from the stored assets.
+// Returns the args to send, or an error message to fail the step with.
+export function resolveToolArgs(
+  tool: string,
+  args: Record<string, unknown>,
+  assets: Asset[],
+): { args: Record<string, unknown> } | { error: string } {
+  if (tool === 'asset.importSprite') {
+    const sprite = assets.find((a) => a.type === 'sprite' && a.name === args.name)
+    if (!sprite?.url) {
+      return { error: `No sprite asset named "${String(args.name)}" found — generate it in the Assets stage first.` }
+    }
+    if (sprite.url.startsWith('data:image/svg')) {
+      return { error: `"${sprite.name}" is an SVG placeholder — replace it with a PNG in the Assets stage.` }
+    }
+    // the C# side strips the data: prefix
+    return { args: { ...args, base64: sprite.url } }
+  }
+  if (tool === 'asset.createScript') {
+    const script = findScriptAsset(args, assets)
+    if (!script?.code) {
+      return { error: `No script asset named "${String(args.className)}" found — generate it in the Assets stage first.` }
+    }
+    return { args: { ...args, code: script.code } }
+  }
+  return { args }
+}
+
+export function findScriptAsset(args: Record<string, unknown>, assets: Asset[]): Asset | undefined {
+  return assets.find((a) => a.type === 'script' && a.name === args.className)
+}
 
 // ─── MCP server default port ──────────────────────────────────────────────────
 
@@ -55,6 +71,7 @@ export function useGeneratePlan(projectId: string) {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['unity-plan', projectId], data)
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'summary'] })
     },
   })
 }

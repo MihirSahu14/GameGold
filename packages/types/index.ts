@@ -58,7 +58,6 @@ export interface Project {
   _id: string
   userId: string
   title: string
-  tagline: string
   genre: GameGenre
   platform: GamePlatform
   tone: GameTone
@@ -66,6 +65,14 @@ export interface Project {
   conceptCard?: ConceptCard
   createdAt: string
   updatedAt: string
+}
+
+export type ProjectCreate = {
+  title: string
+  genre?: GameGenre
+  platform?: GamePlatform
+  tone?: GameTone
+  stage?: ProjectStage
 }
 
 export interface StageSummary {
@@ -278,6 +285,25 @@ export interface DeploymentItem {
   // buildGuide
   buildPlatform?: BuildPlatform
   unityGuide?: UnityGuide
+}
+
+// ─── Unity Build Plan ────────────────────────────────────────────────────────
+
+export type UnityBuildStep = {
+  stepNumber: number
+  description: string
+  tool: string
+  args: Record<string, unknown>
+  category: 'scene' | 'gameobject' | 'component' | 'asset' | 'playmode'
+  completed: boolean
+}
+
+export type UnityBuildPlan = {
+  _id: string
+  projectId: string
+  steps: UnityBuildStep[]
+  summary: string
+  generatedAt: string
 }
 
 // ─── API Responses ───────────────────────────────────────────────────────────

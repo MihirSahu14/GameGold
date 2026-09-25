@@ -30,11 +30,18 @@ def _fake_login_attempts(mock_db) -> dict:
     async def update_one(query, update, upsert=False):
         email = query.get("email")
         record = store.setdefault(email, {"email": email})
-        record.update(update["$set"])
+        record.update(update.get("$set", {}))
+        for key, amount in update.get("$inc", {}).items():
+            record[key] = record.get(key, 0) + amount
+
+    async def find_one_and_update(query, update, upsert=False, return_document=None):
+        await update_one(query, update, upsert)
+        return dict(store[query.get("email")])
 
     mock_db.login_attempts = MagicMock()
     mock_db.login_attempts.find_one = AsyncMock(side_effect=find_one)
     mock_db.login_attempts.update_one = AsyncMock(side_effect=update_one)
+    mock_db.login_attempts.find_one_and_update = AsyncMock(side_effect=find_one_and_update)
     return store
 
 

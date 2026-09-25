@@ -3,11 +3,10 @@ import io
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
 from bson import ObjectId
-from datetime import datetime
 
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
-from app.db.mongodb import get_db, to_object_id
+from app.db.mongodb import advance_stage, get_db, to_object_id
 from app.models.deployment import (
     DeploymentOut,
     DeploymentInDB,
@@ -24,12 +23,11 @@ from app.services.deployment_service import (
     export_project_bundle,
     safe_filename,
 )
+from app.prompts.gdd_prompt import format_concept_card
 from app.services.llm_utils import strip_html
 
 router = APIRouter(prefix="/projects/{project_id}/deployment", tags=["deployment"])
 export_router = APIRouter(prefix="/projects/{project_id}/export", tags=["deployment"])
-
-STAGE_ORDER = ["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"]
 
 
 def serialize_item(doc: dict) -> dict:
@@ -46,22 +44,28 @@ async def verify_project_access(project_id: str, user_id: str, db) -> dict:
     return project
 
 
-async def advance_stage(db, project: dict, target: str) -> None:
-    """Move the project stage forward to `target` — never backwards."""
-    current = project.get("stage", "concept")
-    if STAGE_ORDER.index(target) > STAGE_ORDER.index(current):
-        await db.projects.update_one(
-            {"_id": project["_id"]},
-            {"$set": {"stage": target, "updated_at": datetime.utcnow()}},
-        )
+CONCEPT_CONTENT_FIELDS = ("tagline", "core_loop", "unique_hook", "target_audience")
 
 
-async def build_game_context(db, project_id: str) -> str:
-    """Short GDD overview for marketing-copy LLM context."""
-    gdd = await db.gdds.find_one({"project_id": project_id})
-    if not gdd or not gdd.get("sections"):
-        return ""
-    return strip_html(gdd["sections"].get("overview", ""))[:5000]
+async def build_game_context(db, project: dict) -> str:
+    """Project basics + concept card + GDD overview for marketing-copy LLM context.
+    409 when there is nothing real to write copy from (no GDD, no concept content)."""
+    gdd = await db.gdds.find_one({"project_id": str(project["_id"])})
+    overview = strip_html(((gdd or {}).get("sections") or {}).get("overview", ""))
+    card = project.get("concept_card") or {}
+    if not overview and not any(str(card.get(k) or "").strip() for k in CONCEPT_CONTENT_FIELDS):
+        raise HTTPException(status_code=409, detail="Add a concept or GDD first")
+
+    parts = [
+        f"Title: {project.get('title', '')}",
+        f"Genre: {project.get('genre', '')}",
+        f"Tone: {project.get('tone', '')}",
+    ]
+    if card:
+        parts.append("Concept card:\n" + format_concept_card(card))
+    if overview:
+        parts.append("GDD overview:\n" + overview)
+    return "\n".join(parts)[:5000]
 
 
 async def insert_and_return(db, item: DeploymentInDB) -> DeploymentOut:
@@ -103,7 +107,7 @@ async def create_store_page(
     db = get_db()
     project = await verify_project_access(project_id, current_user["_id"], db)
 
-    game_context = await build_game_context(db, project_id)
+    game_context = await build_game_context(db, project)
     try:
         async with project_llm_slot(project_id):
             data = await generate_store_page(body.platform, game_context)
@@ -133,7 +137,7 @@ async def create_press_kit(
     db = get_db()
     project = await verify_project_access(project_id, current_user["_id"], db)
 
-    game_context = await build_game_context(db, project_id)
+    game_context = await build_game_context(db, project)
     try:
         async with project_llm_slot(project_id):
             data = await generate_press_kit(game_context)

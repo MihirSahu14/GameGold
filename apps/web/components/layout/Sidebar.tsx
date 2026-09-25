@@ -6,6 +6,7 @@ import { logoutUser } from '@/lib/auth'
 import { useAuthStore } from '@/store/authStore'
 import { useProjectStore } from '@/store/projectStore'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import type { ProjectStage } from '@gamegold/types'
 
 const NAV_ITEMS = [
@@ -28,7 +29,8 @@ const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' 
 export function Sidebar() {
   const pathname = usePathname()
   const { user, setUser } = useAuthStore()
-  const { activeProject } = useProjectStore()
+  const { activeProject, setActiveProject, setActiveGDD } = useProjectStore()
+  const queryClient = useQueryClient()
   const router = useRouter()
 
   const projectId = activeProject?._id
@@ -37,6 +39,10 @@ export function Sidebar() {
     try {
       await logoutUser()
     } catch { /* server logout failed — clear the local session anyway */ }
+    // Drop the previous user's cached data so the next login can't see it.
+    queryClient.clear()
+    setActiveProject(null)
+    setActiveGDD(null)
     setUser(null)
     router.push('/login')
   }

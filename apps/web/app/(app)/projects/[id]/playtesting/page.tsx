@@ -148,7 +148,7 @@ export default function PlaytestingPage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* Report history */}
-            {(reports?.length ?? 0) > 1 && (
+            {(reports?.length ?? 0) > 0 && (
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-zinc-600 text-xs">History:</p>
                 {reports!.map((r) => (

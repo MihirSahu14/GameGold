@@ -17,11 +17,11 @@ from app.prompts.asset_prompts import (
     build_suggest_prompt,
     build_svg_sprite_prompt,
 )
-from app.services.llm_utils import complete, extract_json
+from app.services.llm_utils import _list, complete, extract_json
 
 
 def _make_guide(data: dict) -> UnityGuide:
-    steps = [str(s) for s in data.get("unityGuide", [])]
+    steps = [str(s) for s in _list(data.get("unityGuide"))]
     return UnityGuide(steps=steps, completed=[False] * len(steps))
 
 
@@ -44,7 +44,7 @@ async def suggest_assets(
         )
     )
     # AssetProposal validation errors are ValueErrors → 502 in the router
-    proposals = [AssetProposal(**p) for p in data.get("proposals", [])]
+    proposals = [AssetProposal(**p) for p in _list(data.get("proposals")) if isinstance(p, dict)]
     if not proposals:
         raise ValueError("LLM returned no asset proposals")
     return proposals
@@ -106,7 +106,9 @@ async def generate_dialogue_asset(
             max_tokens=2500,
         )
     )
-    tree_data = data.get("tree") or {}
+    tree_data = data.get("tree")
+    if not isinstance(tree_data, dict):
+        tree_data = {}
     tree_data.setdefault("npcName", npc_name)
     tree_data.setdefault("personality", personality)
     tree = DialogueTree(**tree_data)

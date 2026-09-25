@@ -1,8 +1,11 @@
+from datetime import datetime
+
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import settings
+from app.models.project import STAGE_ORDER
 
 client: AsyncIOMotorClient | None = None
 
@@ -13,6 +16,16 @@ def to_object_id(id_str: str) -> ObjectId:
         return ObjectId(id_str)
     except (InvalidId, TypeError):
         raise HTTPException(status_code=404, detail="Not found")
+
+
+async def advance_stage(db, project: dict, target: str) -> None:
+    """Move the project stage forward to `target` — never backwards."""
+    current = project.get("stage", "concept")
+    if STAGE_ORDER.index(target) > STAGE_ORDER.index(current):
+        await db.projects.update_one(
+            {"_id": project["_id"]},
+            {"$set": {"stage": target, "updated_at": datetime.utcnow()}},
+        )
 
 
 def get_client() -> AsyncIOMotorClient:

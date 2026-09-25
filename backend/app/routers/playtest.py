@@ -4,7 +4,7 @@ from datetime import datetime
 
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
-from app.db.mongodb import get_db, to_object_id
+from app.db.mongodb import advance_stage, get_db, to_object_id
 from app.models.playtest import (
     RunPlaytestRequest,
     PlaytestReportOut,
@@ -20,8 +20,6 @@ from app.services.llm_utils import strip_html
 router = APIRouter(prefix="/projects/{project_id}/playtest", tags=["playtest"])
 bugs_router = APIRouter(prefix="/projects/{project_id}/bugs", tags=["bugs"])
 
-STAGE_ORDER = ["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"]
-
 
 def serialize(doc: dict) -> dict:
     doc["_id"] = str(doc["_id"])
@@ -35,15 +33,6 @@ async def verify_project_access(project_id: str, user_id: str, db) -> dict:
     if str(project["user_id"]) != user_id:
         raise HTTPException(status_code=403, detail="Not your project")
     return project
-
-
-async def advance_stage(db, project: dict, target: str) -> None:
-    current = project.get("stage", "concept")
-    if STAGE_ORDER.index(target) > STAGE_ORDER.index(current):
-        await db.projects.update_one(
-            {"_id": project["_id"]},
-            {"$set": {"stage": target, "updated_at": datetime.utcnow()}},
-        )
 
 
 # ─── Playtest reports ─────────────────────────────────────────────────────────
@@ -86,6 +75,9 @@ async def run_simulation(
             for key in ("overview", "mechanics", "progression", "levels")
         ]
         gdd_summary = "\n".join(p for p in parts if p)[:5000]
+    if not gdd_summary:
+        # Nothing to play through — the LLM would invent the whole game.
+        raise HTTPException(status_code=409, detail="Generate a GDD before running a playtest")
 
     system = await db.systems.find_one({"project_id": project_id})
     systems_summary = ""

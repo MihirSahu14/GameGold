@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from bson import ObjectId
 from jose import JWTError
+from pymongo import ReturnDocument
 from app.config import settings
 from app.core.csrf import SESSION_COOKIE, REFRESH_COOKIE, set_auth_cookies, clear_auth_cookies
 from app.core.rate_limit import limiter
@@ -33,6 +34,7 @@ security = HTTPBearer(auto_error=False)
 
 LOGIN_LOCKOUT_THRESHOLD = 8
 LOGIN_LOCKOUT_MINUTES = 15
+LOGIN_FAILURE_WINDOW_MINUTES = 15
 
 
 def serialize_user(user: dict) -> dict:
@@ -108,10 +110,11 @@ async def register(request: Request, response: Response, data: UserCreate):
 async def login(request: Request, response: Response, data: UserLogin):
     db = get_db()
 
+    now = datetime.utcnow()
     attempt = await db.login_attempts.find_one({"email": data.email})
     locked_until = attempt.get("locked_until") if attempt else None
-    if locked_until and locked_until > datetime.utcnow():
-        retry_after = max(int((locked_until - datetime.utcnow()).total_seconds()), 1)
+    if locked_until and locked_until > now:
+        retry_after = max(int((locked_until - now).total_seconds()), 1)
         raise HTTPException(
             status_code=429,
             detail="Too many failed login attempts. Try again later.",
@@ -120,11 +123,31 @@ async def login(request: Request, response: Response, data: UserLogin):
 
     user = await db.users.find_one({"email": data.email})
     if not user or not await asyncio.to_thread(verify_password, data.password, user["hashed_password"]):
-        failed_count = (attempt.get("failed_count", 0) if attempt else 0) + 1
-        update = {"failed_count": failed_count}
-        if failed_count >= LOGIN_LOCKOUT_THRESHOLD:
-            update["locked_until"] = datetime.utcnow() + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
-        await db.login_attempts.update_one({"email": data.email}, {"$set": update}, upsert=True)
+        # An expired lock or failures older than the window start a fresh count,
+        # so one stray failure after a lockout can't immediately re-lock.
+        last_failed_at = (attempt or {}).get("last_failed_at")
+        stale = attempt and (
+            locked_until is not None
+            or not last_failed_at
+            or last_failed_at < now - timedelta(minutes=LOGIN_FAILURE_WINDOW_MINUTES)
+        )
+        if stale:
+            await db.login_attempts.update_one(
+                {"email": data.email}, {"$set": {"failed_count": 0, "locked_until": None}}
+            )
+        # ponytail: $inc is atomic per request; the stale-reset above can race
+        # with a concurrent failure, which at worst drops one count.
+        record = await db.login_attempts.find_one_and_update(
+            {"email": data.email},
+            {"$inc": {"failed_count": 1}, "$set": {"last_failed_at": now}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        if record["failed_count"] >= LOGIN_LOCKOUT_THRESHOLD:
+            await db.login_attempts.update_one(
+                {"email": data.email},
+                {"$set": {"locked_until": now + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)}},
+            )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     await db.login_attempts.update_one(
@@ -148,9 +171,13 @@ async def refresh(request: Request, response: Response):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    jti = payload.get("jti")
-    record = await db.refresh_tokens.find_one({"jti": jti})
-    if not record or record.get("revoked"):
+    # Atomic check-and-revoke: two concurrent refreshes with the same token
+    # can't both mint a new pair.
+    record = await db.refresh_tokens.find_one_and_update(
+        {"jti": payload.get("jti"), "revoked": False, "expires_at": {"$gt": datetime.utcnow()}},
+        {"$set": {"revoked": True}},
+    )
+    if not record:
         raise HTTPException(status_code=401, detail="Refresh token revoked or unknown")
 
     user_id = payload["sub"]
@@ -158,7 +185,6 @@ async def refresh(request: Request, response: Response):
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
-    await db.refresh_tokens.update_one({"jti": jti}, {"$set": {"revoked": True}})
     await issue_tokens(db, response, user_id)
     return UserOut(**serialize_user(user))
 
@@ -212,11 +238,14 @@ async def forgot_password(request: Request, response: Response, data: ForgotPass
 async def reset_password(request: Request, response: Response, data: ResetPasswordRequest):
     db = get_db()
     token_hash = hashlib.sha256(data.token.encode()).hexdigest()
-    record = await db.password_resets.find_one({"token_hash": token_hash})
-    if not record or record.get("used") or record["expires_at"] < datetime.utcnow():
+    # Atomic single-use claim — a replayed token can't pass the check twice.
+    record = await db.password_resets.find_one_and_update(
+        {"token_hash": token_hash, "used": False, "expires_at": {"$gt": datetime.utcnow()}},
+        {"$set": {"used": True}},
+    )
+    if not record:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
-    await db.password_resets.update_one({"token_hash": token_hash}, {"$set": {"used": True}})
     hashed = await asyncio.to_thread(hash_password, data.new_password)
     await db.users.update_one({"_id": ObjectId(record["user_id"])}, {"$set": {"hashed_password": hashed}})
     await db.refresh_tokens.update_many(
