@@ -242,6 +242,8 @@ export interface Asset {
 
 export type PlaytestPersona = 'casual' | 'hardcore' | 'speedrunner' | 'completionist'
 
+export type TesterRing = 'self' | 'friends' | 'discord' | 'steam_playtest' | 'ea'
+
 export interface BalanceSuggestion {
   issue: string
   fix: string
@@ -251,6 +253,7 @@ export interface BalanceSuggestion {
 export interface PlaytestReport {
   _id: string
   projectId: string
+  kind?: 'ai_persona'
   persona: PlaytestPersona
   summary: string
   playthroughLog: string[]
@@ -260,6 +263,27 @@ export interface PlaytestReport {
   funHighlights: string[]
   balanceSuggestions: BalanceSuggestion[]
   createdAt: string
+}
+
+/** A real human playtest — the only kind that counts toward stage gates. */
+export type PlaytestSession = {
+  _id: string
+  projectId: string
+  kind: 'session'
+  testers: number
+  ring: TesterRing
+  keptPlayingUnprompted: number
+  notes: string
+  createdAt: string
+}
+
+export type PlaytestEntry = PlaytestReport | PlaytestSession
+
+export type PlaytestSessionCreate = {
+  testers: number
+  ring: TesterRing
+  keptPlayingUnprompted: number
+  notes: string
 }
 
 export type BugSeverity = 'low' | 'medium' | 'high' | 'critical'
