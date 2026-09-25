@@ -72,6 +72,25 @@ class ProjectOut(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
+GateCheck = Literal["comprehension_resolved", "alpha_feature_lock", "beta_content_complete"]
+
+
+class DecisionRequest(BaseModel):
+    decision: PrototypeDecision
+
+
+class GateCheckRequest(BaseModel):
+    key: GateCheck
+    value: bool
+
+
+class GateOut(BaseModel):
+    stage: ProjectStage
+    met: bool
+    missing: list[str]
+    total: int
+
+
 class ProjectInDB(BaseModel):
     user_id: str
     title: str
