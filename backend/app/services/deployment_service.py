@@ -1,7 +1,7 @@
 """
 Phase 5 deployment generation: store page copy, press kit, Unity build guides,
-and the export bundle. The export bundle aggregates existing data (GDD +
-assets) — no LLM call.
+the AI provenance report, and the export bundle. The export bundle aggregates
+existing data (GDD + assets) — no LLM call.
 """
 import asyncio
 import base64
@@ -19,6 +19,7 @@ from app.prompts.deployment_prompts import (
     build_press_kit_prompt,
     build_build_guide_prompt,
 )
+from app.services.gates import open_placeholders
 from app.services.llm_utils import _list, complete, extract_json
 
 
@@ -136,11 +137,51 @@ def _write_assets(zf: zipfile.ZipFile, assets: list[dict]) -> list[tuple[dict, s
     return written
 
 
+# ─── AI provenance report (no LLM) ────────────────────────────────────────────
+
+# Every GameGold asset is Steam "Pre-Generated" AI content (made during development).
+DISCLOSURE_CATEGORIES = {
+    "sprite": "Art (pre-generated)",
+    "script": "Code (pre-generated)",
+    "dialogue": "Text & dialogue (pre-generated)",
+}
+
+
+def _yes_no(value: bool) -> str:
+    return "yes" if value else "no"
+
+
+def provenance_markdown(title: str, assets: list[dict]) -> str:
+    lines = [
+        f"# {title} — AI content disclosure",
+        "",
+        "Every asset below was generated with AI by GameGold during development",
+        "(Steam: Pre-Generated AI content). Nothing is generated live at runtime.",
+        "",
+    ]
+    if not assets:
+        lines += ["No AI-generated assets.", ""]
+    for asset_type, category in DISCLOSURE_CATEGORIES.items():
+        group = [a for a in assets if a.get("type") == asset_type]
+        if not group:
+            continue
+        lines += [f"## {category}", "", "| Asset | Placeholder | Replaced | Disclosed |", "|---|---|---|---|"]
+        lines += [
+            f"| {a.get('name', '?')} | {_yes_no(a.get('placeholder', True))} "
+            f"| {_yes_no(a.get('replaced', False))} | {_yes_no(a.get('disclosed', False))} |"
+            for a in group
+        ]
+        lines.append("")
+    lines.append(f"Undisclosed placeholders still in the build: {len(open_placeholders(assets))}")
+    return "\n".join(lines) + "\n"
+
+
 def _build_zip(title: str, sections: dict, assets: list[dict]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("GDD.md", _gdd_to_markdown(title, sections))
         zf.writestr("README.md", _readme_text(title, assets))
+        zf.writestr("AI_DISCLOSURE.md", provenance_markdown(title, assets))
         _write_assets(zf, assets)
     return buffer.getvalue()
 

@@ -80,10 +80,12 @@ class UpdateGuideRequest(BaseModel):
     completed: list[bool]
 
 
-class ApproveAssetRequest(BaseModel):
+class AssetUpdate(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
-    approved: bool
+    approved: Optional[bool] = None
+    replaced: Optional[bool] = None
+    disclosed: Optional[bool] = None
 
 
 # ─── Responses / storage ─────────────────────────────────────────────────────

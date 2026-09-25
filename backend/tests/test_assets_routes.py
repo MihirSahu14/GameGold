@@ -396,6 +396,7 @@ def test_regenerate_sprite_updates_in_place(client, mock_db, monkeypatch):
     update_filter, update_doc = mock_db.assets.update_one.call_args[0]
     assert update_filter["_id"] == old["_id"]
     assert update_doc["$set"]["approved"] is False
+    assert update_doc["$set"]["replaced"] is False  # regenerated = AI content again
     assert update_doc["$set"]["url"] == "data:image/png;base64,new"
 
     # Previous version + developer note reached the LLM

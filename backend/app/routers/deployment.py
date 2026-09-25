@@ -1,4 +1,5 @@
 import io
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
@@ -21,6 +22,7 @@ from app.services.deployment_service import (
     generate_press_kit,
     generate_build_guide,
     export_project_bundle,
+    provenance_markdown,
     safe_filename,
 )
 from app.prompts.gdd_prompt import format_concept_card
@@ -72,6 +74,13 @@ async def insert_and_return(db, item: DeploymentInDB) -> DeploymentOut:
     result = await db.deployments.insert_one(item.model_dump())
     doc = await db.deployments.find_one({"_id": result.inserted_id})
     return DeploymentOut(**serialize_item(doc))
+
+
+async def stamp_provenance(db, project: dict) -> None:
+    """Ship gate: the provenance report counts as generated once it has been exported."""
+    await db.projects.update_one(
+        {"_id": project["_id"]}, {"$set": {"provenance_generated_at": datetime.utcnow()}}
+    )
 
 
 # ─── List ─────────────────────────────────────────────────────────────────────
@@ -234,9 +243,27 @@ async def export_bundle(
     project = await verify_project_access(project_id, current_user["_id"], db)
 
     zip_bytes = await export_project_bundle(db, project_id, project.get("title", "game"))
+    await stamp_provenance(db, project)
     filename = f"{safe_filename(project.get('title', 'game').replace(' ', '_'), 'game')}_bundle.zip"
     return StreamingResponse(
         io.BytesIO(zip_bytes),
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@export_router.get("/provenance")
+async def export_provenance(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    project = await verify_project_access(project_id, current_user["_id"], db)
+    assets = await db.assets.find({"project_id": project_id}).to_list(500)
+    markdown = provenance_markdown(project.get("title", "Untitled"), assets)
+    await stamp_provenance(db, project)
+    return Response(
+        content=markdown,
+        media_type="text/markdown",
+        headers={"Content-Disposition": 'attachment; filename="AI_DISCLOSURE.md"'},
     )
