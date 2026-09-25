@@ -6,7 +6,7 @@ from bson import ObjectId
 
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
-from app.db.mongodb import advance_stage, get_db, to_object_id
+from app.db.mongodb import get_db, to_object_id
 from app.models.deployment import (
     DeploymentOut,
     DeploymentInDB,
@@ -116,7 +116,6 @@ async def create_store_page(
 
     item = DeploymentInDB(project_id=project_id, type="storePage", platform=body.platform, **data)
     out = await insert_and_return(db, item)
-    await advance_stage(db, project, "deployment")
     return out
 
 
@@ -146,7 +145,6 @@ async def create_press_kit(
 
     item = DeploymentInDB(project_id=project_id, type="pressKit", **data)
     out = await insert_and_return(db, item)
-    await advance_stage(db, project, "deployment")
     return out
 
 
@@ -180,7 +178,6 @@ async def create_build_guide(
         unity_guide=guide.model_dump(),
     )
     out = await insert_and_return(db, item)
-    await advance_stage(db, project, "deployment")
     return out
 
 

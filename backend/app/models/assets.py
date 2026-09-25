@@ -99,6 +99,10 @@ class AssetOut(BaseModel):
     unity_guide: UnityGuide = UnityGuide()
     created_at: datetime
     approved: bool = False  # old docs lack the field — default keeps them unapproved
+    # Provenance (ship gate): every GameGold asset is AI-generated, so it starts as a placeholder.
+    placeholder: bool = True
+    replaced: bool = False
+    disclosed: bool = False
     # Sprite
     url: Optional[str] = None
     style: Optional[ArtStyle] = None
@@ -118,6 +122,9 @@ class AssetInDB(BaseModel):
     unity_guide: dict[str, Any] = {}
     created_at: datetime = Field(default_factory=datetime.utcnow)
     approved: bool = False
+    placeholder: bool = True
+    replaced: bool = False
+    disclosed: bool = False
     url: Optional[str] = None
     style: Optional[ArtStyle] = None
     image_prompt: Optional[str] = None

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from pydantic.alias_generators import to_camel
-from typing import Literal, Optional, get_args
+from typing import Annotated, Literal, Optional
 from datetime import datetime
 
 GameGenre = Literal[
@@ -9,9 +9,13 @@ GameGenre = Literal[
 ]
 GamePlatform = Literal["pc", "mobile", "web", "console", "cross-platform"]
 GameTone = Literal["dark", "lighthearted", "epic", "comedic", "horror", "atmospheric", "realistic"]
-ProjectStage = Literal["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"]
-STAGE_ORDER: list[str] = list(get_args(ProjectStage))
+ProjectStage = Literal["pitch", "prototype", "slice", "production", "ship", "killed"]
+# The advance ladder. "killed" is terminal and sits off it.
+STAGE_ORDER: list[str] = ["pitch", "prototype", "slice", "production", "ship"]
+PrototypeDecision = Literal["continue", "pivot", "kill"]
 EstimatedScope = Literal["jam", "indie", "mid", "large"]
+
+Line = Annotated[str, Field(max_length=200)]
 
 
 class ConceptCard(BaseModel):
@@ -24,22 +28,25 @@ class ConceptCard(BaseModel):
     unique_hook: str = ""
     target_audience: str = ""
     estimated_scope: EstimatedScope = "indie"
+    pillars: list[Line] = Field(default_factory=list, max_length=3)
+    wont_do: list[Line] = Field(default_factory=list, max_length=20)
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class ProjectCreate(BaseModel):
+    # No stage: every project starts at "pitch".
     title: str = Field(min_length=1, max_length=100)
     genre: GameGenre = "other"
     platform: GamePlatform = "pc"
     tone: GameTone = "atmospheric"
-    stage: ProjectStage = "concept"
 
 
 class ProjectUpdate(BaseModel):
+    # No stage: it only moves through POST /advance and /decision (gated server-side).
     title: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    stage: Optional[ProjectStage] = None
     concept_card: Optional[ConceptCard] = None
+    cut_list: Optional[list[Line]] = Field(default=None, max_length=100)
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
@@ -53,6 +60,12 @@ class ProjectOut(BaseModel):
     tone: GameTone
     stage: ProjectStage
     concept_card: Optional[ConceptCard] = None
+    prototype_decision: Optional[PrototypeDecision] = None
+    gates: dict[str, bool] = {}
+    cut_list: list[str] = []
+    stage_entered_at: Optional[datetime] = None
+    alpha_at: Optional[datetime] = None
+    provenance_generated_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -65,7 +78,13 @@ class ProjectInDB(BaseModel):
     genre: GameGenre
     platform: GamePlatform
     tone: GameTone
-    stage: ProjectStage = "concept"
+    stage: ProjectStage = "pitch"
     concept_card: Optional[ConceptCard] = None
+    prototype_decision: Optional[PrototypeDecision] = None
+    gates: dict[str, bool] = Field(default_factory=dict)
+    cut_list: list[str] = Field(default_factory=list)
+    stage_entered_at: datetime = Field(default_factory=datetime.utcnow)
+    alpha_at: Optional[datetime] = None
+    provenance_generated_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

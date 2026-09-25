@@ -4,7 +4,7 @@ from datetime import datetime
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.services.llm_utils import strip_html
-from app.db.mongodb import advance_stage, get_db, to_object_id
+from app.db.mongodb import get_db, to_object_id
 from app.models.systems import (
     GameSystemCreate,
     GameSystemOut,
@@ -76,7 +76,7 @@ async def save_system(
         doc = await db.systems.find_one({"project_id": project_id})
         return GameSystemOut(**serialize_system(doc))
 
-    # First save — insert and advance project stage
+    # First save — insert
     response.status_code = status.HTTP_201_CREATED
     system_in_db = GameSystemInDB(
         project_id=project_id,
@@ -84,7 +84,6 @@ async def save_system(
         edges=body.edges,
     )
     result = await db.systems.insert_one(system_in_db.model_dump())
-    await advance_stage(db, project, "systems")
 
     doc = await db.systems.find_one({"_id": result.inserted_id})
     return GameSystemOut(**serialize_system(doc))
@@ -133,8 +132,6 @@ async def analyze_system(
             analysis_cache=analysis,
         )
         await db.systems.insert_one(system_in_db.model_dump())
-        # Mirror first-save behavior so the stage still advances
-        await advance_stage(db, project, "systems")
 
     return analysis
 
@@ -186,6 +183,5 @@ async def extract_system(
     response.status_code = status.HTTP_201_CREATED
     system_in_db = GameSystemInDB(project_id=project_id, nodes=merged_nodes, edges=[])
     result = await db.systems.insert_one(system_in_db.model_dump())
-    await advance_stage(db, project, "systems")
     doc = await db.systems.find_one({"_id": result.inserted_id})
     return GameSystemOut(**serialize_system(doc))

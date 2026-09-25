@@ -5,7 +5,7 @@ from bson import ObjectId
 
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
-from app.db.mongodb import advance_stage, get_db, to_object_id
+from app.db.mongodb import get_db, to_object_id
 from app.models.assets import (
     ApproveAssetRequest,
     AssetOut,
@@ -192,7 +192,6 @@ async def create_sprite(
             image_prompt=image_prompt,
         )
         out = await insert_and_return(db, asset)
-    await advance_stage(db, project, "assets")
     return out
 
 
@@ -250,7 +249,6 @@ async def create_script(
             script_type=body.script_type,
         )
         out = await insert_and_return(db, asset)
-    await advance_stage(db, project, "assets")
     return out
 
 
@@ -306,7 +304,6 @@ async def create_dialogue(
             tree=tree.model_dump(),
         )
         out = await insert_and_return(db, asset)
-    await advance_stage(db, project, "assets")
     return out
 
 

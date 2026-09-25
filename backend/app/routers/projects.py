@@ -55,7 +55,6 @@ async def create_project(data: ProjectCreate, current_user: dict = Depends(get_c
         genre=data.genre,
         platform=data.platform,
         tone=data.tone,
-        stage=data.stage,
     )
     result = await db.projects.insert_one(project_in_db.model_dump())
     project = await db.projects.find_one({"_id": result.inserted_id})

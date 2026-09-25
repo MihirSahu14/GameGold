@@ -95,21 +95,6 @@ def test_run_playtest_returns_201_report(client, mock_db, monkeypatch):
     assert body["balanceSuggestions"][0]["unityPath"] == "Boss2 prefab"
 
 
-def test_run_playtest_advances_stage(client, mock_db, monkeypatch):
-    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "stage": "assets"}
-    mock_db.gdds.find_one.return_value = GDD_DOC
-    monkeypatch.setattr(
-        "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_PLAYTEST_JSON))
-    )
-    inserted = _fake_report_doc()
-    mock_db.playtests.insert_one.return_value = MagicMock(inserted_id=inserted["_id"])
-    mock_db.playtests.find_one.return_value = inserted
-
-    client.post(f"/projects/{TEST_PROJECT_ID}/playtest/run", json={"persona": "hardcore"})
-    update_call = mock_db.projects.update_one.call_args
-    assert update_call[0][1]["$set"]["stage"] == "playtesting"
-
-
 def test_run_playtest_includes_gdd_and_systems_context(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     mock_db.gdds.find_one.return_value = {

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
-from app.db.mongodb import advance_stage, get_db, to_object_id
+from app.db.mongodb import get_db, to_object_id
 from app.models.playtest import (
     RunPlaytestRequest,
     PlaytestReportOut,
@@ -103,7 +103,6 @@ async def run_simulation(
         raise HTTPException(status_code=502, detail=str(exc))
 
     result = await db.playtests.insert_one(report.model_dump())
-    await advance_stage(db, project, "playtesting")
 
     doc = await db.playtests.find_one({"_id": result.inserted_id})
     return PlaytestReportOut(**serialize(doc))

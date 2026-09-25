@@ -37,3 +37,26 @@ def test_summary_404_for_unknown_project(client, mock_db):
 
     resp = client.get(f"/projects/{ObjectId()}/summary")
     assert resp.status_code == 404
+
+
+def test_create_project_always_starts_at_pitch(client, mock_db):
+    from unittest.mock import MagicMock
+
+    doc = {**TEST_PROJECT, "stage": "pitch", "created_at": datetime(2026, 9, 25), "updated_at": datetime(2026, 9, 25)}
+    mock_db.projects.insert_one.return_value = MagicMock(inserted_id=doc["_id"])
+    mock_db.projects.find_one.return_value = doc
+
+    resp = client.post("/projects", json={"title": "New", "stage": "ship"})
+    assert resp.status_code == 201
+    inserted = mock_db.projects.insert_one.call_args[0][0]
+    assert inserted["stage"] == "pitch"
+    assert isinstance(inserted["stage_entered_at"], datetime)
+
+
+def test_patch_cannot_change_stage(client, mock_db):
+    mock_db.projects.find_one.return_value = {
+        **TEST_PROJECT, "created_at": datetime(2026, 9, 25), "updated_at": datetime(2026, 9, 25),
+    }
+    resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"stage": "ship"})
+    assert resp.status_code == 200
+    mock_db.projects.update_one.assert_not_called()

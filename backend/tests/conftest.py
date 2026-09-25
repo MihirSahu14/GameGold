@@ -38,7 +38,7 @@ TEST_PROJECT = {
     "_id": ObjectId(TEST_PROJECT_ID),
     "user_id": TEST_USER_ID,
     "title": "Test Game",
-    "stage": "gdd",
+    "stage": "pitch",
     "genre": "rpg",
     "platform": "pc",
     "tone": "epic",

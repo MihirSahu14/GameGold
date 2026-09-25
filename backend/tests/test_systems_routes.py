@@ -117,8 +117,8 @@ def test_save_systems_upserts_existing_doc(client, mock_db):
     mock_db.systems.update_one.assert_called_once()
 
 
-def test_save_systems_advances_project_stage(client, mock_db):
-    """Saving systems for the first time sets project stage to 'systems'."""
+def test_save_systems_does_not_touch_project_stage(client, mock_db):
+    """Stages move only through POST /advance (evidence-gated), never as a side effect."""
     mock_db.projects.find_one.return_value = TEST_PROJECT
     mock_db.systems.find_one.side_effect = [None, _make_system_doc()]
     mock_db.systems.insert_one.return_value = MagicMock(inserted_id=ObjectId())
@@ -127,10 +127,7 @@ def test_save_systems_advances_project_stage(client, mock_db):
         f"/projects/{TEST_PROJECT_ID}/systems/save",
         json={"nodes": SAMPLE_NODES, "edges": SAMPLE_EDGES},
     )
-    # projects.update_one must have been called to advance stage
-    mock_db.projects.update_one.assert_called_once()
-    call_args = mock_db.projects.update_one.call_args
-    assert call_args[0][1]["$set"]["stage"] == "systems"
+    mock_db.projects.update_one.assert_not_called()
 
 
 def test_save_systems_returns_json_with_camel_case_keys(client, mock_db):
@@ -273,9 +270,7 @@ def test_analyze_before_first_save_inserts_full_doc(client, mock_db, monkeypatch
     assert doc["analysis_cache"] is not None
     assert "updated_at" in doc
     mock_db.systems.update_one.assert_not_called()
-    # Stage still advances even though save never ran
-    mock_db.projects.update_one.assert_called_once()
-    assert mock_db.projects.update_one.call_args[0][1]["$set"]["stage"] == "systems"
+    mock_db.projects.update_one.assert_not_called()
 
 
 def test_get_systems_survives_legacy_phantom_doc(client, mock_db):

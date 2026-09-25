@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
-from app.db.mongodb import advance_stage, get_db, to_object_id
+from app.db.mongodb import get_db, to_object_id
 from app.models.gdd import GDDUpdate, GDDOut, GDDInDB, GenerateGDDRequest, RefineGDDRequest, RefinedSectionOut
 from app.routers.auth import get_current_user
 from app.services.claude_service import GDD_SECTIONS, check_concept_sufficiency, generate_gdd, refine_gdd_section
@@ -91,9 +91,6 @@ async def generate_gdd_endpoint(
         gdd_in_db = GDDInDB(project_id=project_id, sections=sections)
         result = await db.gdds.insert_one(gdd_in_db.model_dump())
         gdd = await db.gdds.find_one({"_id": result.inserted_id})
-
-        # Advance project stage to 'gdd' (forward-only)
-        await advance_stage(db, project, "gdd")
 
     return GDDOut(**serialize_gdd(gdd))
 
