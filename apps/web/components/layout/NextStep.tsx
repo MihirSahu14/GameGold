@@ -31,7 +31,7 @@ export function NextStep({ projectId }: NextStepProps) {
   const checks = MANUAL_CHECKS[project.stage] ?? []
   return (
     <div className={strip}>
-      <span className="tracking-[2px] text-[#4ea8ff]">// {STAGE_LABELS[project.stage].toUpperCase()}</span>
+      <span className="tracking-[2px] text-[#4ea8ff]">// {(STAGE_LABELS[project.stage] ?? project.stage).toUpperCase()}</span>
       {gate &&
         (gate.met ? (
           <span className="text-[#22c55e]">

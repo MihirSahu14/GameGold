@@ -7,10 +7,13 @@ import type { GateStatus, Project } from '@gamegold/types'
 const mocks = vi.hoisted(() => ({
   gate: undefined as GateStatus | undefined,
   advance: vi.fn(),
+  pathname: '/projects/p1/unity',
+  tab: null as string | null,
 }))
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/projects/p1/unity',
+  usePathname: () => mocks.pathname,
+  useSearchParams: () => new URLSearchParams(mocks.tab ? { tab: mocks.tab } : {}),
   useRouter: () => ({ push: vi.fn() }),
 }))
 vi.mock('@/lib/api', () => ({ api: {}, toastError: vi.fn() }))
@@ -34,6 +37,8 @@ function renderSidebar() {
 beforeEach(() => {
   mocks.advance.mockReset()
   mocks.gate = { stage: 'prototype', met: false, missing: ['Decide to continue'], total: 2 }
+  mocks.pathname = '/projects/p1/unity'
+  mocks.tab = null
   useProjectStore.setState({ activeProject: { _id: 'p1', stage: 'prototype' } as Project })
 })
 
@@ -70,5 +75,26 @@ describe('Sidebar stage groups', () => {
     renderSidebar()
     fireEvent.click(screen.getByRole('button', { name: /advance/i }))
     expect(mocks.advance).toHaveBeenCalled()
+  })
+
+  it('highlights only Bugs when on the bugs tab, not Playtests or Playtest log', () => {
+    mocks.pathname = '/projects/p1/playtesting'
+    mocks.tab = 'bugs'
+    renderSidebar()
+    const bugsClass = screen.getByRole('link', { name: 'Bugs' }).className
+    const playtestsClass = screen.getByRole('link', { name: 'Playtests' }).className
+    const playtestLogClass = screen.getByRole('link', { name: 'Playtest log' }).className
+    expect(bugsClass).toContain('border-[#4ea8ff]')
+    expect(playtestsClass).not.toContain('border-[#4ea8ff]')
+    expect(playtestLogClass).not.toContain('border-[#4ea8ff]')
+  })
+
+  it('highlights Playtests and Playtest log (not Bugs) when on the plain playtesting page', () => {
+    mocks.pathname = '/projects/p1/playtesting'
+    mocks.tab = null
+    renderSidebar()
+    expect(screen.getByRole('link', { name: 'Playtests' }).className).toContain('border-[#4ea8ff]')
+    expect(screen.getByRole('link', { name: 'Playtest log' }).className).toContain('border-[#4ea8ff]')
+    expect(screen.getByRole('link', { name: 'Bugs' }).className).not.toContain('border-[#4ea8ff]')
   })
 })

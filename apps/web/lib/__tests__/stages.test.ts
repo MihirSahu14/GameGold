@@ -17,6 +17,10 @@ describe('stage map', () => {
     expect(firstRoute(stage)).toBe(route)
   })
 
+  it('firstRoute falls back to the pitch route for an unknown/legacy stage id', () => {
+    expect(firstRoute('concept' as unknown as Parameters<typeof firstRoute>[0])).toBe('concept')
+  })
+
   it.each([
     ['pitch', 'pitch', false],
     ['prototype', 'pitch', true],

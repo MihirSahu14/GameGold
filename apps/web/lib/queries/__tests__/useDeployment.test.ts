@@ -141,4 +141,20 @@ describe('useDeleteDeploymentItem', () => {
 
     expect(mockApi.delete).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/deployment/dep1`)
   })
+
+  it('invalidates gates after deleting a deployment item', async () => {
+    const { useDeleteDeploymentItem } = await import('@/lib/queries/useDeployment')
+    mockApi.delete.mockResolvedValueOnce({})
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children)
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+
+    const { result } = renderHook(() => useDeleteDeploymentItem(PROJECT_ID), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync('dep1')
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects', PROJECT_ID, 'gates'] })
+  })
 })

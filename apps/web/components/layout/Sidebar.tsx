@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { logoutUser } from '@/lib/auth'
 import { toastError } from '@/lib/api'
@@ -28,9 +28,16 @@ function navLinkClass(active: boolean): string {
   )
 }
 
-type StageNavProps = { projectId: string; current: ProjectStage; pathname: string }
+/** A link is active only when both its path AND its `?tab=` (if any) match the current URL. */
+function isActiveLink(pathname: string, currentTab: string | null, base: string, route: string): boolean {
+  const [path, query] = route.split('?')
+  if (pathname !== `${base}/${path}`) return false
+  return new URLSearchParams(query).get('tab') === currentTab
+}
 
-function StageNav({ projectId, current, pathname }: StageNavProps) {
+type StageNavProps = { projectId: string; current: ProjectStage; pathname: string; currentTab: string | null }
+
+function StageNav({ projectId, current, pathname, currentTab }: StageNavProps) {
   const { data: gate } = useGates(projectId)
   const advance = useAdvanceStage(projectId)
   const base = `/projects/${projectId}`
@@ -64,7 +71,11 @@ function StageNav({ projectId, current, pathname }: StageNavProps) {
               stage.links.map((link) => {
                 const href = `${base}/${link.route}`
                 return (
-                  <Link key={link.route} href={href} className={navLinkClass(pathname === href)}>
+                  <Link
+                    key={link.route}
+                    href={href}
+                    className={navLinkClass(isActiveLink(pathname, currentTab, base, link.route))}
+                  >
                     {link.label}
                   </Link>
                 )
@@ -88,7 +99,11 @@ function StageNav({ projectId, current, pathname }: StageNavProps) {
       {TOOLS.map((tool) => {
         const href = `${base}/${tool.route}`
         return (
-          <Link key={tool.route} href={href} className={navLinkClass(pathname === href)}>
+          <Link
+            key={tool.route}
+            href={href}
+            className={navLinkClass(isActiveLink(pathname, currentTab, base, tool.route))}
+          >
             {tool.label}
           </Link>
         )
@@ -99,6 +114,7 @@ function StageNav({ projectId, current, pathname }: StageNavProps) {
 
 export function Sidebar() {
   const pathname = usePathname()
+  const currentTab = useSearchParams().get('tab')
   const { user, setUser } = useAuthStore()
   const { activeProject, setActiveProject, setActiveGDD } = useProjectStore()
   const queryClient = useQueryClient()
@@ -185,7 +201,7 @@ export function Sidebar() {
         })}
 
         {projectId && activeProject && (
-          <StageNav projectId={projectId} current={activeProject.stage} pathname={pathname} />
+          <StageNav projectId={projectId} current={activeProject.stage} pathname={pathname} currentTab={currentTab} />
         )}
       </nav>
 

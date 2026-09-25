@@ -149,7 +149,7 @@ export default function DashboardPage() {
                     ...pixel,
                   }}
                 >
-                  {STAGE_LABELS[project.stage]}
+                  {STAGE_LABELS[project.stage] ?? project.stage}
                 </span>
               </div>
               <h3 style={{ color: '#eaf2ff', fontSize: '14px', margin: '0 0 6px', fontWeight: 700, letterSpacing: '0.5px' }}>

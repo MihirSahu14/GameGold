@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState } from 'react'
+import { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useProject } from '@/lib/queries/useProjects'
 import {
@@ -59,6 +59,14 @@ export default function PlaytestingPage({
   const decide = usePrototypeDecision(id)
 
   const [activeTab, setActiveTab] = useState<Tab>(tab === 'bugs' || tab === 'predicted' ? tab : 'sessions')
+
+  // The page stays mounted across a Sidebar "Bugs" (?tab=bugs) navigation — the
+  // initializer above only runs once, so re-sync whenever the URL param changes.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    setActiveTab(tab === 'bugs' || tab === 'predicted' ? tab : 'sessions')
+  }, [tab])
+  /* eslint-enable react-hooks/set-state-in-effect */
   const [persona, setPersona] = useState<PlaytestPersona>('casual')
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null)
   const [synthesis, setSynthesis] = useState<string | null>(null)

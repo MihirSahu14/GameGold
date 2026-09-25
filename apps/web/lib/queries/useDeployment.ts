@@ -75,6 +75,8 @@ export function useDeleteDeploymentItem(projectId: string) {
       queryClient.setQueryData<DeploymentItem[]>(['deployment', projectId], (prev) =>
         prev?.filter((item) => item._id !== itemId),
       )
+      // Deleting a build guide can un-meet the ship gate's "every step checked" item.
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
 }

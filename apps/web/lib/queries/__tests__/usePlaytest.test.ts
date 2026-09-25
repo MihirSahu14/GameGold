@@ -8,9 +8,9 @@ vi.mock('@/lib/api', () => ({
 }))
 
 import { api } from '@/lib/api'
-import { useLogSession, useSynthesizeSessions } from '@/lib/queries/usePlaytest'
+import { useDeleteReport, useLogSession, useSynthesizeSessions } from '@/lib/queries/usePlaytest'
 
-const mockApi = api as unknown as Record<'post', ReturnType<typeof vi.fn>>
+const mockApi = api as unknown as Record<'post' | 'delete', ReturnType<typeof vi.fn>>
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -38,5 +38,19 @@ describe('session hooks', () => {
     await act(async () => { summary = await result.current.mutateAsync() })
     expect(mockApi.post).toHaveBeenCalledWith('/projects/p1/playtest/sessions/synthesize')
     expect(summary).toBe('- dash is hidden')
+  })
+
+  it('invalidates gates after deleting a session/report', async () => {
+    mockApi.delete.mockResolvedValueOnce({})
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children)
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+
+    const { result } = renderHook(() => useDeleteReport('p1'), { wrapper })
+    await act(async () => { await result.current.mutateAsync('s1') })
+
+    expect(mockApi.delete).toHaveBeenCalledWith('/projects/p1/playtest/s1')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects', 'p1', 'gates'] })
   })
 })

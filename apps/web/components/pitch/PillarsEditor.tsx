@@ -1,5 +1,9 @@
 'use client'
 
+// Backend caps (app/models/project.py): Line = max_length 200, wont_do = max_length 20 items.
+const LINE_MAX_LENGTH = 200
+const WONT_DO_MAX_LINES = 20
+
 type PillarsEditorProps = {
   pillars: string[] // always length 3
   wontDo: string[]
@@ -40,14 +44,25 @@ export function PillarsEditor({ pillars, wontDo, onPillarsChange, onWontDoChange
       </div>
       <div>
         <label htmlFor="wont-do" className={labelClass}>
-          WON&apos;T DO <span className={hintClass}>— one per line; what this game deliberately is not</span>
+          WON&apos;T DO{' '}
+          <span className={hintClass}>
+            — one per line; what this game deliberately is not (max {WONT_DO_MAX_LINES} lines, {LINE_MAX_LENGTH}{' '}
+            chars each)
+          </span>
         </label>
         <textarea
           id="wont-do"
           rows={3}
           value={wontDo.join('\n')}
           placeholder={'No multiplayer\nNo crafting'}
-          onChange={(e) => onWontDoChange(e.target.value.split('\n'))}
+          onChange={(e) =>
+            onWontDoChange(
+              e.target.value
+                .split('\n')
+                .slice(0, WONT_DO_MAX_LINES)
+                .map((line) => line.slice(0, LINE_MAX_LENGTH)),
+            )
+          }
           className={`${inputClass} resize-none`}
         />
       </div>

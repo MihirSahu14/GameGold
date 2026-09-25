@@ -64,5 +64,7 @@ export function isStageLocked(stage: WorkStage, current: ProjectStage): boolean 
 }
 
 export function firstRoute(stage: ProjectStage): string {
-  return stage === 'killed' ? 'concept' : STAGES[stageIndex(stage)].links[0].route
+  if (stage === 'killed') return 'concept'
+  // Unknown/legacy stage id slipping through (should be mapped server-side already) — fall back to pitch.
+  return (STAGES[stageIndex(stage)] ?? STAGES[0]).links[0].route
 }

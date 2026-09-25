@@ -116,11 +116,7 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
         <button
           onClick={() => approveAsset.mutate({ assetId: asset._id, approved: !asset.approved })}
           disabled={approveAsset.isPending}
-          className={
-            asset.approved
-              ? 'text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-900/40 text-emerald-400 transition-colors disabled:opacity-40'
-              : 'text-xs px-2 py-0.5 rounded-full font-medium text-zinc-600 border border-zinc-800 hover:text-emerald-400 hover:border-emerald-900 transition-colors disabled:opacity-40'
-          }
+          className={flagClass(asset.approved)}
           title={asset.approved ? 'Approved — click to unapprove' : 'Mark as approved'}
         >
           {asset.approved ? '✓ Approved' : '✓'}

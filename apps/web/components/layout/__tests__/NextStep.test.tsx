@@ -31,6 +31,12 @@ describe('NextStep', () => {
     expect(screen.getByText(/NEXT STEP → Write your hook/)).toBeInTheDocument()
   })
 
+  it('does not throw for an unknown/legacy stage id', () => {
+    mocks.project = { _id: 'p1', stage: 'concept', gates: {} } as unknown as Project
+    expect(() => render(<NextStep projectId="p1" />)).not.toThrow()
+    expect(screen.getByText('// CONCEPT')).toBeInTheDocument()
+  })
+
   it('celebrates a killed project', () => {
     mocks.project = { _id: 'p1', stage: 'killed', gates: {} } as Project
     render(<NextStep projectId="p1" />)

@@ -41,6 +41,8 @@ export function useDeleteReport(projectId: string) {
       queryClient.setQueryData<PlaytestEntry[]>(['playtests', projectId], (prev) =>
         prev?.filter((r) => r._id !== reportId),
       )
+      // Deleting a human session can un-meet a stage's "log a session" gate item.
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
 }
