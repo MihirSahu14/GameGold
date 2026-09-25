@@ -1,29 +1,101 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { logoutUser } from '@/lib/auth'
+import { toastError } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { useProjectStore } from '@/store/projectStore'
-import { useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
+import { useGates, useAdvanceStage } from '@/lib/queries/useGates'
+import { STAGES, TOOLS, isStageLocked } from '@/lib/stages'
+import { cn } from '@/lib/utils'
+import type { ProjectStage } from '@gamegold/types'
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Projects', icon: '🗂️' },
 ]
 
-const STAGE_ITEMS: { href: string; label: string; icon: string }[] = [
-  { href: 'concept',     label: 'Concept',          icon: '💡' },
-  { href: 'gdd',         label: 'GDD',               icon: '📋' },
-  { href: 'systems',     label: 'Systems',           icon: '⚙️' },
-  { href: 'assets',      label: 'Assets',            icon: '🎨' },
-  { href: 'unity',       label: 'Unity Integration', icon: '🎮' },
-  { href: 'playtesting', label: 'Playtesting',       icon: '🧪' },
-  { href: 'deployment',  label: 'Deployment',        icon: '🚀' },
-]
-
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
+
+function navLinkClass(active: boolean): string {
+  return cn(
+    'flex items-center border-l-2 py-1.5 pl-7 pr-2.5 text-xs no-underline transition-colors',
+    active
+      ? 'border-[#4ea8ff] bg-[rgba(78,168,255,0.1)] text-[#eaf2ff]'
+      : 'border-transparent text-[#8b97a7] hover:text-[#c8d4e2]',
+  )
+}
+
+type StageNavProps = { projectId: string; current: ProjectStage; pathname: string }
+
+function StageNav({ projectId, current, pathname }: StageNavProps) {
+  const { data: gate } = useGates(projectId)
+  const advance = useAdvanceStage(projectId)
+  const base = `/projects/${projectId}`
+
+  return (
+    <div className="mt-5">
+      <p className="mb-1.5 px-2.5 text-[10px] tracking-[2px] text-[#456079]">// STAGES</p>
+      {STAGES.map((stage, i) => {
+        const locked = isStageLocked(stage.id, current)
+        const isCurrent = stage.id === current
+        return (
+          <div key={stage.id} className="mb-2">
+            <div className="flex items-center gap-2 px-2.5 py-1 text-[11px] tracking-[1px]">
+              <span
+                className={cn(
+                  'min-w-4 font-[family-name:var(--font-pixel)] text-[10px]',
+                  isCurrent ? 'text-[#4ea8ff]' : 'text-[#456079]',
+                )}
+              >
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <span className={locked ? 'text-[#456079]' : 'text-[#c8d4e2]'}>{stage.label}</span>
+              {locked && <span className="ml-auto text-[10px] text-[#456079]">Soon</span>}
+              {isCurrent && gate && (
+                <span className="ml-auto text-[10px] text-[#8b97a7]">
+                  {gate.total - gate.missing.length} of {gate.total} met
+                </span>
+              )}
+            </div>
+            {!locked &&
+              stage.links.map((link) => {
+                const href = `${base}/${link.route}`
+                return (
+                  <Link key={link.route} href={href} className={navLinkClass(pathname === href)}>
+                    {link.label}
+                  </Link>
+                )
+              })}
+            {isCurrent && stage.id !== 'ship' && (
+              <button
+                type="button"
+                onClick={() => advance.mutate(undefined, { onError: (err) => toastError(err, 'Could not advance.') })}
+                disabled={!gate?.met || advance.isPending}
+                title={gate && !gate.met ? gate.missing.join(' · ') : undefined}
+                className="ml-7 mt-1 bg-[#4ea8ff] px-3 py-1.5 text-[11px] font-bold tracking-[1px] text-[#07090d] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {advance.isPending ? 'ADVANCING…' : 'ADVANCE →'}
+              </button>
+            )}
+          </div>
+        )
+      })}
+
+      <p className="mb-1.5 mt-4 px-2.5 text-[10px] tracking-[2px] text-[#456079]">// TOOLS</p>
+      {TOOLS.map((tool) => {
+        const href = `${base}/${tool.route}`
+        return (
+          <Link key={tool.route} href={href} className={navLinkClass(pathname === href)}>
+            {tool.label}
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -112,49 +184,8 @@ export function Sidebar() {
           )
         })}
 
-        {/* Project stages */}
-        {projectId && (
-          <div style={{ marginTop: '20px' }}>
-            <p
-              style={{
-                fontSize: '10px',
-                color: '#456079',
-                letterSpacing: '2px',
-                padding: '0 10px',
-                marginBottom: '6px',
-              }}
-            >
-              // STAGES
-            </p>
-            {STAGE_ITEMS.map((item, i) => {
-              const href = `/projects/${projectId}/${item.href}`
-              const active = pathname === href
-              const stageNum = String(i + 1).padStart(2, '0')
-
-              return (
-                <Link
-                  key={item.href}
-                  href={href}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '8px 10px',
-                    fontSize: '12px',
-                    textDecoration: 'none',
-                    color: active ? '#eaf2ff' : '#8b97a7',
-                    background: active ? 'rgba(78,168,255,0.1)' : 'transparent',
-                    borderLeft: active ? '2px solid #4ea8ff' : '2px solid transparent',
-                    transition: 'color 0.15s, background 0.15s',
-                  }}
-                >
-                  <span style={{ fontSize: '10px', color: active ? '#4ea8ff' : '#456079', ...pixel, minWidth: '16px' }}>{stageNum}</span>
-                  <span style={{ fontSize: '13px' }}>{item.icon}</span>
-                  {item.label}
-                </Link>
-              )
-            })}
-          </div>
+        {projectId && activeProject && (
+          <StageNav projectId={projectId} current={activeProject.stage} pathname={pathname} />
         )}
       </nav>
 

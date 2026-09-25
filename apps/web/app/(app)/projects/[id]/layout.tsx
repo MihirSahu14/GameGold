@@ -3,6 +3,7 @@
 import { use, useEffect } from 'react'
 import { useProject } from '@/lib/queries/useProjects'
 import { useProjectStore } from '@/store/projectStore'
+import { NextStep } from '@/components/layout/NextStep'
 
 export default function ProjectLayout({
   children,
@@ -24,5 +25,10 @@ export default function ProjectLayout({
     return () => setActiveProject(null)
   }, [])
 
-  return <>{children}</>
+  return (
+    <>
+      <NextStep projectId={id} />
+      {children}
+    </>
+  )
 }

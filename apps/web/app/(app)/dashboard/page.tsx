@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useProjects, useCreateProject } from '@/lib/queries/useProjects'
 import { useAuthStore } from '@/store/authStore'
 import type { GameGenre, GamePlatform } from '@gamegold/types'
+import { STAGE_LABELS, firstRoute } from '@/lib/stages'
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
@@ -42,7 +43,7 @@ export default function DashboardPage() {
       const project = await createProject.mutateAsync({ title, genre, platform })
       setShowModal(false)
       setTitle('')
-      router.push(`/projects/${project._id}/concept`)
+      router.push(`/projects/${project._id}/${firstRoute(project.stage)}`)
     } catch {
       alert('Could not create project — check the console for details.')
     }
@@ -103,7 +104,7 @@ export default function DashboardPage() {
           {projects.map((project) => (
             <button
               key={project._id}
-              onClick={() => router.push(`/projects/${project._id}/concept`)}
+              onClick={() => router.push(`/projects/${project._id}/${firstRoute(project.stage)}`)}
               style={{
                 textAlign: 'left',
                 background: '#0b1018',
@@ -148,7 +149,7 @@ export default function DashboardPage() {
                     ...pixel,
                   }}
                 >
-                  {project.stage}
+                  {STAGE_LABELS[project.stage]}
                 </span>
               </div>
               <h3 style={{ color: '#eaf2ff', fontSize: '14px', margin: '0 0 6px', fontWeight: 700, letterSpacing: '0.5px' }}>
