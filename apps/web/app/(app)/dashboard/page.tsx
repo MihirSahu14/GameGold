@@ -39,7 +39,7 @@ export default function DashboardPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     try {
-      const project = await createProject.mutateAsync({ title, genre, platform, stage: 'concept' })
+      const project = await createProject.mutateAsync({ title, genre, platform })
       setShowModal(false)
       setTitle('')
       router.push(`/projects/${project._id}/concept`)

@@ -10,14 +10,12 @@ export interface User {
 
 // ─── Project ─────────────────────────────────────────────────────────────────
 
-export type ProjectStage =
-  | 'concept'
-  | 'gdd'
-  | 'systems'
-  | 'assets'
-  | 'unity'
-  | 'playtesting'
-  | 'deployment'
+export type ProjectStage = 'pitch' | 'prototype' | 'slice' | 'production' | 'ship' | 'killed'
+
+export type PrototypeDecision = 'continue' | 'pivot' | 'kill'
+
+/** Manual gate checkboxes (keys stay snake_case — they are dict keys server-side). */
+export type GateCheck = 'comprehension_resolved' | 'alpha_feature_lock' | 'beta_content_complete'
 
 export type GameGenre =
   | 'platformer'
@@ -63,6 +61,12 @@ export interface Project {
   tone: GameTone
   stage: ProjectStage
   conceptCard?: ConceptCard
+  prototypeDecision: PrototypeDecision | null
+  gates: Partial<Record<GateCheck, boolean>>
+  cutList: string[]
+  stageEnteredAt: string | null
+  alphaAt: string | null
+  provenanceGeneratedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -72,7 +76,6 @@ export type ProjectCreate = {
   genre?: GameGenre
   platform?: GamePlatform
   tone?: GameTone
-  stage?: ProjectStage
 }
 
 export interface StageSummary {
@@ -87,6 +90,13 @@ export interface ProjectSummary {
   playtest: StageSummary
   unity: StageSummary
   deployment: StageSummary
+}
+
+export type GateStatus = {
+  stage: ProjectStage
+  met: boolean
+  missing: string[]
+  total: number
 }
 
 // ─── GDD ─────────────────────────────────────────────────────────────────────

@@ -7,13 +7,12 @@ import { useAuthStore } from '@/store/authStore'
 import { useProjectStore } from '@/store/projectStore'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
-import type { ProjectStage } from '@gamegold/types'
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Projects', icon: '🗂️' },
 ]
 
-const STAGE_ITEMS: { href: ProjectStage; label: string; icon: string }[] = [
+const STAGE_ITEMS: { href: string; label: string; icon: string }[] = [
   { href: 'concept',     label: 'Concept',          icon: '💡' },
   { href: 'gdd',         label: 'GDD',               icon: '📋' },
   { href: 'systems',     label: 'Systems',           icon: '⚙️' },

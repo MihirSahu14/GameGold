@@ -1,8 +1,7 @@
 'use client'
 
 import { use, useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useProject, useMarkUnityComplete } from '@/lib/queries/useProjects'
+import { useProject } from '@/lib/queries/useProjects'
 import { useAssets } from '@/lib/queries/useAssets'
 import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, resolveToolArgs, findScriptAsset } from '@/lib/queries/useUnity'
 import { useExportBundle } from '@/lib/queries/useDeployment'
@@ -50,13 +49,11 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const { data: project } = useProject(id)
   const { data: assets } = useAssets(id)
   const { data: summary } = useProjectSummary(id)
-  const markComplete = useMarkUnityComplete(id)
   const { data: plan, isLoading: planLoading } = useUnityPlan(id)
   const generatePlan = useGeneratePlan(id)
   const markStep = useMarkStep(id)
   const exportBundle = useExportBundle(id)
   const { status: mcpStatus, unityInfo, check: checkMCP, executeTool } = useUnityMCP()
-  const router = useRouter()
 
   const STORAGE_KEY = `unity-checklist-${id}`
   const [checked, setChecked] = useState<boolean[]>(() => Array(SETUP_STEPS.length).fill(false))
@@ -79,7 +76,6 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const dialogue = (assets ?? []).filter(a => a.type === 'dialogue')
   const totalAssets = (assets ?? []).length
   const doneSteps = checked.filter(Boolean).length
-  const alreadyComplete = project?.stage === 'unity' || project?.stage === 'playtesting' || project?.stage === 'deployment'
 
   function toggleStep(i: number) {
     const next = checked.map((v, idx) => idx === i ? !v : v)
@@ -89,16 +85,6 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
 
   function handleExport() {
     exportBundle.mutate(undefined, { onError: (err) => toastError(err, 'Export failed.') })
-  }
-
-  async function handleMarkComplete() {
-    try {
-      await markComplete.mutateAsync()
-    } catch (err) {
-      toastError(err, 'Could not advance stage.')
-      return
-    }
-    router.push(`/projects/${id}/playtesting`)
   }
 
   async function handleGeneratePlan() {
@@ -255,19 +241,6 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
             >
               {exportBundle.isPending ?'EXPORTING...' : '⬇ DOWNLOAD ALL ASSETS'}
             </button>
-            {!alreadyComplete ? (
-              <button
-                onClick={handleMarkComplete}
-                disabled={markComplete.isPending}
-                style={{ background: '#4ea8ff', color: '#07090d', border: 'none', padding: '11px 18px', fontSize: '12px', letterSpacing: '1px', fontWeight: 700, cursor: markComplete.isPending ? 'not-allowed' : 'pointer', ...pixel }}
-              >
-                {markComplete.isPending ? 'SAVING...' : '✓ DONE IN UNITY → PLAYTESTING'}
-              </button>
-            ) : (
-              <div style={{ background: 'rgba(78,168,255,0.08)', border: '1px solid rgba(78,168,255,0.2)', padding: '11px 18px', fontSize: '12px', color: '#4ea8ff', letterSpacing: '1px', ...mono }}>
-                ✓ UNITY INTEGRATION COMPLETE
-              </div>
-            )}
           </div>
         </>
       )}
