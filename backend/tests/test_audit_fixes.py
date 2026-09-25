@@ -66,7 +66,7 @@ def test_systems_extract_skips_non_dict_nodes_and_never_regresses_stage(client, 
 # ─── Unity plan grounding ─────────────────────────────────────────────────────
 
 def test_unity_plan_renumbers_and_grounds_create_script(client, mock_db, monkeypatch):
-    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "concept_card": {"title": "T", "genre": "rpg", "platform": "pc", "core_loop": "Jump"}}
     mock_db.assets.find.return_value = make_cursor(
         [{"type": "script", "name": "PlayerController", "code": "class PlayerController {}"}]
     )

@@ -100,9 +100,10 @@ async def export_project_bundle(db, project_id: str, title: str) -> bytes:
     return await asyncio.to_thread(_build_zip, title, sections, assets)
 
 
-def _build_zip(title: str, sections: dict, assets: list[dict]) -> bytes:
-    buffer = io.BytesIO()
+def _write_assets(zf: zipfile.ZipFile, assets: list[dict]) -> list[tuple[dict, str]]:
+    """Write each asset's file into the zip; returns (asset, path) for every file written."""
     used: set[str] = set()
+    written: list[tuple[dict, str]] = []
 
     def unique(folder: str, name: str, ext: str) -> str:
         """Two assets with the same name must not overwrite each other in the zip."""
@@ -113,23 +114,94 @@ def _build_zip(title: str, sections: dict, assets: list[dict]) -> bytes:
         used.add(path.lower())
         return path
 
+    for asset in assets:
+        name = safe_filename(str(asset.get("name", "asset")).replace(" ", "_"))
+        asset_type = asset.get("type")
+        path = None
+        if asset_type == "script" and asset.get("code"):
+            path = unique("Scripts", name, "cs")
+            zf.writestr(path, asset["code"])
+        elif asset_type == "sprite" and asset.get("url"):
+            url = asset["url"]
+            if url.startswith("data:") and "base64," in url:
+                # SVG-fallback sprites are stored as data:image/svg+xml — keep them .svg
+                ext = "svg" if url.startswith("data:image/svg") else "png"
+                path = unique("Sprites", name, ext)
+                zf.writestr(path, base64.b64decode(url.split("base64,", 1)[1]))
+        elif asset_type == "dialogue" and asset.get("tree"):
+            path = unique("Dialogue", name, "json")
+            zf.writestr(path, json.dumps(asset["tree"], indent=2))
+        if path:
+            written.append((asset, path))
+    return written
+
+
+def _build_zip(title: str, sections: dict, assets: list[dict]) -> bytes:
+    buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("GDD.md", _gdd_to_markdown(title, sections))
         zf.writestr("README.md", _readme_text(title, assets))
-
-        for asset in assets:
-            name = safe_filename(str(asset.get("name", "asset")).replace(" ", "_"))
-            asset_type = asset.get("type")
-            if asset_type == "script" and asset.get("code"):
-                zf.writestr(unique("Scripts", name, "cs"), asset["code"])
-            elif asset_type == "sprite" and asset.get("url"):
-                url = asset["url"]
-                if url.startswith("data:") and "base64," in url:
-                    encoded = url.split("base64,", 1)[1]
-                    # SVG-fallback sprites are stored as data:image/svg+xml — keep them .svg
-                    ext = "svg" if url.startswith("data:image/svg") else "png"
-                    zf.writestr(unique("Sprites", name, ext), base64.b64decode(encoded))
-            elif asset_type == "dialogue" and asset.get("tree"):
-                zf.writestr(unique("Dialogue", name, "json"), json.dumps(asset["tree"], indent=2))
-
+        _write_assets(zf, assets)
     return buffer.getvalue()
+
+
+# ─── Unity build pack (primary bridge: Claude Code + a Unity MCP server) ─────
+
+def _bullets(items: list, empty: str) -> list[str]:
+    lines = [f"- {item}" for item in items if str(item).strip()]
+    return lines or [empty]
+
+
+def _gamegold_md(project: dict, steps: list[dict], written: list[tuple[dict, str]]) -> str:
+    card = project.get("concept_card") or {}
+    lines = [
+        f"# {project.get('title', 'Untitled')} — GameGold build pack",
+        "",
+        "Drop this folder into your Unity project's `Assets/` folder. Then open Claude Code in the",
+        "Unity project with a Unity MCP server connected — Unity's official MCP (`unity mcp`, Unity 6+)",
+        "or CoplayDev/unity-mcp (Unity 2021.3+) — and ask it to build the prototype described here.",
+        "You own the build: review every change in the Editor.",
+        "",
+        "## Prototype goal",
+        str(card.get("core_loop") or "(not written yet — add it on the Pitch page)"),
+        "",
+        "## Pillars",
+        *_bullets(card.get("pillars") or [], "(none yet)"),
+        "",
+        "## Won't do",
+        *_bullets(card.get("wont_do") or [], "(none yet)"),
+        "",
+        "## Assets",
+        "| File | Type | Status |",
+        "|---|---|---|",
+    ]
+    for asset, path in written:
+        status = "placeholder" if asset.get("placeholder", True) and not asset.get("replaced") else "final"
+        lines.append(f"| `{path}` | {asset.get('type')} | {status} |")
+    lines += ["", "## Build steps"]
+    if steps:
+        lines += [f"{i}. {step.get('description', '')}" for i, step in enumerate(steps, start=1)]
+    else:
+        lines.append("No build plan yet — generate one on the Unity page, or build straight from the goal above.")
+    return "\n".join(lines) + "\n"
+
+
+def _build_pack_zip(project: dict, plan: dict | None, assets: list[dict]) -> bytes:
+    steps = (plan or {}).get("steps") or []
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        written = _write_assets(zf, assets)
+        zf.writestr(
+            "plan.json",
+            json.dumps({"summary": (plan or {}).get("summary", ""), "steps": steps}, indent=2, default=str),
+        )
+        zf.writestr("GAMEGOLD.md", _gamegold_md(project, steps, written))
+    return buffer.getvalue()
+
+
+async def export_build_pack(db, project: dict) -> bytes:
+    project_id = str(project["_id"])
+    plan = await db.unity_plans.find_one({"project_id": project_id})
+    assets = await db.assets.find({"project_id": project_id}).to_list(500)
+    # Zipping + base64-decoding sprites is CPU-bound — keep it off the event loop.
+    return await asyncio.to_thread(_build_pack_zip, project, plan, assets)
