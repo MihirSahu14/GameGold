@@ -91,6 +91,12 @@ class GateOut(BaseModel):
     total: int
 
 
+class PitchInterviewOut(BaseModel):
+    questions: list[str] = []
+    options: list[str] = []
+    comparables: list[str] = []
+
+
 class ProjectInDB(BaseModel):
     user_id: str
     title: str

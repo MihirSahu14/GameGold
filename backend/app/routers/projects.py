@@ -1,19 +1,23 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
+from app.core.concurrency import project_llm_slot
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.project import (
     STAGE_ORDER,
     DecisionRequest,
     GateCheckRequest,
     GateOut,
+    PitchInterviewOut,
     ProjectCreate,
     ProjectInDB,
     ProjectOut,
     ProjectUpdate,
 )
+from app.services.claude_service import pitch_interview
 from app.services.gates import compute_gate, summarize_gate
 from app.routers.auth import get_current_user
 
@@ -164,6 +168,24 @@ async def get_gates(project_id: str, current_user: dict = Depends(get_current_us
     db = get_db()
     project = await load_owned_project(db, project_id, current_user["_id"])
     return await gate_for(db, project)
+
+
+@router.post("/{project_id}/pitch/interview", response_model=PitchInterviewOut)
+@limiter.limit(LLM_RATE_LIMIT)
+async def interview_pitch(
+    request: Request,
+    response: Response,
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    project = await load_owned_project(db, project_id, current_user["_id"])
+    try:
+        async with project_llm_slot(project_id):
+            data = await pitch_interview(project.get("concept_card") or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return PitchInterviewOut(**data)
 
 
 @router.post("/{project_id}/advance", response_model=ProjectOut, response_model_by_alias=True)

@@ -65,12 +65,13 @@ SECTION_INSTRUCTIONS = {
 
 
 def format_concept_card(concept_card: dict) -> str:
-    """Every field, verbatim and untruncated."""
-    lines = [
-        f"- {key}: {value}"
-        for key, value in concept_card.items()
-        if value not in (None, "")
-    ]
+    """Every field, verbatim and untruncated. Lists (pillars, won't-do) are joined with '; '."""
+    lines = []
+    for key, value in concept_card.items():
+        if isinstance(value, list):
+            value = "; ".join(str(v) for v in value if str(v).strip())
+        if value not in (None, ""):
+            lines.append(f"- {key}: {value}")
     return "\n".join(lines) or "(empty concept card)"
 
 
@@ -98,24 +99,30 @@ def build_gdd_prompt(
     return "\n\n".join(parts)
 
 
-# ─── Concept sufficiency check (interview mode) ───────────────────────────────
+# ─── Pitch interview (also the GDD sufficiency check) ─────────────────────────
 
-CONCEPT_CHECK_SYSTEM_PROMPT = """\
-You review a game concept card before a full Game Design Document is written from it.
-Decide whether the concept contains enough concrete detail to write a specific,
-non-generic GDD (core loop, unique hook, tone, and audience actually described).
+PITCH_INTERVIEW_PROMPT = """\
+You interview a game designer about their pitch. You ask; they decide.
+Read their concept card (hook, pillars, won't-do list, core loop, audience) and find
+what is missing, vague, or contradictory.
 
-You MUST respond with ONLY a valid JSON object — no prose, no markdown fences.
-Either: {"sufficient": true}
-Or:     {"sufficient": false, "questions": ["...", ...]}
+You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
+{
+  "questions": ["...", ...],
+  "options": ["Option A: ...", "Option B: ...", "Option C: ..."],
+  "comparables": ["Game title — what it shares with this pitch", ...]
+}
 
 Rules:
-- At most 5 questions. Each is a single concrete question about the game that the
-  concept card leaves unanswered and that a GDD writer would need answered.
-- Ask about the game itself (mechanics, setting, characters, structure) — never
-  about business, marketing, or team.
-- Only mark insufficient when key creative details are missing or too vague to
-  design from.
+- questions: at most 5. Each is one concrete question about the game itself (mechanics,
+  feel, structure, audience) — never business, marketing, or team. Return [] when the
+  hook, the 3 pillars, the won't-do list, the core loop and the audience are all concrete.
+- options: at most 3 deliberately DIFFERENT directions for the weakest part of the pitch,
+  each starting "Option A:", "Option B:", "Option C:". They are options for the designer to
+  pick from, edit, or ignore — never present one as the answer.
+- comparables: 2-4 real, shipped games that share the hook or core loop, each with the one
+  thing it shares. Never invent games. Return [] if you are not sure.
+- NEVER write the hook, the pillars, or the won't-do list yourself.
 """
 
 
@@ -130,9 +137,9 @@ DEFAULT_CLARIFYING_QUESTIONS = [
 ]
 
 
-def build_concept_check_prompt(concept_card: dict) -> str:
+def build_pitch_interview_prompt(concept_card: dict) -> str:
     return (
-        "Review this concept card for sufficiency.\n\n"
+        "Interview the designer about this pitch.\n\n"
         f"CONCEPT CARD:\n{format_concept_card(concept_card)}\n\n"
         "Return the JSON object now."
     )
