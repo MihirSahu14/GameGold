@@ -50,6 +50,14 @@ export interface ConceptCard {
   uniqueHook: string
   targetAudience: string
   estimatedScope: 'jam' | 'indie' | 'mid' | 'large'
+  pillars: string[]
+  wontDo: string[]
+}
+
+export type PitchInterview = {
+  questions: string[]
+  options: string[]
+  comparables: string[]
 }
 
 export interface Project {

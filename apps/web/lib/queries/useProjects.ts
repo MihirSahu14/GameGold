@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { Project, ProjectCreate, ConceptCard } from '@gamegold/types'
+import type { Project, ProjectCreate, ConceptCard, PitchInterview } from '@gamegold/types'
 
 // ─── Fetch all projects ───────────────────────────────────────────────────────
 export function useProjects() {
@@ -66,6 +66,16 @@ export function useUpdateCutList(projectId: string) {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['projects', projectId], data)
+    },
+  })
+}
+
+// ─── Pitch interview (asks; never writes the pitch) ──────────────────────────
+export function usePitchInterview(projectId: string) {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.post<PitchInterview>(`/projects/${projectId}/pitch/interview`)
+      return res.data
     },
   })
 }

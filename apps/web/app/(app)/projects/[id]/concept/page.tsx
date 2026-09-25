@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import { useRouter } from 'next/navigation'
-import { useProject, useUpdateConceptCard } from '@/lib/queries/useProjects'
+import { useProject, useUpdateConceptCard, usePitchInterview } from '@/lib/queries/useProjects'
 import { toastError } from '@/lib/api'
-import type { ConceptCard, GameTone } from '@gamegold/types'
+import { PillarsEditor } from '@/components/pitch/PillarsEditor'
+import { PitchInterviewPanel } from '@/components/pitch/PitchInterviewPanel'
+import type { ConceptCard, GameTone, PitchInterview } from '@gamegold/types'
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
@@ -43,7 +44,7 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
   const { id } = use(params)
   const { data: project, isLoading, isError, refetch } = useProject(id)
   const updateConcept = useUpdateConceptCard(id)
-  const router = useRouter()
+  const interviewPitch = usePitchInterview(id)
 
   const [tagline, setTagline] = useState('')
   const [tone, setTone] = useState<GameTone>('atmospheric')
@@ -51,6 +52,9 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
   const [uniqueHook, setUniqueHook] = useState('')
   const [targetAudience, setTargetAudience] = useState('')
   const [estimatedScope, setEstimatedScope] = useState<ConceptCard['estimatedScope']>('indie')
+  const [pillars, setPillars] = useState<string[]>(['', '', ''])
+  const [wontDo, setWontDo] = useState<string[]>([])
+  const [interview, setInterview] = useState<PitchInterview | null>(null)
   const [saved, setSaved] = useState(false)
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -63,6 +67,8 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
     setUniqueHook(cc.uniqueHook ?? '')
     setTargetAudience(cc.targetAudience ?? '')
     setEstimatedScope(cc.estimatedScope ?? 'indie')
+    setPillars([0, 1, 2].map((i) => cc.pillars?.[i] ?? ''))
+    setWontDo(cc.wontDo ?? [])
   }, [project?.conceptCard])
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -86,36 +92,40 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
     )
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault()
-    const conceptCard: ConceptCard = {
+  function buildCard(): ConceptCard {
+    return {
       title: project!.title,
       tagline, genre: project!.genre, platform: project!.platform,
       tone, coreLoop, uniqueHook, targetAudience, estimatedScope,
+      pillars: pillars.map((p) => p.trim()).filter(Boolean),
+      wontDo: wontDo.map((w) => w.trim()).filter(Boolean),
     }
+  }
+
+  async function saveCard(): Promise<boolean> {
     try {
-      await updateConcept.mutateAsync(conceptCard)
+      await updateConcept.mutateAsync(buildCard())
+      return true
     } catch (err) {
-      toastError(err, 'Could not save the concept card.')
-      return
+      toastError(err, 'Could not save the pitch.')
+      return false
     }
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    if (!(await saveCard())) return
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
-  async function handleProceedToGDD() {
-    const conceptCard: ConceptCard = {
-      title: project!.title,
-      tagline, genre: project!.genre, platform: project!.platform,
-      tone, coreLoop, uniqueHook, targetAudience, estimatedScope,
-    }
+  async function handleInterview() {
+    if (!(await saveCard())) return
     try {
-      await updateConcept.mutateAsync(conceptCard)
+      setInterview(await interviewPitch.mutateAsync())
     } catch (err) {
-      toastError(err, 'Could not save the concept card.')
-      return
+      toastError(err, 'The interviewer is unavailable — try again.')
     }
-    router.push(`/projects/${id}/gdd`)
   }
 
   return (
@@ -123,16 +133,16 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
       {/* Header */}
       <div style={{ marginBottom: '36px' }}>
         <div style={{ fontSize: '11px', color: '#4ea8ff', letterSpacing: '3px', marginBottom: '10px' }}>
-          // CONCEPT CARD
+          // PITCH
         </div>
         <div style={{ fontSize: '12px', color: '#456079', marginBottom: '10px' }}>
           🎮 {project.title}
         </div>
         <h1 style={{ ...pixel, fontSize: '16px', color: '#eaf2ff', margin: '0 0 10px', lineHeight: 1.5 }}>
-          Define your concept
+          Pitch your game
         </h1>
         <p style={{ color: '#6b7787', fontSize: '13px', margin: 0, lineHeight: 1.7 }}>
-          This card drives everything — your GDD, systems, and assets will all build on this.
+          Your hook, three pillars and what the game won&apos;t do. You write them — the interviewer only asks questions.
         </p>
       </div>
 
@@ -217,7 +227,7 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
         {/* Unique Hook */}
         <div>
           <label style={{ display: 'block', fontSize: '11px', letterSpacing: '2px', color: '#456079', marginBottom: '8px' }}>
-            UNIQUE HOOK <span style={{ color: '#2a3a4a', letterSpacing: 'normal', textTransform: 'none', fontSize: '12px' }}>— What makes this game worth playing</span>
+            HOOK <span style={{ color: '#2a3a4a', letterSpacing: 'normal', textTransform: 'none', fontSize: '12px' }}>— What makes this game worth playing</span>
           </label>
           <textarea
             value={uniqueHook}
@@ -229,6 +239,13 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
             onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
           />
         </div>
+
+        <PillarsEditor
+          pillars={pillars}
+          wontDo={wontDo}
+          onPillarsChange={setPillars}
+          onWontDoChange={setWontDo}
+        />
 
         {/* Target Audience */}
         <div>
@@ -292,8 +309,8 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
           </button>
           <button
             type="button"
-            onClick={handleProceedToGDD}
-            disabled={updateConcept.isPending}
+            onClick={handleInterview}
+            disabled={updateConcept.isPending || interviewPitch.isPending}
             style={{
               background: '#4ea8ff',
               color: '#07090d',
@@ -307,10 +324,11 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
               opacity: updateConcept.isPending ? 0.5 : 1,
             }}
           >
-            GENERATE GDD →
+            {interviewPitch.isPending ? 'THINKING…' : 'ASK THE INTERVIEWER →'}
           </button>
         </div>
       </form>
+      {interview && <PitchInterviewPanel interview={interview} />}
     </div>
   )
 }

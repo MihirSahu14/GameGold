@@ -8,7 +8,7 @@ vi.mock('@/lib/api', () => ({
 }))
 
 import { api } from '@/lib/api'
-import { useUpdateCutList } from '@/lib/queries/useProjects'
+import { useUpdateCutList, usePitchInterview } from '@/lib/queries/useProjects'
 
 const mockApi = api as unknown as Record<'get' | 'post' | 'patch', ReturnType<typeof vi.fn>>
 
@@ -28,5 +28,17 @@ describe('useUpdateCutList', () => {
     const { result } = renderHook(() => useUpdateCutList('p1'), { wrapper: makeWrapper() })
     await act(async () => { await result.current.mutateAsync(['Co-op']) })
     expect(mockApi.patch).toHaveBeenCalledWith('/projects/p1', { cutList: ['Co-op'] })
+  })
+})
+
+describe('usePitchInterview', () => {
+  it('POSTs the interview request and returns the questions', async () => {
+    const interview = { questions: ['Why bees?'], options: [], comparables: [] }
+    mockApi.post.mockResolvedValueOnce({ data: interview })
+    const { result } = renderHook(() => usePitchInterview('p1'), { wrapper: makeWrapper() })
+    let out: unknown
+    await act(async () => { out = await result.current.mutateAsync() })
+    expect(mockApi.post).toHaveBeenCalledWith('/projects/p1/pitch/interview')
+    expect(out).toEqual(interview)
   })
 })
