@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useCallback } from 'react'
 import { api } from '../api'
+import { downloadBlob } from '../utils'
 import type { Asset, UnityBuildPlan } from '@gamegold/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -88,6 +89,18 @@ export function useMarkStep(projectId: string) {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['unity-plan', projectId], data)
+    },
+  })
+}
+
+// ─── Build pack (primary path: Claude Code + a Unity MCP server) ─────────────
+
+export function useExportBuildPack(projectId: string) {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.get(`/projects/${projectId}/unity/export`, { responseType: 'blob' })
+      const match = (res.headers['content-disposition'] as string | undefined)?.match(/filename="(.+)"/)
+      downloadBlob(res.data as Blob, match?.[1] ?? 'build_pack.zip')
     },
   })
 }

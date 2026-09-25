@@ -1,6 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import React from 'react'
 import type { Asset } from '@gamegold/types'
-import { resolveToolArgs } from '@/lib/queries/useUnity'
+
+vi.mock('@/lib/api', () => ({ api: { get: vi.fn() } }))
+vi.mock('@/lib/utils', () => ({ downloadBlob: vi.fn() }))
+
+import { api } from '@/lib/api'
+import { downloadBlob } from '@/lib/utils'
+import { resolveToolArgs, useExportBuildPack } from '@/lib/queries/useUnity'
 
 function asset(partial: Partial<Asset>): Asset {
   return {
@@ -40,5 +49,23 @@ describe('resolveToolArgs', () => {
 
   it('passes other tools through untouched', () => {
     expect(resolveToolArgs('scene.new', { name: 'Main' }, ASSETS)).toEqual({ args: { name: 'Main' } })
+  })
+})
+
+describe('useExportBuildPack', () => {
+  it('downloads the build pack zip with the server filename', async () => {
+    const blob = new Blob(['zip'])
+    ;(api.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: blob,
+      headers: { 'content-disposition': 'attachment; filename="Bees_build_pack.zip"' },
+    })
+    const qc = new QueryClient()
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children)
+    const { result } = renderHook(() => useExportBuildPack('p1'), { wrapper })
+
+    await act(async () => { await result.current.mutateAsync() })
+    expect(api.get).toHaveBeenCalledWith('/projects/p1/unity/export', { responseType: 'blob' })
+    expect(downloadBlob).toHaveBeenCalledWith(blob, 'Bees_build_pack.zip')
   })
 })

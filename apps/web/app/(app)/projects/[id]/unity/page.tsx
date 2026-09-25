@@ -3,8 +3,7 @@
 import { use, useState, useEffect } from 'react'
 import { useProject } from '@/lib/queries/useProjects'
 import { useAssets } from '@/lib/queries/useAssets'
-import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, resolveToolArgs, findScriptAsset } from '@/lib/queries/useUnity'
-import { useExportBundle } from '@/lib/queries/useDeployment'
+import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, resolveToolArgs, findScriptAsset } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { toastError } from '@/lib/api'
@@ -15,15 +14,12 @@ const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' 
 // ─── Manual checklist (pre-MCP, persisted to localStorage) ───────────────────
 
 const SETUP_STEPS = [
-  'Create a new Unity project (2D or 3D based on your game type)',
-  'Set up folder structure: Assets/Scripts/, Assets/Sprites/, Assets/Dialogue/',
-  'Download all generated assets using the Export button below',
-  'Drag sprites into Assets/Sprites/ and set Texture Type → Sprite (2D and UI)',
-  'Create script files in Assets/Scripts/ and paste in generated C# code',
-  'Drag each script onto its target GameObject in the Hierarchy',
-  'Configure exposed fields in the Inspector (speed, health, etc.)',
-  'Copy dialogue JSON files into Assets/Dialogue/',
-  'Build and run in Play mode to verify the game works',
+  'Download the build pack below (GAMEGOLD.md brief + plan.json + your assets)',
+  'Unzip it into your Unity project under Assets/GameGold/',
+  'Connect a Unity MCP server: Unity 6+ → run `unity mcp`; Unity 2021.3+ → install CoplayDev/unity-mcp',
+  'Open Claude Code in the Unity project folder and ask it to build the prototype in Assets/GameGold/GAMEGOLD.md',
+  'Review every change in the Editor — greybox and labeled placeholders only, one mechanic',
+  'Enter Play mode and play the core loop yourself before inviting testers',
 ]
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -52,7 +48,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const { data: plan, isLoading: planLoading } = useUnityPlan(id)
   const generatePlan = useGeneratePlan(id)
   const markStep = useMarkStep(id)
-  const exportBundle = useExportBundle(id)
+  const exportPack = useExportBuildPack(id)
   const { status: mcpStatus, unityInfo, check: checkMCP, executeTool } = useUnityMCP()
 
   const STORAGE_KEY = `unity-checklist-${id}`
@@ -84,7 +80,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   }
 
   function handleExport() {
-    exportBundle.mutate(undefined, { onError: (err) => toastError(err, 'Export failed.') })
+    exportPack.mutate(undefined, { onError: (err) => toastError(err, 'Build pack download failed.') })
   }
 
   async function handleGeneratePlan() {
@@ -139,7 +135,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
           Build It In Unity
         </h1>
         <p style={{ color: '#6b7787', fontSize: '13px', margin: 0, lineHeight: 1.7 }}>
-          Use the manual checklist to import assets yourself, or connect to the Unity MCP server for AI-guided step-by-step build execution.
+          Download the build pack and build the prototype with Claude Code plus a Unity MCP server. The basic built-in bridge is a fallback if you can&apos;t run one.
         </p>
       </div>
 
@@ -147,7 +143,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
 
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid #1b2533', marginBottom: '28px' }}>
-        {([['manual', '📋 Manual Import'], ['mcp', '🔌 AI Build (MCP)']] as const).map(([t, label]) => (
+        {([['manual', '📦 Build pack (recommended)'], ['mcp', '🔌 Basic (built-in bridge)']] as const).map(([t, label]) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
@@ -236,10 +232,10 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
           <div style={{ display: 'flex', gap: '12px' }}>
             <button
               onClick={handleExport}
-              disabled={exportBundle.isPending || totalAssets === 0}
-              style={{ background: '#141c27', color: '#c8d4e2', border: '1px solid #1b2533', padding: '11px 18px', fontSize: '12px', letterSpacing: '1px', cursor: exportBundle.isPending || totalAssets === 0 ? 'not-allowed' : 'pointer', opacity: totalAssets === 0 ? 0.4 : 1, ...mono }}
+              disabled={exportPack.isPending}
+              style={{ background: '#141c27', color: '#c8d4e2', border: '1px solid #1b2533', padding: '11px 18px', fontSize: '12px', letterSpacing: '1px', cursor: exportPack.isPending ? 'not-allowed' : 'pointer', ...mono }}
             >
-              {exportBundle.isPending ?'EXPORTING...' : '⬇ DOWNLOAD ALL ASSETS'}
+              {exportPack.isPending ? 'PACKING...' : '⬇ DOWNLOAD BUILD PACK'}
             </button>
           </div>
         </>
