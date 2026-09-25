@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { useToastStore } from '@/store/toastStore'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 const CSRF_COOKIE = 'gg_csrf'
 const SAFE_METHODS = new Set(['get', 'head', 'options'])
 

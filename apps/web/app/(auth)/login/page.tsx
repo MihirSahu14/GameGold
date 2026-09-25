@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { loginUser } from '@/lib/auth'
 import { apiErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
+import { OAuthButtons, oauthErrorMessage } from '@/components/auth/OAuthButtons'
 
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
@@ -17,6 +18,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Backend OAuth callback redirects here with ?error=… on failure.
+  useEffect(() => {
+    const message = oauthErrorMessage(new URLSearchParams(window.location.search).get('error'))
+    if (message) setError(message)
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -205,6 +212,9 @@ export default function LoginPage() {
               {loading ? 'SIGNING IN...' : '▶ SIGN IN'}
             </button>
           </form>
+          <div className="mt-5">
+            <OAuthButtons />
+          </div>
         </div>
 
         <p style={{ textAlign: 'center', fontSize: '13px', color: '#4a5a6c', marginTop: '20px' }}>

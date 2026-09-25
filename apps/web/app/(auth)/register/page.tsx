@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { registerUser } from '@/lib/auth'
 import { apiErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
+import { OAuthButtons } from '@/components/auth/OAuthButtons'
 
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
@@ -218,6 +219,9 @@ export default function RegisterPage() {
               {loading ? 'CREATING...' : '▶ CREATE ACCOUNT'}
             </button>
           </form>
+          <div className="mt-5">
+            <OAuthButtons />
+          </div>
         </div>
 
         <p style={{ textAlign: 'center', fontSize: '13px', color: '#4a5a6c', marginTop: '20px' }}>
