@@ -58,6 +58,13 @@ async def generate_gdd_endpoint(
     body = body or GenerateGDDRequest()
     concept_card = body.concept_card or project.get("concept_card") or {}
 
+    sessions = await db.playtests.find({"project_id": project_id, "kind": "session"}).sort("created_at", -1).to_list(20)
+    playtest_notes = "\n".join(
+        f"- ({s.get('testers')} testers, {s.get('ring')}) {str(s.get('notes') or '').strip()[:1000]}"
+        for s in sessions
+        if str(s.get("notes") or "").strip()
+    )[:5000]
+
     try:
         async with project_llm_slot(project_id):
             # Interview mode: no answers yet → check whether the concept is detailed
@@ -72,7 +79,7 @@ async def generate_gdd_endpoint(
                     )
 
             # Generate all sections with Claude
-            sections = await generate_gdd(concept_card, body.answers or None)
+            sections = await generate_gdd(concept_card, body.answers or None, playtest_notes)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

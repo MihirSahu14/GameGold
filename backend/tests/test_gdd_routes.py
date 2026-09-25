@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from bson import ObjectId
 
-from app.prompts.gdd_prompt import DEFAULT_CLARIFYING_QUESTIONS
-from tests.conftest import TEST_PROJECT, TEST_PROJECT_ID, make_llm_response
+from app.prompts.gdd_prompt import DEFAULT_CLARIFYING_QUESTIONS, GAME_DESIGN_SYSTEM_PROMPT, SECTION_INSTRUCTIONS
+from tests.conftest import TEST_PROJECT, TEST_PROJECT_ID, make_cursor, make_llm_response
 
 THIN_CONCEPT = {
     "title": "Untitled Game",
@@ -182,3 +182,30 @@ def test_refine_returns_llm_content(client, mock_db, monkeypatch):
     assert resp.status_code == 200
     assert resp.json() == {"section": "overview", "content": "## Refined"}
     assert "punchier" in str(mock_llm.call_args)
+
+
+# ─── Compile from decisions (spec 2026-09-25) ────────────────────────────────
+
+def test_gdd_prompt_compiles_instead_of_inventing():
+    assert "do not invent" in GAME_DESIGN_SYSTEM_PROMPT.lower()
+    assert "3-4 design pillars" not in SECTION_INSTRUCTIONS["overview"]
+    assert "pillars" in SECTION_INSTRUCTIONS["overview"]
+
+
+def test_generate_gdd_compiles_from_pillars_and_session_notes(client, mock_db, monkeypatch):
+    card = {**THIN_CONCEPT, "pillars": ["Tense", "Readable", "Short runs"]}
+    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "concept_card": card}
+    mock_db.playtests.find.return_value = make_cursor(
+        [{"kind": "session", "testers": 4, "ring": "friends", "notes": "Nobody found the dash button"}]
+    )
+    mock_llm = MagicMock(return_value=make_llm_response(SECTION_TEXT))
+    monkeypatch.setattr("litellm.completion", mock_llm)
+    _prime_gdd_insert(mock_db)
+
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/gdd/generate", json={"answers": {}})
+    assert resp.status_code == 201
+    prompts = str(mock_llm.call_args_list)
+    assert "PLAYTEST NOTES" in prompts
+    assert "Nobody found the dash button" in prompts
+    assert "Tense; Readable; Short runs" in prompts
+    mock_db.playtests.find.assert_called_with({"project_id": TEST_PROJECT_ID, "kind": "session"})

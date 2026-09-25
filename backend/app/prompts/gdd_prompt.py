@@ -1,23 +1,25 @@
 from app.prompts.grounding import GROUNDING_RULES
 
-GAME_DESIGN_SYSTEM_PROMPT = """You are an expert game designer and writer with 20+ years of experience shipping indie and AAA games.
-Your job is to write clear, detailed, and actionable Game Design Documents (GDDs) that developers can actually build from.
+GAME_DESIGN_SYSTEM_PROMPT = """You are a game design editor. You COMPILE a Game Design Document from the
+designer's own decisions: their pitch (hook, pillars, won't-do list), their answers, and notes from
+real playtest sessions. You never design the game yourself — do not invent.
 
 Guidelines:
-- Be specific and concrete — avoid vague language like "fun mechanics" or "interesting enemies"
-- Think in systems — how do mechanics interact? What emergent behaviors arise?
-- Balance creativity with feasibility given the stated scope
+- Every statement must trace to the concept card, the developer answers, or the playtest notes
+- Keep the designer's pillars and won't-do list verbatim; flag anything that conflicts with them
+- Where the designer has not decided something, mark the gap (see the grounding rules) instead of filling it in
 - Use markdown formatting: headings (##), bullet points, tables where appropriate
 - Write in plain text with markdown — no JSON, no special formatting outside of markdown
-- Write only what the provided game details support — a short grounded section beats a padded one
+- A short section full of marked gaps beats a padded one
 """ + GROUNDING_RULES
 
 
 SECTION_INSTRUCTIONS = {
     "overview": (
         "Write the **Overview** section of the GDD.\n\n"
-        "Include: game summary, vision statement, key pillars (3-4 design pillars "
-        "that guide every decision), target experience, and success criteria."
+        "Include: game summary, the designer's pillars and won't-do list exactly as written on "
+        "the concept card (never add, drop or reword pillars), target experience, and what the "
+        "playtest notes say players actually experienced."
     ),
     "mechanics": (
         "Write the **Core Mechanics** section of the GDD.\n\n"
@@ -80,6 +82,7 @@ def build_gdd_prompt(
     section: str,
     prior_sections_summary: str = "",
     answers: dict | None = None,
+    playtest_notes: str = "",
 ) -> str:
     parts = [
         "CONCEPT CARD (complete and authoritative — every detail below is the "
@@ -88,6 +91,11 @@ def build_gdd_prompt(
     if answers:
         answer_lines = "\n".join(f"Q: {q}\nA: {a}" for q, a in answers.items())
         parts.append(f"DEVELOPER ANSWERS (authoritative):\n{answer_lines}")
+    if playtest_notes:
+        parts.append(
+            "PLAYTEST NOTES (real human sessions — authoritative about how the game plays):\n"
+            + playtest_notes
+        )
     if prior_sections_summary:
         parts.append(
             "PREVIOUSLY GENERATED SECTIONS (stay consistent with these):\n"

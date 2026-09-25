@@ -72,7 +72,7 @@ async def check_concept_sufficiency(concept_card: dict) -> list[str]:
         return list(DEFAULT_CLARIFYING_QUESTIONS)
 
 
-async def generate_gdd(concept_card: dict, answers: dict | None = None) -> GDDSections:
+async def generate_gdd(concept_card: dict, answers: dict | None = None, playtest_notes: str = "") -> GDDSections:
     sections: dict[str, str] = {}
 
     for section in GDD_SECTIONS:
@@ -82,7 +82,7 @@ async def generate_gdd(concept_card: dict, answers: dict | None = None) -> GDDSe
             for name, text in sections.items()
             if text
         )
-        prompt = build_gdd_prompt(concept_card, section, prior, answers)
+        prompt = build_gdd_prompt(concept_card, section, prior, answers, playtest_notes)
         sections[section] = await _timed_complete(f"gdd_section:{section}", GAME_DESIGN_SYSTEM_PROMPT, prompt)
 
     return GDDSections(**sections)
