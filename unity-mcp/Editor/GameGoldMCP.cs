@@ -68,8 +68,23 @@ namespace GameGold.MCP
             // Release the port before a domain reload, or the next Start() fails with "address in use"
             AssemblyReloadEvents.beforeAssemblyReload += Stop;
             EditorApplication.quitting += Stop;
-            // Delay start until Editor is ready
-            EditorApplication.delayCall += Start;
+            // Start right away: delayCall alone never fired after a reload in an unfocused Editor,
+            // leaving GameGold disconnected. The watchdog below restarts it if a start fails.
+            Start();
+            EditorApplication.update += Watchdog;
+        }
+
+        private static double _nextWatchdogCheck;
+        private static bool _stoppedByUser;   // menu "Stop Server" — the watchdog must not undo it
+        private static bool _startErrorLogged; // log a failed start once, not every watchdog tick
+
+        // ponytail: polls every 3 s on the Editor tick; an event-based restart is the upgrade if it ever matters.
+        private static void Watchdog()
+        {
+            if (_running || _stoppedByUser || EditorApplication.isCompiling || EditorApplication.isUpdating) return;
+            if (EditorApplication.timeSinceStartup < _nextWatchdogCheck) return;
+            _nextWatchdogCheck = EditorApplication.timeSinceStartup + 3;
+            Start();
         }
 
         private static void DrainMainThreadQueue()
@@ -78,6 +93,13 @@ namespace GameGold.MCP
         }
 
         [MenuItem("Window/GameGold MCP/Start Server")]
+        public static void StartFromMenu()
+        {
+            _stoppedByUser = false;
+            _startErrorLogged = false;
+            Start();
+        }
+
         public static void Start()
         {
             if (_running) return;
@@ -92,6 +114,7 @@ namespace GameGold.MCP
                 _thread = new Thread(Listen) { IsBackground = true };
                 _thread.Start();
 
+                _startErrorLogged = false;
                 Debug.Log($"[GameGold MCP] Server started on http://localhost:{Port}");
             }
             catch (Exception ex)
@@ -99,12 +122,20 @@ namespace GameGold.MCP
                 _running = false;
                 try { _listener?.Close(); } catch { /* already broken */ }
                 _listener = null;
+                if (_startErrorLogged) return;
+                _startErrorLogged = true;
                 Debug.LogError($"[GameGold MCP] Could not start server on localhost:{Port} ({ex.Message}). " +
                                "Another Unity instance or process may be using the port. Retry via Window > GameGold MCP > Start Server.");
             }
         }
 
         [MenuItem("Window/GameGold MCP/Stop Server")]
+        public static void StopFromMenu()
+        {
+            _stoppedByUser = true;
+            Stop();
+        }
+
         public static void Stop()
         {
             if (!_running) return;

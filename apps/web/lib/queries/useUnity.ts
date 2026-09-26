@@ -159,8 +159,13 @@ export function useUnityConnection() {
     },
     retry: false,
     staleTime: 30_000,
+    // Unity restarts the bridge on every script reload — keep polling so GameGold reconnects by itself
+    // (fast while down, slow while up so a dropped Editor is still noticed).
+    refetchInterval: (query) => (query.state.data ? 15_000 : 4_000),
+    refetchIntervalInBackground: true,
   })
-  const status: ConnectionStatus = q.isFetching ? 'checking' : q.data ? 'connected' : q.isFetched ? 'disconnected' : 'idle'
+  // Background polls keep the last result instead of flashing "checking" / hiding connected-only panels.
+  const status: ConnectionStatus = q.data ? 'connected' : q.isFetching ? 'checking' : q.isFetched ? 'disconnected' : 'idle'
   const { refetch } = q
   const check = useCallback(async () => !!(await refetch()).data, [refetch])
   return { status, unityInfo: q.data ?? null, check }
