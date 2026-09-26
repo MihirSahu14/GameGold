@@ -204,19 +204,36 @@ export interface UnityGuide {
 export interface DialogueChoice {
   text: string
   next: string | null
+  /** Hidden variable deltas, e.g. { anxiety: -2 } */
+  effects?: Record<string, number>
 }
+
+/** `when`: "<var> [+ <var>...] <op> <int>" (op: < <= > >= ==) or "else" (last only) */
+export type DialogueBranch = { when: string; next: string }
+
+export type DialogueEnding = 'good' | 'neutral' | 'bad'
 
 export interface DialogueNode {
   id: string
   speaker: string
   text: string
   choices: DialogueChoice[]
+  next?: string | null
+  bg?: string | null
+  chapter?: string | null
+  sfx?: string | null
+  expr?: string | null
+  ending?: DialogueEnding | null
+  branches?: DialogueBranch[]
 }
 
 export interface DialogueTree {
   npcName: string
   personality: string
   nodes: DialogueNode[]
+  variables?: Record<string, number>
+  /** Defaults to the first node */
+  start?: string | null
 }
 
 export interface AssetProposal {
@@ -372,6 +389,8 @@ export type UnityBuildPlan = {
   steps: UnityBuildStep[]
   summary: string
   generatedAt: string
+  /** component.add types that are neither Unity built-ins nor stored script assets */
+  missingScripts?: string[]
 }
 
 // ─── API Responses ───────────────────────────────────────────────────────────

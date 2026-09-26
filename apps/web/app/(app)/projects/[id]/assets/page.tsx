@@ -15,6 +15,7 @@ import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSum
 import { AssetCard } from '@/components/assets/AssetCard'
 import { StyleToggle } from '@/components/assets/StyleToggle'
 import { KindToggle } from '@/components/assets/KindToggle'
+import { DialogueImportPanel } from '@/components/assets/DialogueJson'
 import { BatchSpritePanel } from '@/components/assets/BatchSpritePanel'
 import { ProposalsPanel, proposalKey } from '@/components/assets/ProposalsPanel'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
@@ -287,6 +288,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
           </div>
         )}
         {activeTab === 'sprite' && <BatchSpritePanel projectId={id} style={spriteStyle} />}
+        {activeTab === 'dialogue' && <DialogueImportPanel projectId={id} />}
 
         {activeTab === 'script' && (
           <div className="flex flex-wrap items-end gap-3">

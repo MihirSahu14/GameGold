@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { Asset, AssetProposal, ArtStyle, AssetKind, BatchSpriteItem, BatchSpriteResult, ScriptType } from '@gamegold/types'
+import type { Asset, AssetProposal, ArtStyle, AssetKind, BatchSpriteItem, BatchSpriteResult, DialogueTree, ScriptType } from '@gamegold/types'
 
 // ─── List all assets for a project ───────────────────────────────────────────
 export function useAssets(projectId: string) {
@@ -144,4 +144,60 @@ export function useDeleteAsset(projectId: string) {
       void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
+}
+
+// ─── Designer-written dialogue (narrative JSON, no AI) ───────────────────────
+export function useImportDialogue(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { name: string; tree: DialogueTree }) => {
+      const res = await api.post<Asset>(`/projects/${projectId}/assets/dialogue/import`, payload)
+      return res.data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['assets', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
+    },
+  })
+}
+
+export function useUpdateDialogueTree(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ assetId, tree }: { assetId: string; tree: DialogueTree }) => {
+      const res = await api.put<Asset>(`/projects/${projectId}/assets/${assetId}/tree`, tree)
+      return res.data
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Asset[]>(['assets', projectId], (prev) =>
+        prev?.map((a) => (a._id === updated._id ? updated : a)),
+      )
+    },
+  })
+}
+
+/** Pasted text → tree, or a message to show inline. Server validation does the rest. */
+export function parseTreeJson(text: string): { tree: DialogueTree } | { error: string } {
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch (err) {
+    return { error: `Invalid JSON: ${(err as Error).message}` }
+  }
+  if (!data || typeof data !== 'object' || !Array.isArray((data as { nodes?: unknown }).nodes)) {
+    return { error: 'JSON must be an object with a "nodes" array' }
+  }
+  return { tree: { npcName: '', personality: '', ...(data as Partial<DialogueTree>) } as DialogueTree }
+}
+
+type PydanticIssue = { loc?: (string | number)[]; msg?: string }
+
+/** 422 detail → lines: validator strings, or pydantic {loc, msg} objects. */
+export function dialogueErrors(err: unknown): string[] {
+  const detail = (err as { response?: { data?: { detail?: unknown } } } | undefined)?.response?.data?.detail
+  if (typeof detail === 'string') return [detail]
+  if (!Array.isArray(detail)) return ['Could not save the dialogue.']
+  return detail.map((d: string | PydanticIssue) =>
+    typeof d === 'string' ? d : `${(d.loc ?? []).filter((p) => p !== 'body' && p !== 'tree').join('.')}: ${d.msg ?? 'invalid'}`,
+  )
 }

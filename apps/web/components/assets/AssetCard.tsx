@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { Asset } from '@gamegold/types'
 import { UnityGuide } from './UnityGuide'
+import { DialogueJsonEditor } from './DialogueJson'
 import { downloadBlob, downloadHref, cn } from '@/lib/utils'
 import { toastError } from '@/lib/api'
 import { svgToPngBlob } from '@/lib/rasterize'
@@ -200,8 +201,9 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
             <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
               {asset.tree.nodes.slice(0, 6).map((node) => (
                 <div key={node.id} className="text-xs">
-                  <span className={node.speaker === 'npc' ? 'text-purple-400' : 'text-blue-400'}>
-                    {node.speaker === 'npc' ? asset.tree?.npcName : 'Player'}:
+                  {/* AI NPC trees use npc/player; narrative trees use real speaker names */}
+                  <span className={node.speaker === 'player' ? 'text-blue-400' : 'text-purple-400'}>
+                    {node.speaker === 'npc' ? asset.tree?.npcName : node.speaker === 'player' ? 'Player' : node.speaker || '…'}:
                   </span>{' '}
                   <span className="text-zinc-400">{node.text}</span>
                   {node.choices.length > 0 && (
@@ -269,6 +271,8 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
           </button>
         </div>
       )}
+
+      {asset.type === 'dialogue' && <DialogueJsonEditor projectId={projectId} asset={asset} />}
 
       {/* Unity guide */}
       <UnityGuide

@@ -14,6 +14,8 @@ from app.models.assets import (
     BatchSpriteItem,
     BatchSpriteOut,
     BatchSpriteRequest,
+    DialogueTree,
+    ImportDialogueRequest,
     UnityGuide,
     GenerateSpriteRequest,
     GenerateScriptRequest,
@@ -30,6 +32,7 @@ from app.services.asset_service import (
     generate_svg_sprite,
     suggest_assets,
 )
+from app.services.dialogue_validate import validate_tree
 from app.services.replicate_service import generate_sprite_image, SpriteGenerationError
 from app.services.llm_utils import strip_html
 
@@ -354,6 +357,69 @@ async def create_dialogue(
         )
         out = await insert_and_return(db, asset)
     return out
+
+
+# ─── Designer-written dialogue (narrative format, no LLM) ────────────────────
+
+# Static guide — the narrative build plan does these steps for you.
+IMPORTED_DIALOGUE_GUIDE = [
+    "Unity page → Basic (built-in bridge) → Generate build plan: it writes this JSON to Assets/Resources/GameGold/dialogue.json",
+    "The plan also creates Assets/Scripts/DialoguePlayer.cs and adds it to a GameObject named 'GameGold Dialogue'",
+    "Backgrounds go in Assets/Resources/GameGold/Backgrounds/<bg>.png, portraits in Assets/Resources/GameGold/Portraits/portrait_<speaker>.png (the plan imports your background/portrait sprites there)",
+    "Press Play (Edit → Play) — click to finish a line, click again to advance",
+]
+
+
+def _checked_tree(tree: DialogueTree) -> dict:
+    errors, _ = validate_tree(tree)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+    return tree.model_dump()
+
+
+@router.post(
+    "/dialogue/import",
+    response_model=AssetOut,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_dialogue(
+    project_id: str,
+    body: ImportDialogueRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Create a dialogue asset from pasted JSON — the designer wrote it, so not a placeholder."""
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    tree = _checked_tree(body.tree)
+    return await insert_and_return(db, AssetInDB(
+        project_id=project_id,
+        type="dialogue",
+        name=body.name,
+        description=body.tree.personality,
+        unity_guide=UnityGuide(
+            steps=IMPORTED_DIALOGUE_GUIDE, completed=[False] * len(IMPORTED_DIALOGUE_GUIDE)
+        ).model_dump(),
+        tree=tree,
+        placeholder=False,
+    ))
+
+
+@router.put("/{asset_id}/tree", response_model=AssetOut, response_model_by_alias=True)
+async def update_dialogue_tree(
+    project_id: str,
+    asset_id: str,
+    body: DialogueTree,
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    doc = await db.assets.find_one({"_id": to_object_id(asset_id), "project_id": project_id})
+    if not doc or doc.get("type") != "dialogue":
+        raise HTTPException(status_code=404, detail="Dialogue asset not found")
+    await db.assets.update_one({"_id": doc["_id"]}, {"$set": {"tree": _checked_tree(body)}})
+    doc = await db.assets.find_one({"_id": doc["_id"]})
+    return AssetOut(**serialize_asset(doc))
 
 
 # ─── Approve / provenance flags ──────────────────────────────────────────────

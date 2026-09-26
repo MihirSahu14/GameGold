@@ -29,21 +29,37 @@ class UnityGuide(BaseModel):
 class DialogueChoice(BaseModel):
     text: str
     next: Optional[str] = None
+    effects: dict[str, int] = {}  # hidden variable deltas, e.g. {"anxiety": -2}
+
+
+class DialogueBranch(BaseModel):
+    when: str  # "<var> [+ <var>...] <op> <int>" or "else" — see services/dialogue_validate.py
+    next: str
 
 
 class DialogueNode(BaseModel):
     id: str
-    speaker: str
-    text: str
+    speaker: str = ""
+    text: str = ""
     choices: list[DialogueChoice] = []
+    # Narrative format (gap 29) — all optional so AI NPC trees still load.
+    next: Optional[str] = None
+    bg: Optional[str] = None
+    chapter: Optional[str] = None
+    sfx: Optional[str] = None
+    expr: Optional[str] = None
+    ending: Optional[Literal["good", "neutral", "bad"]] = None
+    branches: list[DialogueBranch] = []
 
 
 class DialogueTree(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
-    npc_name: str
-    personality: str
+    npc_name: str = ""
+    personality: str = ""
     nodes: list[DialogueNode] = []
+    variables: dict[str, int] = {}
+    start: Optional[str] = None  # default: first node
 
 
 # ─── Requests ─────────────────────────────────────────────────────────────────
@@ -76,6 +92,11 @@ class GenerateDialogueRequest(BaseModel):
     personality: str = Field(min_length=1, max_length=2000)
     regenerate_of: Optional[str] = None
     note: str = Field(default="", max_length=2000)
+
+
+class ImportDialogueRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    tree: DialogueTree
 
 
 class UpdateGuideRequest(BaseModel):
