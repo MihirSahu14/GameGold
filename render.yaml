@@ -39,6 +39,6 @@ services:
       - key: GITHUB_CLIENT_SECRET
         sync: false
       - key: FRONTEND_URL
-        sync: false # e.g. https://gamegold.vercel.app
+        value: https://gamegold.vercel.app # OAuth redirects land here; must match CORS_ORIGINS
       - key: API_PUBLIC_URL
-        sync: false # this service's public URL, e.g. https://gamegold-api.onrender.com
+        sync: false # MUST be this Render service's public URL (e.g. https://gamegold-api.onrender.com) — OAuth redirect_uri is built from it

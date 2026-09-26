@@ -16,8 +16,12 @@ One-click sign-in with Google or GitHub, alongside the existing email/password l
      - Google: userinfo `https://openidconnect.googleapis.com/v1/userinfo` → `sub`, `email`, `email_verified`, `name`.
      - GitHub: `GET /user` → `id`, `login`, `name`; `GET /user/emails` → pick `primary && verified`.
    - No verified email → redirect `…/login?error=oauth_email`.
+   - Provider email is normalized (`strip().lower()`, same `normalize_email` as register/login/forgot-password).
    - Find user by `oauth.{provider}` id; else by email **only because it's verified** (option A: link — `$set oauth.{provider}: id`); else create user: `email`, `username` = sanitized provider name/login (2–32 chars, dedupe with numeric suffix against existing usernames), no `hashed_password`, `oauth: {provider: id}`.
-   - `issue_tokens(db, response, user_id)` on a `RedirectResponse` to `{frontend_url}/dashboard`.
+     - Linking to an account that has a password: `$unset hashed_password` and revoke all its refresh tokens in the same step (`/auth/register` never verifies email, so that password may be a squatter's — pre-registration takeover). Owner can set a new one via forgot-password.
+     - Account already linked to a *different* id for this provider → no overwrite, redirect `…/login?error=oauth_conflict`.
+   - No cookies on this redirect (they'd land in the API's first-party jar, which cross-site XHRs from the frontend may not see — Firefox TCP / CHIPS partitioning). Instead: one-time code `secrets.token_urlsafe(32)`, store only its sha256 in `oauth_codes` `{code_hash, user_id, expires_at: now+60s, used: false}` (TTL index reaps it), redirect to `{frontend_url}/auth/callback?code=…`.
+   - Web `/auth/callback` (outside the `(auth)` group, waits for the initial session check) calls `POST /auth/oauth/exchange {code}` via the credentialed API client: atomic `find_one_and_update` on `{code_hash, used: false, expires_at > now}` → `used: true`, then `issue_tokens` and return `UserOut` (same as `/auth/login`); else 400 → `/login?error=oauth_failed`. CSRF-exempt like `/auth/login`; login rate limit.
    - Any provider/network error → redirect `…/login?error=oauth_failed` (never a 500, never leak tokens in URLs or logs).
 4. Redirect targets are fixed to `settings.frontend_url` — no user-controlled redirect (no open redirect).
 
@@ -25,12 +29,12 @@ One-click sign-in with Google or GitHub, alongside the existing email/password l
 - `UserInDB.hashed_password: Optional[str] = None`; `oauth: dict[str, str] = {}`.
 - Password login for a user with no `hashed_password` → same generic 401 as a wrong password (no account-type enumeration), still counts toward lockout.
 - Settings: `google_client_id`, `google_client_secret`, `github_client_id`, `github_client_secret` (default `""`), `frontend_url` (default `http://localhost:3000`), `api_public_url` (default `http://localhost:8000`). Add to `backend/.env.example` and `render.yaml` (`sync: false`).
-- CSRF middleware: the new routes are GETs → already safe; no change.
+- CSRF middleware: start/callback are GETs → already safe; `POST /auth/oauth/exchange` added to `EXEMPT_PATHS` (no session exists yet).
 - Rate limit start + callback with the existing login limiter.
 
 ## Web
-- `components/auth/OAuthButtons.tsx` (Tailwind) on login + register pages: two anchor links. Login page shows a readable message for `?error=oauth_state|oauth_email|oauth_failed`.
-- After redirect to `/dashboard`, existing `initAuth` (getMe + csrf) picks up the session — no new client auth code.
+- `components/auth/OAuthButtons.tsx` (Tailwind) on login + register pages: two anchor links. Login page shows a readable message for `?error=oauth_state|oauth_email|oauth_failed|oauth_conflict`.
+- `app/auth/callback/page.tsx` redeems the one-time code (`exchangeOAuthCode` in `lib/auth.ts`, then CSRF fetch + auth store, same as password login) and replaces to `/dashboard`.
 
 ## Testing
 - Backend: start 404/503/302 (state cookie set, URL params); callback state mismatch → redirect with error; Google + GitHub happy paths with httpx mocked (new user created without password; existing email linked; existing oauth id reused; GitHub unverified-only emails → `oauth_email`); provider error → `oauth_failed`; username dedupe; password login on OAuth-only user → 401.

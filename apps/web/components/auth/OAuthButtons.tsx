@@ -9,6 +9,8 @@ const OAUTH_ERRORS: Record<string, string> = {
   oauth_state: 'Sign-in session expired or was tampered with. Please try again.',
   oauth_email: 'That account has no verified email address. Verify one with the provider, or sign up with email.',
   oauth_failed: 'Could not complete sign-in with that provider. Please try again.',
+  oauth_conflict:
+    'That email already belongs to an account linked to a different login with this provider. Sign in with that one instead.',
 }
 
 export function oauthErrorMessage(code: string | null): string | null {
