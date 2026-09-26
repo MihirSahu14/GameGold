@@ -25,7 +25,8 @@ REFRESH_COOKIE = "gg_refresh"
 CSRF_HEADER = "x-csrf-token"
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-EXEMPT_PATHS = {"/auth/login", "/auth/register"}
+# No session exists yet on these, so there's nothing for a forged request to ride on.
+EXEMPT_PATHS = {"/auth/login", "/auth/register", "/auth/oauth/exchange"}
 
 
 def generate_csrf_token() -> str:

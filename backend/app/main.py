@@ -14,6 +14,7 @@ from app.core.csrf import CSRFMiddleware
 from app.core.rate_limit import limiter
 from app.db.mongodb import connect_db, close_db, get_db
 from app.routers import auth, oauth, projects, gdd, systems, assets, playtest, deployment, unity
+from scripts.migrate_emails import migrate as migrate_emails
 from scripts.migrate_stages import migrate as migrate_stages
 
 perf_logger = logging.getLogger("app.perf")
@@ -46,6 +47,10 @@ async def lifespan(app: FastAPI):
         await migrate_stages(get_db())
     except Exception:
         startup_logger.exception("Stage migration on startup failed; continuing")
+    try:
+        await migrate_emails(get_db())
+    except Exception:
+        startup_logger.exception("Email migration on startup failed; continuing")
     yield
     await close_db()
 

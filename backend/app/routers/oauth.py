@@ -1,16 +1,19 @@
 """Google + GitHub sign-in. Sessions are the same cookies as password login (issue_tokens)."""
+import hashlib
 import logging
 import re
 import secrets
+from datetime import datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Request
+from bson import ObjectId
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
 from app.config import settings
 from app.core.rate_limit import limiter
 from app.db.mongodb import get_db
-from app.models.user import UserInDB
-from app.routers.auth import issue_tokens
+from app.models.user import OAuthExchange, UserInDB, UserOut, normalize_email
+from app.routers.auth import issue_tokens, serialize_user
 from app.services import oauth_service
 
 logger = logging.getLogger(__name__)
@@ -20,6 +23,7 @@ STATE_COOKIE = "gg_oauth_state"
 STATE_COOKIE_PATH = "/auth/oauth"
 STATE_MAX_AGE = 600
 LOGIN_RATE_LIMIT = "10/minute"  # same as /auth/login
+CODE_TTL_SECONDS = 60
 
 
 def _check_provider(provider: str) -> None:
@@ -45,8 +49,8 @@ async def _unique_username(db, name: str, email: str) -> str:
     if len(base) < 2:
         base = "player"
     candidate, n = base, 1
-    # ponytail: check-then-insert can race two signups onto one name; add a unique
-    # index on users.username if that ever matters.
+    # ponytail: check-then-insert can race two signups onto one name; the unique
+    # index on users.username (scripts/migrate_emails) turns that race into a failed insert.
     while await db.users.find_one({"username": candidate}):
         n += 1
         suffix = str(n)
@@ -97,23 +101,67 @@ async def _complete(request: Request, provider: str, code: str, state: str) -> R
     if not identity.email:
         return _to_login("oauth_email")
 
+    email = normalize_email(identity.email)
     db = get_db()
     oauth_key = f"oauth.{provider}"
     user = await db.users.find_one({oauth_key: identity.provider_id})
     if not user:
         # Linking by email is safe only because the provider verified it.
-        user = await db.users.find_one({"email": identity.email})
+        user = await db.users.find_one({"email": email})
         if user:
-            await db.users.update_one({"_id": user["_id"]}, {"$set": {oauth_key: identity.provider_id}})
+            if (user.get("oauth") or {}).get(provider):  # bound to a different id of this provider
+                return _to_login("oauth_conflict")
+            update: dict = {"$set": {oauth_key: identity.provider_id}}
+            if user.get("hashed_password"):
+                # /auth/register never verifies email, so this password may be a squatter's
+                # (pre-registration takeover). The provider just proved ownership: drop the
+                # password and every session it minted. The owner can set a new one via reset.
+                update["$unset"] = {"hashed_password": ""}
+            await db.users.update_one({"_id": user["_id"]}, update)
+            if "$unset" in update:
+                await db.refresh_tokens.update_many(
+                    {"user_id": str(user["_id"]), "revoked": False}, {"$set": {"revoked": True}}
+                )
         else:
             new_user = UserInDB(
-                email=identity.email,
-                username=await _unique_username(db, identity.name, identity.email),
+                email=email,
+                username=await _unique_username(db, identity.name, email),
                 oauth={provider: identity.provider_id},
             )
             result = await db.users.insert_one(new_user.model_dump())
             user = {"_id": result.inserted_id}
 
-    response = RedirectResponse(f"{settings.frontend_url}/dashboard", status_code=302)
-    await issue_tokens(db, response, str(user["_id"]))
-    return response
+    # Cookies set on this top-level onrender.com redirect would land in a different
+    # (partitioned) jar than the one the app's XHRs from the frontend use. Hand the
+    # frontend a one-time code instead; it exchanges it via XHR for the session cookies.
+    code = secrets.token_urlsafe(32)
+    await db.oauth_codes.insert_one(
+        {
+            "code_hash": _hash(code),
+            "user_id": str(user["_id"]),
+            "expires_at": datetime.utcnow() + timedelta(seconds=CODE_TTL_SECONDS),
+            "used": False,
+        }
+    )
+    return RedirectResponse(f"{settings.frontend_url}/auth/callback?code={code}", status_code=302)
+
+
+def _hash(code: str) -> str:
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+@router.post("/exchange", response_model=UserOut, response_model_by_alias=True)
+@limiter.limit(LOGIN_RATE_LIMIT)
+async def oauth_exchange(request: Request, response: Response, data: OAuthExchange):
+    db = get_db()
+    # Atomic single-use claim — a replayed code can't pass twice.
+    record = await db.oauth_codes.find_one_and_update(
+        {"code_hash": _hash(data.code), "used": False, "expires_at": {"$gt": datetime.utcnow()}},
+        {"$set": {"used": True}},
+    )
+    user = record and await db.users.find_one({"_id": ObjectId(record["user_id"])})
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired sign-in code")
+    user = serialize_user(user)
+    await issue_tokens(db, response, user["_id"])
+    return UserOut(**user)

@@ -14,6 +14,11 @@ def _check_bcrypt_byte_limit(password: str) -> str:
     return password
 
 
+def normalize_email(email: str) -> str:
+    """The one canonical form for stored and looked-up emails."""
+    return email.strip().lower()
+
+
 def _check_password_strength(password: str) -> str:
     if not re.search(r"[A-Za-z]", password):
         raise ValueError("Password must contain at least one letter")
@@ -29,6 +34,7 @@ class UserCreate(BaseModel):
 
     _validate_password_bytes = field_validator("password")(_check_bcrypt_byte_limit)
     _validate_password_strength = field_validator("password")(_check_password_strength)
+    _normalize_email = field_validator("email")(normalize_email)
 
 
 class UserLogin(BaseModel):
@@ -36,6 +42,7 @@ class UserLogin(BaseModel):
     password: str = Field(max_length=72)
 
     _validate_password_bytes = field_validator("password")(_check_bcrypt_byte_limit)
+    _normalize_email = field_validator("email")(normalize_email)
 
 
 class UserOut(BaseModel):
@@ -62,6 +69,12 @@ class UserInDB(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+    _normalize_email = field_validator("email")(normalize_email)
+
+
+class OAuthExchange(BaseModel):
+    code: str = Field(max_length=128)
 
 
 class ResetPasswordRequest(BaseModel):

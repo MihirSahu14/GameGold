@@ -1,4 +1,5 @@
 """Google + GitHub sign-in (server-side authorization-code flow). httpx is mocked."""
+from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -50,11 +51,39 @@ def users(mock_db):
                     for part in parts[:-1]:
                         target = target.setdefault(part, {})
                     target[parts[-1]] = value
+                for key in update.get("$unset", {}):
+                    d.pop(key, None)
                 return
 
     mock_db.users.find_one = AsyncMock(side_effect=find_one)
     mock_db.users.insert_one = AsyncMock(side_effect=insert_one)
     mock_db.users.update_one = AsyncMock(side_effect=update_one)
+    mock_db.refresh_tokens.update_many = AsyncMock()
+    return store
+
+
+@pytest.fixture(autouse=True)
+def codes(mock_db):
+    """list-backed db.oauth_codes supporting the atomic single-use claim."""
+    store: list[dict] = []
+
+    async def insert_one(doc):
+        store.append(dict(doc))
+
+    async def find_one_and_update(query, update):
+        for d in store:
+            if (
+                d["code_hash"] == query["code_hash"]
+                and d["used"] == query["used"]
+                and d["expires_at"] > query["expires_at"]["$gt"]
+            ):
+                before = dict(d)
+                d.update(update["$set"])
+                return before
+        return None
+
+    mock_db.oauth_codes.insert_one = AsyncMock(side_effect=insert_one)
+    mock_db.oauth_codes.find_one_and_update = AsyncMock(side_effect=find_one_and_update)
     return store
 
 
@@ -107,6 +136,19 @@ def callback(client, provider, state="s", code="c"):
     return client.get(
         f"/auth/oauth/{provider}/callback", params={"code": code, "state": state}, follow_redirects=False
     )
+
+
+def signed_in_code(resp) -> str:
+    """Callback success = redirect to the frontend exchange page with a one-time code, no cookies."""
+    assert resp.status_code in (302, 307)
+    loc = resp.headers["location"]
+    assert loc.startswith(f"{FRONTEND}/auth/callback?code=")
+    assert "gg_session=" not in resp.headers.get("set-cookie", "")
+    return parse_qs(urlparse(loc).query)["code"][0]
+
+
+def exchange(client, code):
+    return client.post("/auth/oauth/exchange", json={"code": code})
 
 
 # ─── start ────────────────────────────────────────────────────────────────────
@@ -163,8 +205,7 @@ def test_callback_missing_state_cookie_redirects_with_error(auth_client, users):
 def test_google_new_user_created_without_password(auth_client, users, monkeypatch):
     mock_provider(monkeypatch, GOOGLE_OK)
     resp = callback(auth_client, "google")
-    assert resp.headers["location"] == f"{FRONTEND}/dashboard"
-    assert "gg_session=" in resp.headers.get("set-cookie", "")
+    signed_in_code(resp)
     [user] = users.values()
     assert user["email"] == "ada@example.com"
     assert user["username"] == "AdaLovelace"
@@ -172,15 +213,44 @@ def test_google_new_user_created_without_password(auth_client, users, monkeypatc
     assert user["oauth"] == {"google": "g-123"}
 
 
-def test_google_existing_email_is_linked(auth_client, users, monkeypatch):
+def test_google_existing_email_is_linked(auth_client, users, mock_db, monkeypatch):
     _id = ObjectId()
     users[_id] = {"_id": _id, "email": "ada@example.com", "username": "ada", "hashed_password": "h"}
     mock_provider(monkeypatch, GOOGLE_OK)
     resp = callback(auth_client, "google")
-    assert resp.headers["location"] == f"{FRONTEND}/dashboard"
+    signed_in_code(resp)
     assert len(users) == 1
     assert users[_id]["oauth"] == {"google": "g-123"}
-    assert users[_id]["hashed_password"] == "h"
+    # /auth/register never verified the email, so a pre-registered password could be an
+    # attacker's: the provider just proved ownership — drop the password, kill its sessions.
+    assert "hashed_password" not in users[_id]
+    mock_db.refresh_tokens.update_many.assert_awaited_once_with(
+        {"user_id": str(_id), "revoked": False}, {"$set": {"revoked": True}}
+    )
+
+
+def test_link_to_account_bound_to_other_provider_id_is_conflict(auth_client, users, monkeypatch):
+    _id = ObjectId()
+    users[_id] = {"_id": _id, "email": "ada@example.com", "username": "ada", "oauth": {"google": "g-OTHER"}}
+    mock_provider(monkeypatch, GOOGLE_OK)
+    resp = callback(auth_client, "google")
+    assert resp.headers["location"] == f"{FRONTEND}/login?error=oauth_conflict"
+    assert users[_id]["oauth"] == {"google": "g-OTHER"}
+
+
+def test_provider_email_is_normalized_before_linking(auth_client, users, mock_db, monkeypatch):
+    _id = ObjectId()
+    users[_id] = {"_id": _id, "email": "ada@example.com", "username": "ada"}
+    routes = dict(GOOGLE_OK)
+    routes["https://openidconnect.googleapis.com/v1/userinfo"] = (
+        200,
+        {"sub": "g-123", "email": " Ada@Example.COM ", "email_verified": True, "name": "Ada"},
+    )
+    mock_provider(monkeypatch, routes)
+    signed_in_code(callback(auth_client, "google"))
+    assert len(users) == 1
+    assert users[_id]["oauth"] == {"google": "g-123"}
+    mock_db.refresh_tokens.update_many.assert_not_awaited()  # no password to drop
 
 
 def test_existing_oauth_id_reused_even_if_email_changed(auth_client, users, monkeypatch):
@@ -188,7 +258,7 @@ def test_existing_oauth_id_reused_even_if_email_changed(auth_client, users, monk
     users[_id] = {"_id": _id, "email": "old@example.com", "username": "ada", "oauth": {"google": "g-123"}}
     mock_provider(monkeypatch, GOOGLE_OK)
     resp = callback(auth_client, "google")
-    assert resp.headers["location"] == f"{FRONTEND}/dashboard"
+    signed_in_code(resp)
     assert len(users) == 1
 
 
@@ -215,12 +285,33 @@ def test_github_happy_path_picks_primary_verified_email(auth_client, users, monk
         ),
     )
     resp = callback(auth_client, "github")
-    assert resp.headers["location"] == f"{FRONTEND}/dashboard"
+    signed_in_code(resp)
     [user] = users.values()
     assert user["email"] == "octo@example.com"
     assert user["username"] == "octocat"
     assert user["oauth"] == {"github": "42"}
     assert seen[1].headers["authorization"] == "Bearer gh-token"
+
+
+def test_google_email_verified_as_string_true_is_accepted(auth_client, users, monkeypatch):
+    routes = dict(GOOGLE_OK)
+    routes["https://openidconnect.googleapis.com/v1/userinfo"] = (
+        200,
+        {"sub": "g-7", "email": "s@example.com", "email_verified": "true", "name": "Str"},
+    )
+    mock_provider(monkeypatch, routes)
+    signed_in_code(callback(auth_client, "google"))
+    [user] = users.values()
+    assert user["email"] == "s@example.com"
+
+
+def test_github_token_exchange_error_redirects_oauth_failed(auth_client, users, monkeypatch):
+    routes = github_routes([])
+    routes["https://github.com/login/oauth/access_token"] = (200, {"error": "bad_verification_code"})
+    mock_provider(monkeypatch, routes)
+    resp = callback(auth_client, "github")
+    assert resp.headers["location"] == f"{FRONTEND}/login?error=oauth_failed"
+    assert users == {}
 
 
 def test_github_unverified_only_emails_rejected(auth_client, users, monkeypatch):
@@ -268,6 +359,41 @@ def test_short_name_falls_back_to_email_local_part(auth_client, users, monkeypat
     callback(auth_client, "google")
     [user] = users.values()
     assert user["username"] == "zed"
+
+
+# ─── one-time code exchange ──────────────────────────────────────────────────
+
+def test_exchange_issues_session_once(auth_client, users, codes, monkeypatch):
+    mock_provider(monkeypatch, GOOGLE_OK)
+    code = signed_in_code(callback(auth_client, "google"))
+    [stored] = codes
+    assert code not in str(stored)  # only the hash is stored
+    assert stored["used"] is False
+    ttl = stored["expires_at"] - datetime.utcnow()
+    assert timedelta(seconds=50) < ttl <= timedelta(seconds=60)
+
+    # A stale refresh cookie must not trip CSRF: there's no session to protect yet.
+    auth_client.cookies.set("gg_refresh", "stale", path="/auth")
+    resp = exchange(auth_client, code)
+    assert resp.status_code == 200
+    assert resp.json()["email"] == "ada@example.com"
+    assert resp.json()["username"] == "AdaLovelace"
+    assert "gg_session=" in resp.headers.get("set-cookie", "")
+
+    assert exchange(auth_client, code).status_code == 400  # reused
+
+
+def test_exchange_expired_code_rejected(auth_client, users, codes, monkeypatch):
+    mock_provider(monkeypatch, GOOGLE_OK)
+    code = signed_in_code(callback(auth_client, "google"))
+    codes[0]["expires_at"] = datetime.utcnow() - timedelta(seconds=1)
+    resp = exchange(auth_client, code)
+    assert resp.status_code == 400
+    assert "gg_session=" not in resp.headers.get("set-cookie", "")
+
+
+def test_exchange_unknown_code_rejected(auth_client, users):
+    assert exchange(auth_client, "nope").status_code == 400
 
 
 # ─── password login for OAuth-only users ─────────────────────────────────────
