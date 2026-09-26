@@ -29,3 +29,5 @@ Ripple = narrative game (Avery / Skyler, hidden attachment traits). Repo: `Proje
 | 22 | Unity (bridge) | Bridge origin allowlist only had localhost:3000 + vercel; GameGold dev on :3001 was rejected (403) | Added `http://localhost:3001` ✅ |
 | 23 | Product | GameGold's Unity page tells users to build with Claude Code (build pack = "recommended"); the owner wants GameGold itself to build the game. The built-in bridge is labeled a fallback | Make the built-in bridge (GameGold drives Unity) the primary path; build pack becomes the export option |
 | 24 | Unity (bridge) | GameGold's Unity package failed to compile on Unity 6.5: `GetInstanceID()` is obsolete-as-error → project opened in Safe Mode, bridge never started | Dropped the unused `instanceId` field ✅ (only tested on 6.2 before — add a 6.5 compile check) |
+| 25 | Pitch | Genre couldn't be changed after project creation → Ripple (created as "Other") could never get the narrative build plan | Genre dropdown on the Pitch page + `genre` on PATCH /projects ✅ |
+| 26 | Perf | Local project pages sit on "LOADING..." ~15s on first load | Investigate (dev compile vs. slow /auth/me + /summary waterfall) |

@@ -82,3 +82,17 @@ def test_patch_rejects_unknown_risk_kind_and_long_assumption(client, mock_db):
     assert client.patch(
         f"/projects/{TEST_PROJECT_ID}", json={"riskiestAssumption": "x" * 501}
     ).status_code == 422
+
+
+def test_patch_changes_genre(client, mock_db):
+    doc = {**TEST_PROJECT, "created_at": datetime(2026, 9, 25), "updated_at": datetime(2026, 9, 25)}
+    mock_db.projects.find_one.return_value = {**doc, "genre": "narrative"}
+    resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"genre": "narrative"})
+    assert resp.status_code == 200
+    assert mock_db.projects.update_one.call_args[0][1]["$set"]["genre"] == "narrative"
+
+
+def test_patch_rejects_unknown_genre(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"genre": "moba"})
+    assert resp.status_code == 422

@@ -59,6 +59,7 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     # No stage: it only moves through POST /advance and /decision (gated server-side).
     title: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    genre: Optional[GameGenre] = None
     concept_card: Optional[ConceptCard] = None
     cut_list: Optional[list[Line]] = Field(default=None, max_length=100)
     riskiest_assumption: Optional[str] = Field(default=None, max_length=500)

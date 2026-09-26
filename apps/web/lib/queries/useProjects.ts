@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { Project, ProjectCreate, ConceptCard, PitchInterview, RiskKind } from '@gamegold/types'
+import type { Project, ProjectCreate, ConceptCard, PitchInterview, RiskKind, GameGenre } from '@gamegold/types'
 
 // ─── Fetch all projects ───────────────────────────────────────────────────────
 export function useProjects() {
@@ -71,6 +71,19 @@ export function useUpdateCutList(projectId: string) {
 }
 
 // ─── Riskiest assumption (Prototype entry) ───────────────────────────────────
+export function useUpdateGenre(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (genre: GameGenre) => {
+      const res = await api.patch<Project>(`/projects/${projectId}`, { genre })
+      return res.data
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['projects', projectId], data)
+    },
+  })
+}
+
 export function useUpdateRisk(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
