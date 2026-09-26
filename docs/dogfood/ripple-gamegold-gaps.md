@@ -44,3 +44,6 @@ Ripple = narrative game (Avery / Skyler, hidden attachment traits). Repo: `Proje
 
 **Milestone 2026-09-26:** Ripple built end-to-end in Unity (RippleGG) purely through GameGold's UI: generated plan (21 steps, no LLM) → DialoguePlayer + story JSON + 14 sprites + scene → Play mode, 0 errors.
 | 37 | Abuse / cost | **Deferred until end-to-end game flow works (Mihir, 2026-09-26).** 20 LLM calls/min per user (~28k/day), spoofable IP on register → unlimited accounts, batch = 1 hit for ~24 calls, no global/daily caps, limits reset on restart | Global daily LLM budget in Mongo (default 200/day) · per-user 30/day + 5/min · batch counts per item · real client IP + register 5/hour · all as Render env vars · Anthropic console spend limit |
+| 38 | Auth | If the API is briefly unreachable during page load (e.g. backend restart), the app logs the user out instead of retrying | initAuth: network error ≠ 401 → show "can't reach server, retrying" |
+| 39 | Unity (UI) | No Stop / exit-Play-mode control in GameGold (bridge has `playmode.exit`) | Play / Stop buttons next to the connection badge |
+| 40 | Unity (UI) | Updating GameGold's built-in DialoguePlayer in Unity means "mark not done" on the script step + re-run | "Update runtime" button (also shown when the template version changes) |
