@@ -295,14 +295,31 @@ export interface Asset {
 
 // ─── Playtesting ─────────────────────────────────────────────────────────────
 
-export type PlaytestPersona = 'casual' | 'hardcore' | 'speedrunner' | 'completionist'
+export type PlaytestPersona =
+  | 'casual'
+  | 'hardcore'
+  | 'speedrunner'
+  | 'completionist'
+  // Narrative personas (genre narrative/visual-novel) — see gap 47.
+  | 'skimmer'
+  | 'careful_reader'
+  | 'choice_agonizer'
+  | 'replayer'
 
 export type TesterRing = 'self' | 'friends' | 'discord' | 'steam_playtest' | 'ea'
+
+export interface PersonaInfo {
+  id: PlaytestPersona
+  label: string
+  icon: string
+  blurb: string
+}
 
 export interface BalanceSuggestion {
   issue: string
   fix: string
   unityPath: string
+  nodeId?: string
 }
 
 export interface PlaytestReport {

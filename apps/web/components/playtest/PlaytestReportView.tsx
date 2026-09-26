@@ -12,6 +12,10 @@ const PERSONA_META: Record<string, { icon: string; label: string }> = {
   hardcore: { icon: '⚔️', label: 'Hardcore Min-Maxer' },
   speedrunner: { icon: '⏱️', label: 'Speedrunner' },
   completionist: { icon: '🗺️', label: 'Completionist' },
+  skimmer: { icon: '⏩', label: 'Skimmer' },
+  careful_reader: { icon: '🔍', label: 'Careful Reader' },
+  choice_agonizer: { icon: '🤔', label: 'Choice-Agonizer' },
+  replayer: { icon: '🔁', label: 'Replayer' },
 }
 
 function IssueSection({ title, items, color, badge }: {
@@ -139,6 +143,9 @@ export function PlaytestReportView({ report }: PlaytestReportViewProps) {
                     <p className="text-xs text-zinc-500 font-mono bg-zinc-900 rounded px-2 py-1.5">
                       📍 In Unity: {s.unityPath}
                     </p>
+                  )}
+                  {s.nodeId && (
+                    <p className="text-xs text-zinc-600 font-mono mt-1">Node: {s.nodeId}</p>
                   )}
                 </div>
               ))}

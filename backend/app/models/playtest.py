@@ -4,7 +4,11 @@ from typing import Literal, Optional
 from datetime import datetime
 
 
-PlaytestPersona = Literal["casual", "hardcore", "speedrunner", "completionist"]
+PlaytestPersona = Literal[
+    "casual", "hardcore", "speedrunner", "completionist",
+    # Narrative personas (genre == narrative/visual-novel) — see gap 47.
+    "skimmer", "careful_reader", "choice_agonizer", "replayer",
+]
 BugSeverity = Literal["low", "medium", "high", "critical"]
 BugStatus = Literal["open", "in-progress", "fixed", "wontfix"]
 PlaytestKind = Literal["ai_persona", "session"]
@@ -17,6 +21,7 @@ class BalanceSuggestion(BaseModel):
     issue: str
     fix: str
     unity_path: str = ""
+    node_id: Optional[str] = None  # dialogue node this issue ties to, when known
 
 
 class RunPlaytestRequest(BaseModel):
@@ -86,6 +91,15 @@ class PlaytestSessionInDB(BaseModel):
 
 class SessionSynthesisOut(BaseModel):
     summary: str
+
+
+class PersonaOut(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    id: PlaytestPersona
+    label: str
+    icon: str
+    blurb: str
 
 
 # ─── Bugs ─────────────────────────────────────────────────────────────────────

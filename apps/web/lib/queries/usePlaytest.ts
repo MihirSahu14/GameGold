@@ -1,8 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { PlaytestEntry, PlaytestPersona, PlaytestReport, PlaytestSessionCreate, Bug, BugSeverity, BugStatus } from '@gamegold/types'
+import type { PersonaInfo, PlaytestEntry, PlaytestPersona, PlaytestReport, PlaytestSessionCreate, Bug, BugSeverity, BugStatus } from '@gamegold/types'
 
 // ─── Playtest reports ─────────────────────────────────────────────────────────
+
+export function usePlaytestPersonas(projectId: string) {
+  return useQuery({
+    queryKey: ['playtest-personas', projectId],
+    queryFn: async () => {
+      const res = await api.get<PersonaInfo[]>(`/projects/${projectId}/playtest/personas`)
+      return res.data
+    },
+    enabled: !!projectId,
+  })
+}
 
 export function usePlaytestReports(projectId: string) {
   return useQuery({

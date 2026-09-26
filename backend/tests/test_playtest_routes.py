@@ -136,6 +136,91 @@ def test_run_playtest_rejects_unknown_persona(client, mock_db):
     assert resp.status_code == 422
 
 
+# ─── Context fallback (gap 48 — narrative games have no GDD) ─────────────────
+
+DIALOGUE_TREE = {
+    "npc_name": "Ripple",
+    "personality": "wistful",
+    "variables": {"anxiety": 0},
+    "nodes": [
+        {
+            "id": "n1",
+            "speaker": "Mara",
+            "text": "The tide took the lighthouse keeper last winter, and no one talks about it.",
+            "chapter": "Chapter 1",
+            "choices": [
+                {"text": "Ask what happened", "next": "n2", "effects": {"anxiety": 1}},
+                {"text": "Say nothing", "next": "n3", "effects": {}},
+            ],
+        },
+        {"id": "n2", "speaker": "Mara", "text": "She never says.", "branches": [{"when": "anxiety > 0", "next": "n4"}]},
+        {"id": "n3", "speaker": "Mara", "text": "Some things are better left alone.", "ending": "neutral"},
+    ],
+}
+
+
+def test_run_playtest_falls_back_to_dialogue_when_no_gdd(client, mock_db, monkeypatch):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = None
+    mock_db.assets.find.return_value = make_cursor(
+        [{"project_id": TEST_PROJECT_ID, "type": "dialogue", "tree": DIALOGUE_TREE}]
+    )
+    mock_llm = MagicMock(return_value=make_llm_response(CANNED_PLAYTEST_JSON))
+    monkeypatch.setattr("litellm.completion", mock_llm)
+    inserted = _fake_report_doc()
+    mock_db.playtests.insert_one.return_value = MagicMock(inserted_id=inserted["_id"])
+    mock_db.playtests.find_one.return_value = inserted
+
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/playtest/run", json={"persona": "casual"})
+    assert resp.status_code == 201
+    prompt_text = str(mock_llm.call_args)
+    assert "lighthouse keeper" in prompt_text
+    assert "n1" in prompt_text
+
+
+def test_run_playtest_409_when_nothing_to_play(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = None
+    mock_db.assets.find.return_value = make_cursor([])
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/playtest/run", json={"persona": "casual"})
+    assert resp.status_code == 409
+    assert "design doc" in resp.json()["detail"] or "story" in resp.json()["detail"]
+
+
+def test_run_playtest_uses_concept_card_when_only_that_exists(client, mock_db, monkeypatch):
+    project = {**TEST_PROJECT, "concept_card": {"unique_hook": "Grief told through tide pools", "pillars": ["No choice is labeled good or bad"], "wont_do": []}}
+    mock_db.projects.find_one.return_value = project
+    mock_db.gdds.find_one.return_value = None
+    mock_db.assets.find.return_value = make_cursor([])
+    mock_llm = MagicMock(return_value=make_llm_response(CANNED_PLAYTEST_JSON))
+    monkeypatch.setattr("litellm.completion", mock_llm)
+    inserted = _fake_report_doc()
+    mock_db.playtests.insert_one.return_value = MagicMock(inserted_id=inserted["_id"])
+    mock_db.playtests.find_one.return_value = inserted
+
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/playtest/run", json={"persona": "casual"})
+    assert resp.status_code == 201
+    assert "tide pools" in str(mock_llm.call_args)
+
+
+# ─── GET /playtest/personas ───────────────────────────────────────────────────
+
+def test_personas_classic_for_non_narrative_genre(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT  # genre: rpg
+    resp = client.get(f"/projects/{TEST_PROJECT_ID}/playtest/personas")
+    assert resp.status_code == 200
+    ids = [p["id"] for p in resp.json()]
+    assert ids == ["casual", "hardcore", "speedrunner", "completionist"]
+
+
+def test_personas_narrative_for_narrative_genre(client, mock_db):
+    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "genre": "narrative"}
+    resp = client.get(f"/projects/{TEST_PROJECT_ID}/playtest/personas")
+    assert resp.status_code == 200
+    ids = [p["id"] for p in resp.json()]
+    assert ids == ["skimmer", "careful_reader", "choice_agonizer", "replayer"]
+
+
 # ─── GET /playtest ────────────────────────────────────────────────────────────
 
 def test_list_reports(client, mock_db):
