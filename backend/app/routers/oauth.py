@@ -4,10 +4,12 @@ import logging
 import re
 import secrets
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
+from pymongo.errors import DuplicateKeyError
 
 from app.config import settings
 from app.core.rate_limit import limiter
@@ -24,6 +26,7 @@ STATE_COOKIE_PATH = "/auth/oauth"
 STATE_MAX_AGE = 600
 LOGIN_RATE_LIMIT = "10/minute"  # same as /auth/login
 CODE_TTL_SECONDS = 60
+NONCE_RE = re.compile(r"[A-Za-z0-9_-]{16,64}")
 
 
 def _check_provider(provider: str) -> None:
@@ -60,13 +63,18 @@ async def _unique_username(db, name: str, email: str) -> str:
 
 @router.get("/{provider}/start")
 @limiter.limit(LOGIN_RATE_LIMIT)
-async def oauth_start(request: Request, provider: str):
+async def oauth_start(request: Request, provider: str, nonce: str = ""):
     _check_provider(provider)
-    state = secrets.token_urlsafe(32)
+    # The web client's per-tab random nonce (sessionStorage). It rides in the state
+    # cookie and comes back on the /auth/callback redirect, so a code minted for an
+    # attacker's sign-in can't be redeemed in a victim's browser (login CSRF).
+    if not NONCE_RE.fullmatch(nonce):
+        return _to_login("oauth_state")
+    state = secrets.token_urlsafe(32)  # urlsafe alphabet has no ".", so "state.nonce" splits cleanly
     response = RedirectResponse(oauth_service.authorize_url(provider, state), status_code=302)
     response.set_cookie(
         STATE_COOKIE,
-        state,
+        f"{state}.{nonce}",
         max_age=STATE_MAX_AGE,
         httponly=True,
         samesite="lax",  # must survive the top-level redirect back from the provider
@@ -86,8 +94,8 @@ async def oauth_callback(request: Request, provider: str, code: str = "", state:
 
 
 async def _complete(request: Request, provider: str, code: str, state: str) -> RedirectResponse:
-    expected = request.cookies.get(STATE_COOKIE, "")
-    if not expected or not state or not secrets.compare_digest(expected, state):
+    expected, _, nonce = request.cookies.get(STATE_COOKIE, "").partition(".")
+    if not expected or not state or not nonce or not secrets.compare_digest(expected.encode(), state.encode()):
         return _to_login("oauth_state")
     if not code:  # user denied consent, or provider returned ?error=
         return _to_login("oauth_failed")
@@ -108,9 +116,25 @@ async def _complete(request: Request, provider: str, code: str, state: str) -> R
     if not user:
         # Linking by email is safe only because the provider verified it.
         user = await db.users.find_one({"email": email})
-        if user:
-            if (user.get("oauth") or {}).get(provider):  # bound to a different id of this provider
-                return _to_login("oauth_conflict")
+        if not user:
+            new_user = UserInDB(
+                email=email,
+                username=await _unique_username(db, identity.name, email),
+                oauth={provider: identity.provider_id},
+            )
+            try:
+                result = await db.users.insert_one(new_user.model_dump())
+                user = {"_id": result.inserted_id, "oauth": new_user.oauth}
+            except DuplicateKeyError:
+                # Lost a race to a concurrent signup: link to that account if it's this
+                # email; otherwise (e.g. the generated username got taken) just fail.
+                user = await db.users.find_one({"email": email})
+                if not user:
+                    return _to_login("oauth_failed")
+        linked_id = (user.get("oauth") or {}).get(provider)
+        if linked_id and linked_id != identity.provider_id:
+            return _to_login("oauth_conflict")
+        if not linked_id:
             update: dict = {"$set": {oauth_key: identity.provider_id}}
             if user.get("hashed_password"):
                 # /auth/register never verifies email, so this password may be a squatter's
@@ -122,14 +146,6 @@ async def _complete(request: Request, provider: str, code: str, state: str) -> R
                 await db.refresh_tokens.update_many(
                     {"user_id": str(user["_id"]), "revoked": False}, {"$set": {"revoked": True}}
                 )
-        else:
-            new_user = UserInDB(
-                email=email,
-                username=await _unique_username(db, identity.name, email),
-                oauth={provider: identity.provider_id},
-            )
-            result = await db.users.insert_one(new_user.model_dump())
-            user = {"_id": result.inserted_id}
 
     # Cookies set on this top-level onrender.com redirect would land in a different
     # (partitioned) jar than the one the app's XHRs from the frontend use. Hand the
@@ -143,7 +159,9 @@ async def _complete(request: Request, provider: str, code: str, state: str) -> R
             "used": False,
         }
     )
-    return RedirectResponse(f"{settings.frontend_url}/auth/callback?code={code}", status_code=302)
+    return RedirectResponse(
+        f"{settings.frontend_url}/auth/callback?{urlencode({'code': code, 'nonce': nonce})}", status_code=302
+    )
 
 
 def _hash(code: str) -> str:

@@ -8,6 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from bson import ObjectId
 from jose import JWTError
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 from app.config import settings
 from app.core.csrf import SESSION_COOKIE, REFRESH_COOKIE, set_auth_cookies, clear_auth_cookies
 from app.core.rate_limit import limiter
@@ -97,7 +98,10 @@ async def register(request: Request, response: Response, data: UserCreate):
         hashed_password=await asyncio.to_thread(hash_password, data.password),
     )
 
-    result = await db.users.insert_one(user_in_db.model_dump())
+    try:
+        result = await db.users.insert_one(user_in_db.model_dump())
+    except DuplicateKeyError:  # a concurrent signup beat the checks above to the unique index
+        raise HTTPException(status_code=409, detail="Email or username already taken")
     user = await db.users.find_one({"_id": result.inserted_id})
     user = serialize_user(user)
 

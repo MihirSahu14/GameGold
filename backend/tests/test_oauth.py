@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 from unittest.mock import AsyncMock, MagicMock
 
 from app.config import settings
@@ -127,12 +128,16 @@ def github_routes(emails):
     }
 
 
-def start(client, provider):
-    return client.get(f"/auth/oauth/{provider}/start", follow_redirects=False)
+NONCE = "0123456789abcdef0123456789abcdef"  # what the web client generates (32 hex)
+
+
+def start(client, provider, nonce=NONCE):
+    params = {} if nonce is None else {"nonce": nonce}
+    return client.get(f"/auth/oauth/{provider}/start", params=params, follow_redirects=False)
 
 
 def callback(client, provider, state="s", code="c"):
-    client.cookies.set("gg_oauth_state", "s", path="/auth/oauth")
+    client.cookies.set("gg_oauth_state", f"s.{NONCE}", path="/auth/oauth")
     return client.get(
         f"/auth/oauth/{provider}/callback", params={"code": code, "state": state}, follow_redirects=False
     )
@@ -144,7 +149,10 @@ def signed_in_code(resp) -> str:
     loc = resp.headers["location"]
     assert loc.startswith(f"{FRONTEND}/auth/callback?code=")
     assert "gg_session=" not in resp.headers.get("set-cookie", "")
-    return parse_qs(urlparse(loc).query)["code"][0]
+    query = parse_qs(urlparse(loc).query)
+    # The browser that started sign-in checks this against its sessionStorage (login-CSRF).
+    assert query["nonce"] == [NONCE]
+    return query["code"][0]
 
 
 def exchange(client, code):
@@ -179,9 +187,18 @@ def test_start_redirects_with_state_cookie(auth_client, provider, host, scope):
     assert params["redirect_uri"] == f"http://localhost:8000/auth/oauth/{provider}/callback"
     assert params["scope"] == scope
     cookie = resp.headers["set-cookie"]
-    assert f"gg_oauth_state={params['state']}" in cookie
+    assert f"gg_oauth_state={params['state']}.{NONCE};" in cookie
     assert "HttpOnly" in cookie and "Path=/auth/oauth" in cookie and "samesite=lax" in cookie.lower()
     assert "Max-Age=600" in cookie
+    assert NONCE not in params["state"]  # the nonce never goes to the provider
+
+
+@pytest.mark.parametrize("nonce", [None, "", "short", "x" * 65, "bad.nonce.value.0123456789", "a b" * 8])
+def test_start_without_valid_nonce_goes_back_to_login(auth_client, nonce):
+    resp = start(auth_client, "google", nonce=nonce)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == f"{FRONTEND}/login?error=oauth_state"
+    assert "gg_oauth_state" not in resp.headers.get("set-cookie", "")
 
 
 # ─── callback ─────────────────────────────────────────────────────────────────
@@ -193,6 +210,21 @@ def test_callback_state_mismatch_redirects_with_error(auth_client, users, monkey
     assert resp.headers["location"] == f"{FRONTEND}/login?error=oauth_state"
     assert seen == []  # never touched the provider
     assert 'gg_oauth_state=""' in resp.headers["set-cookie"]  # cleared
+
+
+def test_callback_non_ascii_state_is_a_redirect_not_a_500(auth_client, users):
+    resp = callback(auth_client, "google", state="é")
+    assert resp.headers["location"] == f"{FRONTEND}/login?error=oauth_state"
+
+
+def test_callback_state_cookie_without_nonce_redirects_with_error(auth_client, users, monkeypatch):
+    seen = mock_provider(monkeypatch, GOOGLE_OK)
+    auth_client.cookies.set("gg_oauth_state", "s", path="/auth/oauth")  # pre-nonce cookie
+    resp = auth_client.get(
+        "/auth/oauth/google/callback", params={"code": "c", "state": "s"}, follow_redirects=False
+    )
+    assert resp.headers["location"] == f"{FRONTEND}/login?error=oauth_state"
+    assert seen == []
 
 
 def test_callback_missing_state_cookie_redirects_with_error(auth_client, users):
@@ -337,6 +369,30 @@ def test_provider_error_redirects_oauth_failed(auth_client, users, monkeypatch, 
     assert resp.status_code in (302, 307)
     assert resp.headers["location"] == f"{FRONTEND}/login?error=oauth_failed"
     assert users == {}
+
+
+def test_concurrent_signup_race_links_to_the_winner(auth_client, users, mock_db, monkeypatch):
+    winner = ObjectId()
+
+    async def lose_race(doc):
+        # Another request inserted the same email between our lookup and our insert.
+        users[winner] = {"_id": winner, "email": "ada@example.com", "username": "ada"}
+        raise DuplicateKeyError("E11000 duplicate key")
+
+    mock_db.users.insert_one = AsyncMock(side_effect=lose_race)
+    mock_provider(monkeypatch, GOOGLE_OK)
+    signed_in_code(callback(auth_client, "google"))
+    assert list(users) == [winner]
+    assert users[winner]["oauth"] == {"google": "g-123"}
+
+
+def test_duplicate_key_without_email_match_redirects_oauth_failed(auth_client, users, mock_db, monkeypatch):
+    # e.g. the generated username was taken concurrently
+    mock_db.users.insert_one = AsyncMock(side_effect=DuplicateKeyError("E11000 duplicate key"))
+    mock_provider(monkeypatch, GOOGLE_OK)
+    resp = callback(auth_client, "google")
+    assert resp.status_code == 302
+    assert resp.headers["location"] == f"{FRONTEND}/login?error=oauth_failed"
 
 
 def test_username_deduped_with_numeric_suffix(auth_client, users, monkeypatch):
