@@ -19,6 +19,7 @@ import { ProposalsPanel, proposalKey } from '@/components/assets/ProposalsPanel'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import type { ArtStyle, AssetKind, AssetProposal, AssetType, ScriptType } from '@gamegold/types'
 import { cn } from '@/lib/utils'
+import { toastError } from '@/lib/api'
 
 const TABS: { key: AssetType; label: string; icon: string }[] = [
   { key: 'sprite', label: 'Sprites', icon: '🎨' },
@@ -37,11 +38,6 @@ const SCRIPT_TYPES: ScriptType[] = [
   'GameManager',
   'custom',
 ]
-
-function errorDetail(err: unknown): string {
-  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-  return detail ?? 'Generation failed — check the console for details.'
-}
 
 export default function AssetsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -115,8 +111,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
         setPersonality('')
       }
     } catch (err) {
-      console.error('Asset generation failed:', err)
-      alert(errorDetail(err))
+      toastError(err, 'Generation failed — check the console for details.')
     }
   }
 
@@ -126,8 +121,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
       setProposals(result)
       setDoneKeys([])
     } catch (err) {
-      console.error('Suggest failed:', err)
-      alert(errorDetail(err))
+      toastError(err, 'Could not fetch suggestions — check the console for details.')
     }
   }
 
@@ -156,8 +150,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
       }
       setDoneKeys((keys) => [...keys, key])
     } catch (err) {
-      console.error('Proposal generation failed:', err)
-      alert(errorDetail(err))
+      toastError(err, 'Generation failed — check the console for details.')
     } finally {
       setActiveKey(null)
     }

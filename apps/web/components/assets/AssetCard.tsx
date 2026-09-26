@@ -99,6 +99,40 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
     }
   }
 
+  const isSvgSprite = asset.type === 'sprite' && !!asset.url?.startsWith('data:image/svg')
+
+  // Unity can't use an SVG data URI directly — rasterize it to a PNG client-side.
+  async function handleDownloadPng() {
+    if (!asset.url) return
+    try {
+      const svgText = atob(asset.url.split(',')[1] ?? '')
+      const dims = svgText.match(/<svg[^>]*\swidth="([\d.]+)"[^>]*\sheight="([\d.]+)"/)
+      const width = dims ? parseFloat(dims[1]) : 256
+      const height = dims ? parseFloat(dims[2]) : 256
+
+      const img = new Image()
+      const loaded = new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('Could not load the sprite image.'))
+      })
+      img.src = asset.url
+      await loaded
+
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas is not supported in this browser.')
+      ctx.drawImage(img, 0, 0, width, height)
+
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+      if (!blob) throw new Error('Could not rasterize the sprite.')
+      downloadBlob(blob, `${asset.name.replace(/\s+/g, '_')}.png`)
+    } catch (err) {
+      toastError(err, 'Could not rasterize the sprite to PNG.')
+    }
+  }
+
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col">
       {/* Header */}
@@ -217,8 +251,16 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
           onClick={handleDownload}
           className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors"
         >
-          Download {asset.type === 'script' ? '.cs' : asset.type === 'dialogue' ? '.json' : '.png'}
+          Download {asset.type === 'script' ? '.cs' : asset.type === 'dialogue' ? '.json' : isSvgSprite ? '.svg' : '.png'}
         </button>
+        {isSvgSprite && (
+          <button
+            onClick={handleDownloadPng}
+            className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors"
+          >
+            Download PNG
+          </button>
+        )}
         <button
           onClick={() => setShowRegenerate((v) => !v)}
           disabled={isRegenerating}

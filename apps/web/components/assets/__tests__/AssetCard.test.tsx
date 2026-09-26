@@ -14,6 +14,7 @@ vi.mock('@/lib/api', () => ({
     patch: vi.fn(),
     delete: vi.fn(),
   },
+  toastError: vi.fn(),
 }))
 
 import { api } from '@/lib/api'
@@ -149,6 +150,55 @@ describe('AssetCard regenerate', () => {
         note: 'make him ruder',
       }),
     )
+  })
+})
+
+describe('AssetCard PNG download for SVG sprites', () => {
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64"/></svg>'
+  const SPRITE_ASSET: Asset = {
+    ...SCRIPT_ASSET,
+    _id: 'asset3',
+    type: 'sprite',
+    code: undefined,
+    scriptType: undefined,
+    url: `data:image/svg+xml;base64,${btoa(SVG)}`,
+    style: 'pixel',
+  }
+
+  it('shows a Download PNG button only for SVG sprites', () => {
+    renderCard(SPRITE_ASSET)
+    expect(screen.getByText('Download PNG')).toBeInTheDocument()
+  })
+
+  it('rasterizes the SVG to a canvas sized from its width/height and downloads a PNG', async () => {
+    const toBlob = vi.fn((cb: (b: Blob | null) => void) => cb(new Blob(['png'], { type: 'image/png' })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(toBlob)
+    const originalImage = global.Image
+    // jsdom doesn't actually decode images — fire onload synchronously.
+    class FakeImage {
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      set src(_v: string) {
+        this.onload?.()
+      }
+    }
+    // @ts-expect-error test stub
+    global.Image = FakeImage
+
+    renderCard(SPRITE_ASSET)
+    fireEvent.click(screen.getByText('Download PNG'))
+
+    await waitFor(() => expect(toBlob).toHaveBeenCalled())
+
+    global.Image = originalImage
+  })
+
+  it('does not show the button for non-SVG (raster) sprite URLs', () => {
+    renderCard({ ...SPRITE_ASSET, url: 'data:image/png;base64,abc' })
+    expect(screen.queryByText('Download PNG')).not.toBeInTheDocument()
   })
 })
 
