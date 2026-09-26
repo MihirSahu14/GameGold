@@ -223,3 +223,20 @@ export function playerSettingsFile(s: PlayerSettings): string {
   const { chapterColors, ...rest } = s
   return JSON.stringify({ ...rest, chapterColors: Object.entries(chapterColors).map(([chapter, color]) => ({ chapter, color })) }, null, 2)
 }
+
+// ─── Run all (plan) ───────────────────────────────────────────────────────────
+
+// One step at a time (a slow step must finish and be marked before the next); stops on the first failure.
+export async function runQueue<T extends { completed: boolean }>(
+  steps: T[],
+  run: (step: T) => Promise<boolean>,
+  onProgress?: (done: number, total: number) => void,
+): Promise<boolean> {
+  const todo = steps.filter((s) => !s.completed)
+  for (let i = 0; i < todo.length; i++) {
+    onProgress?.(i, todo.length)
+    if (!(await run(todo[i]))) return false
+  }
+  onProgress?.(todo.length, todo.length)
+  return true
+}

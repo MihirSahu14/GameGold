@@ -11,7 +11,7 @@ vi.mock('@/lib/rasterize', () => ({ svgToPngDataUri: vi.fn() }))
 import { api } from '@/lib/api'
 import { downloadBlob } from '@/lib/utils'
 import { svgToPngDataUri } from '@/lib/rasterize'
-import { resolveToolArgs, prepareToolArgs, useExportBuildPack, syncCall, useUnityConnection, playerSettingsFile, PLAYER_SETTINGS_PATH } from '@/lib/queries/useUnity'
+import { resolveToolArgs, prepareToolArgs, useExportBuildPack, syncCall, useUnityConnection, playerSettingsFile, PLAYER_SETTINGS_PATH, runQueue } from '@/lib/queries/useUnity'
 
 function asset(partial: Partial<Asset>): Asset {
   return {
@@ -174,5 +174,25 @@ describe('playerSettingsFile', () => {
       chapterColors: [{ chapter: '1', color: '#112233' }, { chapter: '2', color: '#445566' }],
     })
     expect(PLAYER_SETTINGS_PATH).toBe('Assets/Resources/GameGold/player_settings.json')
+  })
+})
+
+describe('runQueue', () => {
+  const steps = [1, 2, 3, 4].map((n) => ({ stepNumber: n, completed: n === 2 }))
+
+  it('runs the not-done steps in order and reports progress', async () => {
+    const ran: number[] = []
+    const progress: string[] = []
+    const ok = await runQueue(steps, async (s) => { ran.push(s.stepNumber); return true }, (d, t) => progress.push(`${d}/${t}`))
+    expect(ok).toBe(true)
+    expect(ran).toEqual([1, 3, 4])
+    expect(progress).toEqual(['0/3', '1/3', '2/3', '3/3'])
+  })
+
+  it('stops on the first failure', async () => {
+    const ran: number[] = []
+    const ok = await runQueue(steps, async (s) => { ran.push(s.stepNumber); return s.stepNumber !== 3 })
+    expect(ok).toBe(false)
+    expect(ran).toEqual([1, 3])
   })
 })

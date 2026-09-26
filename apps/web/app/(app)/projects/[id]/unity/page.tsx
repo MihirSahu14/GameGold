@@ -8,7 +8,7 @@ import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
 import { useToastStore } from '@/store/toastStore'
 import type { PlayerSettings } from '@gamegold/types'
 import { useAssets } from '@/lib/queries/useAssets'
-import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset, playerSettingsFile, PLAYER_SETTINGS_PATH } from '@/lib/queries/useUnity'
+import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset, playerSettingsFile, PLAYER_SETTINGS_PATH, runQueue } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { toastError } from '@/lib/api'
@@ -65,6 +65,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const [checked, setChecked] = useState<boolean[]>(() => Array(SETUP_STEPS.length).fill(false))
   const [activeTab, setActiveTab] = useState<Tab>('manual')
   const [executingStep, setExecutingStep] = useState<number | null>(null)
+  const [runAllProgress, setRunAllProgress] = useState<{ done: number; total: number } | null>(null)
+  const [busyNote, setBusyNote] = useState(false)
   const [stepResults, setStepResults] = useState<Record<number, { success: boolean; message: string }>>({})
 
   // Read localStorage after mount; reading it during render mismatches the server HTML.
@@ -127,30 +129,56 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     markStep.mutate({ stepNumber, completed }, { onError: (err) => toastError(err, 'Could not save step progress.') })
   }
 
+  const isBusy = executingStep !== null || runAllProgress !== null
+
+  // A click while something runs gets a visible note instead of being silently dropped.
+  function flagBusy() {
+    setBusyNote(true)
+    setTimeout(() => setBusyNote(false), 2500)
+  }
+
   async function handleExecuteStep(stepNumber: number, tool: string, args: Record<string, unknown>) {
     if (mcpStatus !== 'connected') {
       alert('Connect to Unity first.')
       return
     }
-    if (executingStep !== null) return // one step at a time — a slow step must finish (and be marked) first
+    if (isBusy) return flagBusy() // one step at a time — a slow step must finish (and be marked) first
+    await runStep(stepNumber, tool, args)
+  }
+
+  // Returns whether the step succeeded (and was marked done).
+  async function runStep(stepNumber: number, tool: string, args: Record<string, unknown>): Promise<boolean> {
     setExecutingStep(stepNumber)
     try {
       // The LLM can't know file contents — sprite data / script code come from stored assets.
       const resolved = await prepareToolArgs(tool, args, assets ?? [])
       if ('error' in resolved) {
         setStepResults(prev => ({ ...prev, [stepNumber]: { success: false, message: resolved.error } }))
-        return
+        return false
       }
       const result = await executeTool(tool, resolved.args)
       setStepResults(prev => ({ ...prev, [stepNumber]: result }))
-      if (result.success) {
-        await markStep.mutateAsync({ stepNumber, completed: true })
-      }
+      if (!result.success) return false
+      await markStep.mutateAsync({ stepNumber, completed: true })
+      return true
     } catch (err) {
       toastError(err, 'Could not save step progress.')
+      return false
     } finally {
       setExecutingStep(null)
     }
+  }
+
+  async function handleRunAll() {
+    if (!plan) return
+    if (isBusy) return flagBusy()
+    const ok = await runQueue(
+      plan.steps,
+      (s) => runStep(s.stepNumber, s.tool, s.args as Record<string, unknown>),
+      (done, total) => setRunAllProgress({ done, total }),
+    )
+    setRunAllProgress(null)
+    useToastStore.getState().pushToast(ok ? 'All steps ran.' : 'Run all stopped at a failed step — see its message.', ok ? 'info' : 'error')
   }
 
   return (
@@ -413,6 +441,17 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                     })()}
                   </div>
 
+                  <div className="mb-4 flex items-center gap-3">
+                    <button
+                      onClick={handleRunAll}
+                      disabled={plan.steps.every(s => s.completed)}
+                      className="border border-[#4ea8ff]/40 bg-[#4ea8ff]/10 px-4 py-2 text-[11px] tracking-[1px] text-[#4ea8ff] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {runAllProgress ? `RUNNING ${Math.min(runAllProgress.done + 1, runAllProgress.total)}/${runAllProgress.total}…` : '▶▶ RUN ALL'}
+                    </button>
+                    {busyNote && <span role="status" className="text-[11px] text-[#eab308]">A step is running — wait for it to finish.</span>}
+                  </div>
+
                   {/* Steps */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {plan.steps.map((step) => {
@@ -469,7 +508,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                           {/* Execute button */}
                           <button
                             onClick={() => handleExecuteStep(step.stepNumber, step.tool, step.args as Record<string, unknown>)}
-                            disabled={executingStep !== null || step.completed}
+                            disabled={step.completed}
+                            aria-disabled={isBusy}
                             style={{
                               flexShrink: 0,
                               background: step.completed ? 'transparent' : color + '22',
@@ -477,7 +517,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                               border: `1px solid ${step.completed ? '#1b2533' : color + '44'}`,
                               padding: '6px 12px',
                               fontSize: '11px',
-                              cursor: step.completed || executingStep !== null ? 'not-allowed' : 'pointer',
+                              cursor: step.completed || isBusy ? 'not-allowed' : 'pointer',
+                              opacity: isBusy && !isRunning ? 0.5 : 1,
                               letterSpacing: '0.5px',
                               ...mono,
                             }}
