@@ -167,7 +167,7 @@ def test_narrative_plan_is_deterministic_without_llm(client, mock_db, monkeypatc
     llm.assert_not_called()
     steps = resp.json()["steps"]
     assert [(s["tool"], s["args"]) for s in steps] == [
-        ("scene.new", {"name": "Story"}),
+        ("scene.new", {"name": "Story", "saveCurrent": True}),
         ("asset.createScript", {"className": "DialoguePlayer", "path": "Assets/Scripts/DialoguePlayer.cs"}),
         ("asset.createText", {"dialogue": "Ripple", "path": "Assets/Resources/GameGold/dialogue.json"}),
         ("asset.importSprite", {"name": "kitchen_morning", "path": "Assets/Resources/GameGold/Backgrounds/kitchen_morning.png"}),

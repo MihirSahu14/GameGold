@@ -8,7 +8,8 @@ namespace GameGold.MCP
 {
     internal static class SceneTools
     {
-        /// <summary>args: { name? } — creates a new scene; saves it under Assets/Scenes if named.</summary>
+        /// <summary>args: { name?, saveCurrent?, force? } — creates a new scene; saves it under Assets/Scenes if named.
+        /// saveCurrent: save dirty scenes that already have a path first (never discards work).</summary>
         internal static string New(string body)
         {
             var args = SimpleJson.Parse(body);
@@ -17,6 +18,15 @@ namespace GameGold.MCP
             // Validate before touching the open scene
             if (!string.IsNullOrEmpty(name) && name.IndexOfAny(new[] { '/', '\\', '.', ':' }) >= 0)
                 return GameGoldMCP.Error("'name' must be a plain scene name, not a path");
+
+            if (args.GetBool("saveCurrent"))
+            {
+                for (int i = 0; i < SceneManager.sceneCount; i++)
+                {
+                    var open = SceneManager.GetSceneAt(i);
+                    if (open.isDirty && !string.IsNullOrEmpty(open.path)) EditorSceneManager.SaveScene(open);
+                }
+            }
 
             // NewScene(Single) discards unsaved changes with no prompt — refuse unless forced
             if (!args.GetBool("force"))

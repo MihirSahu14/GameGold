@@ -38,3 +38,4 @@ Ripple = narrative game (Avery / Skyler, hidden attachment traits). Repo: `Proje
 | 31 | Assets | No rename: a typo'd asset name (`ashelter_day`) can't be fixed — had to regenerate (another LLM call) | Inline rename on AssetCard (PATCH name) |
 | 32 | Assets | No delete for assets; duplicates (`cafe_night` ×2) and the typo'd one stay and get shipped to Unity | Delete action on AssetCard (+ confirm) |
 | 33 | Assets | After a successful generate, the new sprite didn't appear until a page reload | Invalidate/append the assets query on success |
+| 34 | Unity (plan) | New-scene step refused because the previous scene had unsaved changes; plan had no way to save it | `scene.new` takes `saveCurrent` (saves titled dirty scenes, never discards); narrative plan sets it ✅ |

@@ -113,7 +113,7 @@ def narrative_plan(assets: list[dict]) -> tuple[str, list[UnityBuildStep]]:
     dialogue = pick_dialogue(assets)
     assert dialogue is not None
     raw: list[tuple[str, str, dict, str]] = [
-        ("Create and save a new scene named Story", "scene.new", {"name": "Story"}, "scene"),
+        ("Create and save a new scene named Story", "scene.new", {"name": "Story", "saveCurrent": True}, "scene"),
         ("Add GameGold's DialoguePlayer script (builds the story UI at runtime)", "asset.createScript",
          {"className": "DialoguePlayer", "path": "Assets/Scripts/DialoguePlayer.cs"}, "asset"),
         (f"Save the '{dialogue['name']}' story JSON to Resources so DialoguePlayer can load it", "asset.createText",
