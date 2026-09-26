@@ -145,10 +145,17 @@ DEFAULT_CLARIFYING_QUESTIONS = [
 ]
 
 
-def build_pitch_interview_prompt(concept_card: dict) -> str:
+def build_pitch_interview_prompt(concept_card: dict, missing: list[str] | None = None) -> str:
+    gate_note = ""
+    if missing:
+        gate_note = (
+            "\n\nThe pitch is still missing: " + "; ".join(missing)
+            + "; make at least one question target these."
+        )
     return (
         "Interview the designer about this pitch.\n\n"
-        f"CONCEPT CARD:\n{format_concept_card(concept_card)}\n\n"
+        f"CONCEPT CARD:\n{format_concept_card(concept_card)}"
+        f"{gate_note}\n\n"
         "Return the JSON object now."
     )
 

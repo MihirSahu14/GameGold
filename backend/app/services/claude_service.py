@@ -37,13 +37,13 @@ def _clean(items, limit: int) -> list[str]:
     return [str(item).strip() for item in _list(items) if str(item).strip()][:limit]
 
 
-async def pitch_interview(concept_card: dict) -> dict:
+async def pitch_interview(concept_card: dict, missing: list[str] | None = None) -> dict:
     """Questions, ≤3 labeled options and comparable games for the pitch. Raises ValueError on failure."""
     data = extract_json(
         await _timed_complete(
             "pitch_interview",
             PITCH_INTERVIEW_PROMPT,
-            build_pitch_interview_prompt(concept_card),
+            build_pitch_interview_prompt(concept_card, missing),
             max_tokens=800,
         )
     )

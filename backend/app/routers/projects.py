@@ -181,9 +181,10 @@ async def interview_pitch(
 ):
     db = get_db()
     project = await load_owned_project(db, project_id, current_user["_id"])
+    gate = await gate_for(db, project)
     try:
         async with project_llm_slot(project_id):
-            data = await pitch_interview(project.get("concept_card") or {})
+            data = await pitch_interview(project.get("concept_card") or {}, gate.missing)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     return PitchInterviewOut(**data)

@@ -5,7 +5,8 @@ from datetime import datetime
 
 GameGenre = Literal[
     "platformer", "rpg", "puzzle", "shooter", "strategy",
-    "horror", "simulation", "adventure", "fighting", "other"
+    "horror", "simulation", "adventure", "fighting",
+    "narrative", "visual-novel", "other"
 ]
 GamePlatform = Literal["pc", "mobile", "web", "console", "cross-platform"]
 GameTone = Literal["dark", "lighthearted", "epic", "comedic", "horror", "atmospheric", "realistic"]

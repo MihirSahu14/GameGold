@@ -27,6 +27,8 @@ export type GameGenre =
   | 'simulation'
   | 'adventure'
   | 'fighting'
+  | 'narrative'
+  | 'visual-novel'
   | 'other'
 
 export type GamePlatform = 'pc' | 'mobile' | 'web' | 'console' | 'cross-platform'

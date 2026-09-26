@@ -311,6 +311,8 @@ const GENRES = [
   { value: 'simulation', label: 'Simulation' },
   { value: 'adventure',  label: 'Adventure' },
   { value: 'fighting',   label: 'Fighting' },
+  { value: 'narrative',  label: 'Narrative' },
+  { value: 'visual-novel', label: 'Visual Novel' },
   { value: 'other',      label: 'Other' },
 ]
 
