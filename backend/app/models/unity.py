@@ -97,3 +97,4 @@ class UnityChangeOut(BaseModel):
 
     summary: str
     steps: list[UnityBuildStep]
+    settings_patch: Optional[dict[str, Any]] = None  # Player Settings keys only (gap 45)

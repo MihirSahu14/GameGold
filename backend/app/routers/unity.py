@@ -208,10 +208,12 @@ async def propose_change(
 ):
     """Words → scene steps for the web to run through the bridge. Not saved as the build plan."""
     db = get_db()
-    await verify_project_access(project_id, current_user["_id"], db)
+    project = await verify_project_access(project_id, current_user["_id"], db)
     try:
         async with project_llm_slot(project_id):
-            summary, steps = await plan_change(body.request, body.snapshot)
+            summary, steps, settings_patch = await plan_change(
+                body.request, body.snapshot, project.get("player_settings") or {}
+            )
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-    return UnityChangeOut(summary=summary, steps=steps)
+    return UnityChangeOut(summary=summary, steps=steps, settings_patch=settings_patch)

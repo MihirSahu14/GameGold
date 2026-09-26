@@ -12,6 +12,10 @@ CHANGE_ALLOWED_TOOLS = (
 CHANGE_MAX_STEPS = 12
 SNAPSHOT_MAX_CHARS = 6000
 
+# DialoguePlayer fields GameGold's Player Settings own — it re-writes player_settings.json on every
+# "Sync settings", so a component.setField on these has no lasting effect (gap 45: two sources of truth).
+PLAYER_SETTINGS_FIELDS = ("look", "chapterColors", "textSpeedCps", "wordmarkTitle", "ambience", "volume")
+
 UNITY_CHANGE_SYSTEM_PROMPT = """\
 You are a Unity assistant inside GameGold. The designer asks for one change to their open
 Unity scene. Turn it into the fewest steps (at most 12) using ONLY these bridge tools:
@@ -30,23 +34,38 @@ write code: new scripts, story text, settings and art are changed in GameGold, n
 request needs any of that, return no steps and say so in the summary (e.g. "Edit the story on
 the Assets page, then Sync to Unity").
 
-Use the scene snapshot for exact GameObject names, component types and DialoguePlayer field
-names (e.g. charsPerSecond, look, wordmarkTitle, ambience, volume). Only reference objects that
+Use the scene snapshot for exact GameObject names and component types. Only reference objects that
 exist or that an earlier step creates. Setting a field while in Play mode is lost on exit — exit
 Play mode first if the snapshot suggests it is running.
+
+GameGold's Player Settings (current values shown below) control the DialoguePlayer's text speed,
+look (plain/halftone/duotone), chapter tint colours, wordmark title, ambience and volume — GameGold
+re-writes Resources/GameGold/player_settings.json from these on every "Sync settings", so a
+component.setField targeting one of these DialoguePlayer fields is overwritten and has no lasting
+effect. If the request is about text speed, look, chapter tint colours, the wordmark title, ambience
+or volume, do NOT emit a component.setField step for it. Instead return a "settings_patch" object
+containing only the changed keys, from: look ("plain"|"halftone"|"duotone"), chapterColors (map of
+chapter id -> "#rrggbb"), textSpeedCps (10-120), wordmarkTitle (bool), ambience (bool), volume (0-1).
 
 Respond with ONLY a JSON object — no prose, no markdown fences:
 {
   "summary": "one sentence: what these steps change (or why there are none)",
+  "settingsPatch": { "textSpeedCps": 30 },
   "steps": [
     { "description": "human-readable step", "tool": "tool.name", "args": { }, "category": "scene|gameobject|component|playmode" }
   ]
 }
+"settingsPatch" is optional — omit it (or use null) when nothing settings-related changed.
 """
 
 
-def build_unity_change_prompt(request: str, snapshot: dict) -> str:
+def build_unity_change_prompt(request: str, snapshot: dict, player_settings: dict) -> str:
     snap = json.dumps(snapshot, separators=(",", ":"))
     if len(snap) > SNAPSHOT_MAX_CHARS:
         snap = snap[:SNAPSHOT_MAX_CHARS] + "…(truncated)"
-    return f"Change requested by the designer:\n{request}\n\nCurrent Unity scene snapshot (JSON):\n{snap}"
+    settings_json = json.dumps(player_settings, separators=(",", ":"))
+    return (
+        f"Change requested by the designer:\n{request}\n\n"
+        f"Current Player Settings (JSON):\n{settings_json}\n\n"
+        f"Current Unity scene snapshot (JSON):\n{snap}"
+    )

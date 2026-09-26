@@ -8,12 +8,20 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from app.models.project import PlayerSettings
 from app.models.unity import UnityBuildStep
 from app.prompts.unity_prompt import UNITY_PLAN_SYSTEM_PROMPT, build_unity_plan_prompt
 from app.prompts.unity_change_prompt import (
-    CHANGE_ALLOWED_TOOLS, CHANGE_MAX_STEPS, UNITY_CHANGE_SYSTEM_PROMPT, build_unity_change_prompt,
+    CHANGE_ALLOWED_TOOLS, CHANGE_MAX_STEPS, PLAYER_SETTINGS_FIELDS, UNITY_CHANGE_SYSTEM_PROMPT,
+    build_unity_change_prompt,
 )
 from app.services.llm_utils import _list, complete, extract_json
+
+# DialoguePlayer.cs inspector field names covered by Player Settings (player_settings.json overrides
+# them at Start()) — a component.setField targeting one of these on DialoguePlayer is stripped (gap 45).
+_SETTINGS_OWNED_DIALOGUEPLAYER_FIELDS = frozenset(
+    {"look", "charsPerSecond", "wordmarkTitle", "ambience", "volume", "chapterColors"}
+)
 
 # GameGold-shipped runtime scripts (C# source, not prompts) — read once at import.
 UNITY_TEMPLATES = {
@@ -161,10 +169,50 @@ def _summarize_assets(assets: list[dict]) -> str:
     return "\n".join(lines)
 
 
-async def plan_change(request: str, snapshot: dict) -> tuple[str, list[UnityBuildStep]]:
-    """"Change something": scene-only bridge steps. Unknown/forbidden tools are dropped, capped at 12."""
+def _validate_settings_patch(raw_patch: object, current: PlayerSettings) -> dict | None:
+    """Only known Player Settings keys, and only if applying them still validates. Returns just the
+    changed keys (camelCase), or None if there's nothing usable (gap 45)."""
+    if not isinstance(raw_patch, dict):
+        return None
+    candidate = {k: v for k, v in raw_patch.items() if k in PLAYER_SETTINGS_FIELDS}
+    if not candidate:
+        return None
+    current_out = current.model_dump(by_alias=True)
+    try:
+        validated = PlayerSettings.model_validate({**current_out, **candidate})
+    except Exception:
+        return None
+    validated_out = validated.model_dump(by_alias=True)
+    changed = {k: v for k, v in validated_out.items() if k in candidate and v != current_out.get(k)}
+    return changed or None
+
+
+def _strip_settings_owned_fields(steps: list[UnityBuildStep]) -> list[UnityBuildStep]:
+    """Drop component.setField steps on DialoguePlayer fields Player Settings owns (gap 45) —
+    applies regardless of whether the LLM also returned a settings_patch, so nothing slips through."""
+    return [
+        s for s in steps
+        if not (
+            s.tool == "component.setField"
+            and str(s.args.get("componentType")) == "DialoguePlayer"
+            and str(s.args.get("field")) in _SETTINGS_OWNED_DIALOGUEPLAYER_FIELDS
+        )
+    ]
+
+
+async def plan_change(
+    request: str, snapshot: dict, player_settings: dict
+) -> tuple[str, list[UnityBuildStep], dict | None]:
+    """"Change something": scene-only bridge steps, plus an optional Player Settings patch for
+    text-speed/look/tint/wordmark/ambience/volume requests (gap 45). Unknown/forbidden tools are
+    dropped, capped at 12."""
+    current = PlayerSettings(**(player_settings or {}))
     data = extract_json(
-        await complete(UNITY_CHANGE_SYSTEM_PROMPT, build_unity_change_prompt(request, snapshot), max_tokens=2000)
+        await complete(
+            UNITY_CHANGE_SYSTEM_PROMPT,
+            build_unity_change_prompt(request, snapshot, current.model_dump(by_alias=True)),
+            max_tokens=2000,
+        )
     )
     steps: list[UnityBuildStep] = []
     for raw in _list(data.get("steps")):
@@ -183,7 +231,14 @@ async def plan_change(request: str, snapshot: dict) -> tuple[str, list[UnityBuil
             ))
         except Exception:
             continue
+    steps = _strip_settings_owned_fields(steps)
+    # Renumber after stripping so step numbers stay contiguous.
+    for i, s in enumerate(steps, start=1):
+        s.step_number = i
+
+    settings_patch = _validate_settings_patch(data.get("settingsPatch") or data.get("settings_patch"), current)
+
     summary = str(data.get("summary", "")).strip()
-    if not steps:
+    if not steps and not settings_patch:
         raise ValueError(summary or "No scene steps for that change — story, settings and art are edited in GameGold.")
-    return summary or "Proposed change", steps
+    return summary or "Proposed change", steps, settings_patch
