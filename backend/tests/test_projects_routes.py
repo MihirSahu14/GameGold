@@ -60,3 +60,25 @@ def test_patch_cannot_change_stage(client, mock_db):
     resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"stage": "ship"})
     assert resp.status_code == 200
     mock_db.projects.update_one.assert_not_called()
+
+
+def test_patch_saves_riskiest_assumption(client, mock_db):
+    doc = {**TEST_PROJECT, "created_at": datetime(2026, 9, 25), "updated_at": datetime(2026, 9, 25)}
+    mock_db.projects.find_one.return_value = {**doc, "riskiest_assumption": "Will it feel sad?", "risk_kind": "feel"}
+    resp = client.patch(
+        f"/projects/{TEST_PROJECT_ID}",
+        json={"riskiestAssumption": "Will it feel sad?", "riskKind": "feel"},
+    )
+    assert resp.status_code == 200
+    saved = mock_db.projects.update_one.call_args[0][1]["$set"]
+    assert saved["riskiest_assumption"] == "Will it feel sad?"
+    assert saved["risk_kind"] == "feel"
+    assert resp.json()["riskKind"] == "feel"
+
+
+def test_patch_rejects_unknown_risk_kind_and_long_assumption(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    assert client.patch(f"/projects/{TEST_PROJECT_ID}", json={"riskKind": "vibes"}).status_code == 422
+    assert client.patch(
+        f"/projects/{TEST_PROJECT_ID}", json={"riskiestAssumption": "x" * 501}
+    ).status_code == 422

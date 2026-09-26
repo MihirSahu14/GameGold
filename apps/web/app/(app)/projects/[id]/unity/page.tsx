@@ -1,7 +1,8 @@
 'use client'
 
 import { use, useState, useEffect } from 'react'
-import { useProject } from '@/lib/queries/useProjects'
+import { useProject, useUpdateRisk } from '@/lib/queries/useProjects'
+import { RiskPanel } from '@/components/unity/RiskPanel'
 import { useAssets } from '@/lib/queries/useAssets'
 import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, resolveToolArgs, findScriptAsset } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
@@ -49,6 +50,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const generatePlan = useGeneratePlan(id)
   const markStep = useMarkStep(id)
   const exportPack = useExportBuildPack(id)
+  const updateRisk = useUpdateRisk(id)
   const { status: mcpStatus, unityInfo, check: checkMCP, executeTool } = useUnityMCP()
 
   const STORAGE_KEY = `unity-checklist-${id}`
@@ -140,6 +142,16 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
       </div>
 
       <StalenessBanner message={stalenessMessage(summary, 'unity')} />
+
+      {project?.stage === 'prototype' && (
+        <RiskPanel
+          key={project._id}
+          assumption={project.riskiestAssumption ?? ''}
+          kind={project.riskKind ?? null}
+          saving={updateRisk.isPending}
+          onSave={(risk) => updateRisk.mutate(risk, { onError: (err) => toastError(err, 'Could not save the riskiest assumption.') })}
+        />
+      )}
 
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid #1b2533', marginBottom: '28px' }}>

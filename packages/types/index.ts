@@ -14,6 +14,9 @@ export type ProjectStage = 'pitch' | 'prototype' | 'slice' | 'production' | 'shi
 
 export type PrototypeDecision = 'continue' | 'pivot' | 'kill'
 
+/** What the prototype must de-risk; picks the prototype type (no LLM). */
+export type RiskKind = 'feel' | 'loop' | 'story' | 'tech'
+
 /** Manual gate checkboxes (keys stay snake_case — they are dict keys server-side). */
 export type GateCheck = 'comprehension_resolved' | 'alpha_feature_lock' | 'beta_content_complete'
 
@@ -74,6 +77,8 @@ export interface Project {
   prototypeDecision: PrototypeDecision | null
   gates: Partial<Record<GateCheck, boolean>>
   cutList: string[]
+  riskiestAssumption: string
+  riskKind: RiskKind | null
   stageEnteredAt: string | null
   alphaAt: string | null
   provenanceGeneratedAt: string | null
