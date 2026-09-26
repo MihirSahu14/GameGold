@@ -7,6 +7,8 @@ import { DialogueJsonEditor } from './DialogueJson'
 import { downloadBlob, downloadHref, cn } from '@/lib/utils'
 import { toastError } from '@/lib/api'
 import { svgToPngBlob } from '@/lib/rasterize'
+import { useToastStore } from '@/store/toastStore'
+import { useUnityConnection, useSyncToUnity, syncCall } from '@/lib/queries/useUnity'
 import {
   useApproveAsset,
   useGenerateSprite,
@@ -49,6 +51,9 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
   const regenerateSprite = useGenerateSprite(projectId)
   const regenerateScript = useGenerateScript(projectId)
   const regenerateDialogue = useGenerateDialogue(projectId)
+  const unity = useUnityConnection()
+  const syncToUnity = useSyncToUnity()
+  const canSync = syncCall(asset) !== null
   const isRegenerating =
     regenerateSprite.isPending || regenerateScript.isPending || regenerateDialogue.isPending
 
@@ -81,6 +86,14 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
     } catch (err) {
       toastError(err, 'Regeneration failed.')
     }
+  }
+
+  function handleSync() {
+    const toast = useToastStore.getState().pushToast
+    syncToUnity.mutate(asset, {
+      onSuccess: () => toast(`Synced "${asset.name}" to Unity.`, 'info'),
+      onError: (err) => toast(`Sync of "${asset.name}" failed: ${err.message}`, 'error'),
+    })
   }
 
   async function handleCopy(text: string) {
@@ -241,6 +254,16 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
             className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors"
           >
             Download PNG
+          </button>
+        )}
+        {canSync && (
+          <button
+            onClick={handleSync}
+            disabled={unity.status !== 'connected' || syncToUnity.isPending}
+            title={unity.status === 'connected' ? 'Write this to Assets/Resources/GameGold in the open Unity project' : 'Not connected — open Unity with the GameGold bridge running (see the Unity page)'}
+            className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {syncToUnity.isPending ? 'Syncing…' : 'Sync to Unity'}
           </button>
         )}
         <button

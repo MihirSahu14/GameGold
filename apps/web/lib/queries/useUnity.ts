@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, useCallback } from 'react'
+import { useCallback } from 'react'
 import { api } from '../api'
 import { downloadBlob } from '../utils'
 import { svgToPngDataUri } from '../rasterize'
@@ -139,48 +139,77 @@ export function useExportBuildPack(projectId: string) {
 // ─── Local Unity MCP connection (browser → localhost:7432) ───────────────────
 
 export type ConnectionStatus = 'idle' | 'checking' | 'connected' | 'disconnected'
+type UnityInfo = { version?: string; projectPath?: string }
+
+// One cached status check shared by every page/card (Unity page, Assets page).
+export function useUnityConnection() {
+  const q = useQuery({
+    queryKey: ['unity-mcp-status'],
+    queryFn: async (): Promise<UnityInfo | null> => {
+      try {
+        const res = await fetch(`http://localhost:${MCP_PORT}/status`, { method: 'GET', signal: AbortSignal.timeout(3000) })
+        if (res.ok) return await res.json() as UnityInfo
+      } catch {
+        /* Unity not running or MCP package not installed */
+      }
+      return null
+    },
+    retry: false,
+    staleTime: 30_000,
+  })
+  const status: ConnectionStatus = q.isFetching ? 'checking' : q.data ? 'connected' : q.isFetched ? 'disconnected' : 'idle'
+  const { refetch } = q
+  const check = useCallback(async () => !!(await refetch()).data, [refetch])
+  return { status, unityInfo: q.data ?? null, check }
+}
+
+export async function executeTool(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
+  try {
+    const res = await fetch(`http://localhost:${MCP_PORT}/tool/${tool}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+      signal: AbortSignal.timeout(15000),
+    })
+    return await res.json() as ToolResult
+  } catch (err) {
+    return { success: false, message: `Failed to reach Unity MCP server: ${String(err)}` }
+  }
+}
 
 export function useUnityMCP() {
-  const [status, setStatus] = useState<ConnectionStatus>('idle')
-  const [unityInfo, setUnityInfo] = useState<{ version?: string; projectPath?: string } | null>(null)
+  return { ...useUnityConnection(), executeTool }
+}
 
-  const check = useCallback(async () => {
-    setStatus('checking')
-    try {
-      const res = await fetch(`http://localhost:${MCP_PORT}/status`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(3000),
-      })
-      if (res.ok) {
-        const data = await res.json() as { version?: string; projectPath?: string }
-        setUnityInfo(data)
-        setStatus('connected')
-        return true
-      }
-    } catch {
-      /* Unity not running or MCP package not installed */
-    }
-    setStatus('disconnected')
-    return false
-  }, [])
+// ─── Sync one asset to Unity (Assets page) ────────────────────────────────────
 
-  const executeTool = useCallback(
-    async (tool: string, args: Record<string, unknown>): Promise<ToolResult> => {
-      try {
-        const res = await fetch(`http://localhost:${MCP_PORT}/tool/${tool}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(args),
-          signal: AbortSignal.timeout(15000),
-        })
-        const data = await res.json() as ToolResult
-        return data
-      } catch (err) {
-        return { success: false, message: `Failed to reach Unity MCP server: ${String(err)}` }
-      }
+const SPRITE_FOLDERS: Partial<Record<string, string>> = { background: 'Backgrounds', portrait: 'Portraits' }
+
+// Where DialoguePlayer expects this asset; null = nothing it would load. Mirrors unity_service.narrative_plan.
+export function syncCall(asset: Asset): { tool: string; args: Record<string, unknown> } | null {
+  if (asset.type === 'dialogue' && asset.tree) {
+    return { tool: 'asset.createText', args: { path: DIALOGUE_JSON_PATH, content: JSON.stringify(asset.tree, null, 2) } }
+  }
+  const folder = SPRITE_FOLDERS[asset.kind ?? 'sprite']
+  if (asset.type === 'sprite' && asset.url && folder) {
+    const file = asset.name.replace(/[^\w\- ]/g, '_')
+    return { tool: 'asset.importSprite', args: { name: asset.name, path: `Assets/Resources/GameGold/${folder}/${file}.png`, base64: asset.url } }
+  }
+  return null
+}
+
+export function useSyncToUnity() {
+  return useMutation({
+    mutationFn: async (asset: Asset) => {
+      const call = syncCall(asset)
+      if (!call) throw new Error(`Nothing to sync for "${asset.name}".`)
+      const b64 = call.args.base64 // the bridge only takes PNG — rasterize SVG sprites first
+      const args = typeof b64 === 'string' && b64.startsWith('data:image/svg')
+        ? { ...call.args, base64: await svgToPngDataUri(b64) }
+        : call.args
+      const result = await executeTool(call.tool, args)
+      if (!result.success) throw new Error(result.message)
+      return result
     },
-    []
-  )
-
-  return { status, unityInfo, check, executeTool }
+  })
 }

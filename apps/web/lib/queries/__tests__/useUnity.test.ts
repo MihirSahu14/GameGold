@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import type { Asset } from '@gamegold/types'
@@ -11,7 +11,7 @@ vi.mock('@/lib/rasterize', () => ({ svgToPngDataUri: vi.fn() }))
 import { api } from '@/lib/api'
 import { downloadBlob } from '@/lib/utils'
 import { svgToPngDataUri } from '@/lib/rasterize'
-import { resolveToolArgs, prepareToolArgs, useExportBuildPack } from '@/lib/queries/useUnity'
+import { resolveToolArgs, prepareToolArgs, useExportBuildPack, syncCall, useUnityConnection } from '@/lib/queries/useUnity'
 
 function asset(partial: Partial<Asset>): Asset {
   return {
@@ -116,5 +116,52 @@ describe('useExportBuildPack', () => {
     await act(async () => { await result.current.mutateAsync() })
     expect(api.get).toHaveBeenCalledWith('/projects/p1/unity/export', { responseType: 'blob' })
     expect(downloadBlob).toHaveBeenCalledWith(blob, 'Bees_build_pack.zip')
+  })
+})
+
+describe('syncCall', () => {
+  it('writes a dialogue tree to the Resources story path', () => {
+    const d = ASSETS[3]
+    expect(syncCall(d)).toEqual({ tool: 'asset.createText', args: { path: 'Assets/Resources/GameGold/dialogue.json', content: JSON.stringify(d.tree, null, 2) } })
+  })
+
+  it('imports backgrounds and portraits into their Resources folders', () => {
+    expect(syncCall(asset({ type: 'sprite', name: 'cafe night!', kind: 'background', url: 'x' })))
+      .toEqual({ tool: 'asset.importSprite', args: { name: 'cafe night!', path: 'Assets/Resources/GameGold/Backgrounds/cafe night_.png', base64: 'x' } })
+    expect(syncCall(asset({ type: 'sprite', name: 'Avery', kind: 'portrait', url: 'x' }))?.args.path)
+      .toBe('Assets/Resources/GameGold/Portraits/Avery.png')
+  })
+
+  it('has nothing to sync for plain sprites and scripts', () => {
+    expect(syncCall(asset({ type: 'sprite', name: 'Coin', kind: 'sprite', url: 'x' }))).toBeNull()
+    expect(syncCall(ASSETS[0])).toBeNull()
+  })
+})
+
+describe('useUnityConnection', () => {
+  it('shares one status check between components', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ version: '6000.5' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const qc = new QueryClient()
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children)
+    const a = renderHook(() => useUnityConnection(), { wrapper })
+    const b = renderHook(() => useUnityConnection(), { wrapper })
+    await waitFor(() => expect(a.result.current.status).toBe('connected'))
+    expect(b.result.current.status).toBe('connected')
+    expect(b.result.current.unityInfo?.version).toBe('6000.5')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:7432/status')
+    vi.unstubAllGlobals()
+  })
+
+  it('reports disconnected when the bridge is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('refused')))
+    const qc = new QueryClient()
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children)
+    const { result } = renderHook(() => useUnityConnection(), { wrapper })
+    await waitFor(() => expect(result.current.status).toBe('disconnected'))
+    vi.unstubAllGlobals()
   })
 })
