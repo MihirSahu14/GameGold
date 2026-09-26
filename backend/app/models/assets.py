@@ -154,3 +154,26 @@ class SuggestAssetsResponse(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     proposals: list[AssetProposal] = []
+
+
+class BatchSpriteItem(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=2000)
+    style: ArtStyle = "pixel"
+    kind: AssetKind = "sprite"
+
+
+class BatchSpriteRequest(BaseModel):
+    items: list[BatchSpriteItem] = Field(min_length=1, max_length=12)
+
+
+class BatchItemError(BaseModel):
+    name: str
+    detail: str
+
+
+class BatchSpriteOut(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    assets: list[AssetOut] = []
+    errors: list[BatchItemError] = []

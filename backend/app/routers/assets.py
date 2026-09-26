@@ -10,6 +10,11 @@ from app.models.assets import (
     AssetUpdate,
     AssetOut,
     AssetInDB,
+    BatchItemError,
+    BatchSpriteItem,
+    BatchSpriteOut,
+    BatchSpriteRequest,
+    UnityGuide,
     GenerateSpriteRequest,
     GenerateScriptRequest,
     GenerateDialogueRequest,
@@ -157,14 +162,7 @@ async def create_sprite(
     game_context = await build_game_context(db, project_id, "visual")
     try:
         async with project_llm_slot(project_id):
-            image_prompt, guide = await generate_sprite_assets(
-                body.name, body.description, body.style, game_context, regen, body.kind
-            )
-            try:
-                url = await generate_sprite_image(image_prompt, body.style)
-            except SpriteGenerationError:
-                # No Replicate key — fall back to LLM-generated SVG
-                url = await generate_svg_sprite(body.name, image_prompt, body.style, body.kind)
+            image_prompt, guide, url = await _generate_sprite(body, game_context, regen)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -183,18 +181,66 @@ async def create_sprite(
             },
         )
     else:
-        asset = AssetInDB(
-            project_id=project_id,
-            type="sprite",
-            name=body.name,
-            description=body.description,
-            unity_guide=guide.model_dump(),
-            url=url,
-            style=body.style,
-            kind=body.kind,
-            image_prompt=image_prompt,
-        )
-        out = await insert_and_return(db, asset)
+        out = await _insert_sprite(db, project_id, body, image_prompt, guide, url)
+    return out
+
+
+async def _generate_sprite(
+    body: GenerateSpriteRequest | BatchSpriteItem, game_context: str, regen: str = ""
+) -> tuple[str, UnityGuide, str]:
+    """(image_prompt, guide, url). Caller holds the project's LLM slot."""
+    image_prompt, guide = await generate_sprite_assets(
+        body.name, body.description, body.style, game_context, regen, body.kind
+    )
+    try:
+        url = await generate_sprite_image(image_prompt, body.style)
+    except SpriteGenerationError:
+        # No Replicate key — fall back to LLM-generated SVG
+        url = await generate_svg_sprite(body.name, image_prompt, body.style, body.kind)
+    return image_prompt, guide, url
+
+
+async def _insert_sprite(
+    db, project_id: str, body: GenerateSpriteRequest | BatchSpriteItem,
+    image_prompt: str, guide: UnityGuide, url: str,
+) -> AssetOut:
+    return await insert_and_return(db, AssetInDB(
+        project_id=project_id,
+        type="sprite",
+        name=body.name,
+        description=body.description,
+        unity_guide=guide.model_dump(),
+        url=url,
+        style=body.style,
+        kind=body.kind,
+        image_prompt=image_prompt,
+    ))
+
+
+@router.post("/sprites/batch", response_model=BatchSpriteOut, response_model_by_alias=True)
+@limiter.limit(LLM_RATE_LIMIT)
+async def create_sprites_batch(
+    request: Request,
+    response: Response,
+    project_id: str,
+    body: BatchSpriteRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Generate up to 12 sprites sequentially; one failure doesn't abort the rest."""
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    game_context = await build_game_context(db, project_id, "visual")
+    out = BatchSpriteOut()
+    # ponytail: holds the project slot for the whole batch (minutes) — other AI
+    # calls on this project get 429 meanwhile; move to a job queue if that bites.
+    async with project_llm_slot(project_id):
+        for item in body.items:
+            try:
+                image_prompt, guide, url = await _generate_sprite(item, game_context)
+            except ValueError as exc:
+                out.errors.append(BatchItemError(name=item.name, detail=str(exc)))
+                continue
+            out.assets.append(await _insert_sprite(db, project_id, item, image_prompt, guide, url))
     return out
 
 

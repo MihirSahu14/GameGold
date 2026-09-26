@@ -544,3 +544,49 @@ def test_delete_asset_404_when_missing(client, mock_db):
     mock_db.assets.delete_one.return_value = MagicMock(deleted_count=0)
     resp = client.delete(f"/projects/{TEST_PROJECT_ID}/assets/{ObjectId()}")
     assert resp.status_code == 404
+
+
+# ─── POST /sprites/batch (#14a) ──────────────────────────────────────────────
+
+def test_batch_sprites_partial_failure_keeps_going(client, mock_db, monkeypatch):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    # item 1 ok, item 2 bad LLM JSON (→ ValueError), item 3 ok
+    monkeypatch.setattr(
+        "litellm.completion",
+        MagicMock(side_effect=[
+            make_llm_response(CANNED_SPRITE_JSON),
+            make_llm_response("not json"),
+            make_llm_response(CANNED_SPRITE_JSON),
+        ]),
+    )
+    monkeypatch.setattr(
+        "app.routers.assets.generate_sprite_image",
+        AsyncMock(return_value="data:image/png;base64,abc123"),
+    )
+    mock_db.assets.insert_one.return_value = MagicMock(inserted_id=ObjectId())
+    mock_db.assets.find_one.side_effect = lambda q: _fake_asset_doc(
+        **mock_db.assets.insert_one.call_args[0][0] | {"_id": q["_id"]}
+    )
+
+    resp = client.post(
+        f"/projects/{TEST_PROJECT_ID}/assets/sprites/batch",
+        json={"items": [
+            {"name": "Cafe", "description": "cozy cafe", "kind": "background", "style": "illustrated"},
+            {"name": "Avery", "description": "nervous student", "kind": "portrait"},
+            {"name": "Mug", "description": "coffee mug"},
+        ]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [a["name"] for a in body["assets"]] == ["Cafe", "Mug"]
+    assert body["assets"][0]["kind"] == "background"
+    assert body["errors"][0]["name"] == "Avery"
+    assert "invalid JSON" in body["errors"][0]["detail"]
+    assert mock_db.assets.insert_one.call_count == 2
+
+
+def test_batch_sprites_caps_items_at_12(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    items = [{"name": f"s{i}", "description": "d"} for i in range(13)]
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/assets/sprites/batch", json={"items": items})
+    assert resp.status_code == 422

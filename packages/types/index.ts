@@ -226,6 +226,19 @@ export interface AssetProposal {
   reason: string
 }
 
+/** One line of a sprite manifest (POST /assets/sprites/batch, max 12). */
+export type BatchSpriteItem = {
+  name: string
+  description: string
+  kind: AssetKind
+  style: ArtStyle
+}
+
+export type BatchSpriteResult = {
+  assets: Asset[]
+  errors: { name: string; detail: string }[]
+}
+
 export interface Asset {
   _id: string
   projectId: string

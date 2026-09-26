@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { Asset, AssetProposal, ArtStyle, AssetKind, ScriptType } from '@gamegold/types'
+import type { Asset, AssetProposal, ArtStyle, AssetKind, BatchSpriteItem, BatchSpriteResult, ScriptType } from '@gamegold/types'
 
 // ─── List all assets for a project ───────────────────────────────────────────
 export function useAssets(projectId: string) {
@@ -48,6 +48,20 @@ export function useGenerateSprite(projectId: string) {
   return useGenerateAsset<
     { name: string; description: string; style: ArtStyle; kind?: AssetKind } & RegenerateFields
   >(projectId, 'sprites')
+}
+
+export function useGenerateSpriteBatch(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (items: BatchSpriteItem[]) => {
+      const res = await api.post<BatchSpriteResult>(`/projects/${projectId}/assets/sprites/batch`, { items })
+      return res.data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['assets', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
+    },
+  })
 }
 
 export function useGenerateScript(projectId: string) {

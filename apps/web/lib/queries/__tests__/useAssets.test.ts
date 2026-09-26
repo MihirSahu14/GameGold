@@ -216,3 +216,15 @@ describe('useDeleteAsset', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects', PROJECT_ID, 'gates'] })
   })
 })
+
+describe('useGenerateSpriteBatch', () => {
+  it('POSTs the manifest items to the batch endpoint', async () => {
+    const { useGenerateSpriteBatch } = await import('@/lib/queries/useAssets')
+    mockApi.post.mockResolvedValueOnce({ data: { assets: [], errors: [] } })
+    const { wrapper } = makeSetup()
+    const { result } = renderHook(() => useGenerateSpriteBatch(PROJECT_ID), { wrapper })
+    const items = [{ name: 'Cafe', kind: 'background' as const, description: 'cafe', style: 'pixel' as const }]
+    await act(async () => { await result.current.mutateAsync(items) })
+    expect(mockApi.post).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/assets/sprites/batch`, { items })
+  })
+})
