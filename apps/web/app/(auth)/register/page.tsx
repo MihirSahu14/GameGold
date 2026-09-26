@@ -173,14 +173,14 @@ export default function RegisterPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={8}
-                placeholder="At least 8 characters"
+                minLength={10}
+                placeholder="At least 10 characters, with a letter and a number"
                 disabled={loading} style={inputStyle(loading)}
                 onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
                 onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
               />
               <div style={{ fontSize: '11px', color: '#3a4757', marginTop: '6px' }}>
-                8 characters minimum
+                10 characters minimum, with a letter and a number
               </div>
             </div>
 

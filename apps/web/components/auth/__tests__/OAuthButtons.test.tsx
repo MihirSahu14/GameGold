@@ -49,7 +49,7 @@ describe('OAuthButtons nonce', () => {
 
 describe('oauthErrorMessage', () => {
   it('maps each known error code to a readable message', () => {
-    for (const code of ['oauth_state', 'oauth_email', 'oauth_failed', 'oauth_conflict']) {
+    for (const code of ['oauth_state', 'oauth_email', 'oauth_failed', 'oauth_conflict', 'oauth_unconfigured']) {
       const msg = oauthErrorMessage(code)
       expect(msg).toBeTruthy()
       expect(msg).not.toContain(code)

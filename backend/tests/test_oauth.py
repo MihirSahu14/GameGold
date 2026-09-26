@@ -165,9 +165,11 @@ def test_start_unknown_provider_404(auth_client):
     assert start(auth_client, "facebook").status_code == 404
 
 
-def test_start_unconfigured_provider_503(auth_client, monkeypatch):
+def test_start_unconfigured_provider_redirects_to_login(auth_client, monkeypatch):
     monkeypatch.setattr(settings, "github_client_secret", "")
-    assert start(auth_client, "github").status_code == 503
+    resp = start(auth_client, "github")
+    assert resp.status_code == 302
+    assert resp.headers["location"] == f"{FRONTEND}/login?error=oauth_unconfigured"
 
 
 @pytest.mark.parametrize(

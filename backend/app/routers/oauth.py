@@ -29,16 +29,14 @@ CODE_TTL_SECONDS = 60
 NONCE_RE = re.compile(r"[A-Za-z0-9_-]{16,64}")
 
 
-def _check_provider(provider: str) -> None:
-    if provider not in oauth_service.PROVIDERS:
-        raise HTTPException(status_code=404, detail="Unknown provider")
-    if not all(oauth_service.credentials(provider)):
-        raise HTTPException(status_code=503, detail=f"{provider} sign-in is not configured")
-
-
 def _to_login(error: str) -> RedirectResponse:
     # Redirect targets are fixed to settings.frontend_url — never user-controlled.
     return RedirectResponse(f"{settings.frontend_url}/login?error={error}", status_code=302)
+
+
+def _check_provider(provider: str) -> None:
+    if provider not in oauth_service.PROVIDERS:
+        raise HTTPException(status_code=404, detail="Unknown provider")
 
 
 def _clean_username(raw: str) -> str:
@@ -65,6 +63,8 @@ async def _unique_username(db, name: str, email: str) -> str:
 @limiter.limit(LOGIN_RATE_LIMIT)
 async def oauth_start(request: Request, provider: str, nonce: str = ""):
     _check_provider(provider)
+    if not all(oauth_service.credentials(provider)):
+        return _to_login("oauth_unconfigured")
     # The web client's per-tab random nonce (sessionStorage). It rides in the state
     # cookie and comes back on the /auth/callback redirect, so a code minted for an
     # attacker's sign-in can't be redeemed in a victim's browser (login CSRF).

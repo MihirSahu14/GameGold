@@ -17,6 +17,7 @@ const OAUTH_ERRORS: Record<string, string> = {
   oauth_failed: 'Could not complete sign-in with that provider. Please try again.',
   oauth_conflict:
     'That email already belongs to an account linked to a different login with this provider. Sign in with that one instead.',
+  oauth_unconfigured: "Google/GitHub sign-in isn't set up yet — use email and password.",
 }
 
 export function oauthErrorMessage(code: string | null): string | null {
