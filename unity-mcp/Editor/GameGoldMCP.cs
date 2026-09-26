@@ -242,6 +242,7 @@ namespace GameGold.MCP
                             catch (Exception ex) { result = Error(ex.Message); }
                             finally { done.Set(); }
                         });
+                        NudgeEditorLoop(); // gap 46: ask the Editor to tick now, not on its next throttled tick
                         done.Wait(TimeSpan.FromSeconds(10));
                         responseJson = result ?? Error("Tool timed out");
                     }
@@ -285,6 +286,28 @@ namespace GameGold.MCP
 
         internal static string Error(string message)
             => $"{{\"success\":false,\"message\":\"{EscapeJson(message)}\"}}";
+
+        // Unity discards edits made to scene objects while in Play mode when the user hits Stop — a
+        // "successful" component.add/setField or gameobject.create/delete during Play mode is a lie
+        // (gap 44). playmode.enter/exit are exempt; they're how you get out of this state.
+        internal const string PlayModeBlockedMessage =
+            "Stop Play mode first — Unity throws away edits made while playing";
+
+        // Gap 46: EditorApplication.update (and this bridge's DrainMainThreadQueue with it) only fires on
+        // the Editor's own tick, which Unity throttles hard while the window is unfocused — bridge calls
+        // then take 10-20s. We looked for a public "Interaction Mode: No Throttling" toggle (Unity 6's own
+        // Preferences setting for this) by grepping Editor/Data/Managed/UnityEditor.dll for its EditorPrefs
+        // key: it found only internal strings (InteractionMode, NoThrottling, UpdateInteractionModeSettings,
+        // GetGlobalInteractionContext) behind extern/native calls, with no public API or documented
+        // EditorPrefs key — not safe to poke via reflection across Unity versions, so we didn't.
+        // Instead: QueuePlayerLoopUpdate() asks for an update "now" regardless of whether the scene changed.
+        // It isn't documented as thread-safe and we call it from a ThreadPool thread (HandleRequest runs
+        // off the listener thread), so this is a best-effort nudge, not a verified fix — wrapped so a
+        // failure here can never break the tool call itself. Not exercised against a live Editor.
+        private static void NudgeEditorLoop()
+        {
+            try { EditorApplication.QueuePlayerLoopUpdate(); } catch { /* best-effort only */ }
+        }
 
         internal static string EscapeJson(string s)
         {

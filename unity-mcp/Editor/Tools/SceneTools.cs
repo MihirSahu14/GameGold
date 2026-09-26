@@ -89,11 +89,13 @@ namespace GameGold.MCP
         private const int MaxSnapshotObjects = 400;
 
         /// <summary>Read-back for GameGold: active scene hierarchy (component type names; DialoguePlayer's
-        /// serialized fields), player_settings.json text, and length + SHA-256 of every file under Resources/GameGold.</summary>
+        /// serialized fields), whether the Editor is in Play mode, player_settings.json text, and length +
+        /// SHA-256 of every file under Resources/GameGold.</summary>
         internal static string Snapshot(string _)
         {
             var scene = SceneManager.GetActiveScene();
             var sb = new StringBuilder("{");
+            sb.Append($"\"isPlaying\":{(EditorApplication.isPlaying ? "true" : "false")},");
             sb.Append($"\"scene\":\"{GameGoldMCP.EscapeJson(scene.name)}\",\"objects\":[");
             int count = 0;
             var roots = scene.GetRootGameObjects();
