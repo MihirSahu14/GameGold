@@ -44,3 +44,7 @@ One-click sign-in with Google or GitHub, alongside the existing email/password l
 - Google Cloud Console → OAuth client (Web): redirect URIs `http://localhost:8000/auth/oauth/google/callback` and `https://<render-host>/auth/oauth/google/callback`.
 - GitHub → Settings → Developer settings → OAuth Apps: callback `…/auth/oauth/github/callback` (one app per environment — GitHub allows one callback URL per app).
 - Put ids/secrets in `backend/.env` and Render env; set `FRONTEND_URL`, `API_PUBLIC_URL` on Render.
+
+## Login-CSRF binding (follow-up)
+- The start link carries `?nonce=` (32 hex from `crypto.getRandomValues`, stored in `sessionStorage` on click). Start rejects a missing/invalid nonce (`[A-Za-z0-9_-]{16,64}`) → `/login?error=oauth_state`; the nonce rides in the state cookie as `state.nonce` and is echoed on `/auth/callback?code=…&nonce=…`. The callback page refuses (→ `oauth_state`, no exchange) unless it matches this tab's stored value, then clears it.
+- Duplicate-key races: register → 409 "Email or username already taken"; OAuth signup retries the email lookup once (link as normal), else `oauth_failed`.

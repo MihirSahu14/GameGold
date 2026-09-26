@@ -9,12 +9,14 @@ vi.mock('@/lib/auth', () => ({ exchangeOAuthCode: mocks.exchange }))
 
 import OAuthCallbackPage from '@/app/auth/callback/page'
 
+const NONCE = 'n0nce-n0nce-n0nce-1234'
 const USER = { id: 'u1', email: 'ada@example.com', username: 'ada', plan: 'free', createdAt: '2026-01-01' }
 
 beforeEach(() => {
   vi.clearAllMocks()
   useAuthStore.setState({ user: null, isLoading: false })
-  window.history.replaceState({}, '', '/auth/callback?code=abc')
+  sessionStorage.setItem('gg_oauth_nonce', NONCE)
+  window.history.replaceState({}, '', `/auth/callback?code=abc&nonce=${NONCE}`)
 })
 
 describe('OAuth callback page', () => {
@@ -35,10 +37,35 @@ describe('OAuth callback page', () => {
   })
 
   it('treats a missing code as a failure without calling the API', async () => {
-    window.history.replaceState({}, '', '/auth/callback')
+    window.history.replaceState({}, '', `/auth/callback?nonce=${NONCE}`)
     render(<OAuthCallbackPage />)
     await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/login?error=oauth_failed'))
     expect(mocks.exchange).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['missing from the URL', `/auth/callback?code=abc`],
+    ['different from the one this browser started with', `/auth/callback?code=abc&nonce=someone-elses-nonce`],
+  ])('rejects a nonce %s without exchanging (login CSRF)', async (_label, url) => {
+    window.history.replaceState({}, '', url)
+    render(<OAuthCallbackPage />)
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/login?error=oauth_state'))
+    expect(mocks.exchange).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem('gg_oauth_nonce')).toBeNull()
+  })
+
+  it('rejects when this browser never started a sign-in', async () => {
+    sessionStorage.clear()
+    render(<OAuthCallbackPage />)
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/login?error=oauth_state'))
+    expect(mocks.exchange).not.toHaveBeenCalled()
+  })
+
+  it('clears the stored nonce after a successful sign-in', async () => {
+    mocks.exchange.mockResolvedValue(USER)
+    render(<OAuthCallbackPage />)
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/dashboard'))
+    expect(sessionStorage.getItem('gg_oauth_nonce')).toBeNull()
   })
 
   it('waits for the initial session check so it cannot be overwritten', async () => {

@@ -5,6 +5,7 @@
 import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { exchangeOAuthCode } from '@/lib/auth'
+import { OAUTH_NONCE_KEY } from '@/components/auth/OAuthButtons'
 import { useAuthStore } from '@/store/authStore'
 
 export default function OAuthCallbackPage() {
@@ -17,7 +18,22 @@ export default function OAuthCallbackPage() {
     // result could land after ours and bounce the dashboard back to /login.
     if (isLoading || started.current) return
     started.current = true
-    const code = new URLSearchParams(window.location.search).get('code')
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    // Only redeem a code for a sign-in this tab started — otherwise an attacker could
+    // log the victim into the attacker's account with a link (login CSRF).
+    let expected: string | null = null
+    try {
+      expected = sessionStorage.getItem(OAUTH_NONCE_KEY)
+      sessionStorage.removeItem(OAUTH_NONCE_KEY)
+    } catch {
+      // storage blocked → expected stays null → rejected below
+    }
+    const nonce = params.get('nonce')
+    if (!nonce || nonce !== expected) {
+      router.replace('/login?error=oauth_state')
+      return
+    }
     void (async () => {
       try {
         if (!code) throw new Error('missing code')
