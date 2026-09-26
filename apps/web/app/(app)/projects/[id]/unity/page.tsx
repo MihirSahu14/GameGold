@@ -205,11 +205,23 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     })
   }
 
+  // Gap 44: a plan made while Unity is playing is refused a Run — those edits would be lost on Stop.
+  async function handleStopPlaymodeForChange() {
+    const r = await executeTool('playmode.exit', {})
+    if (r.success) setChangePlan(prev => prev ? { ...prev, isPlaying: false } : prev)
+    useToastStore.getState().pushToast(r.message, r.success ? 'info' : 'error')
+  }
+
   async function handleRunChange() {
-    if (!changePlan) return
+    if (!changePlan || changePlan.isPlaying) return
     if (isBusy) return flagBusy()
     setChangeRunning(true)
     setChangeResults({})
+    // Gap 45: a settings patch (text speed/look/tint/wordmark/ambience/volume) goes through the same
+    // PATCH + Sync settings path as the Player Settings panel, before the scene steps run.
+    if (changePlan.settingsPatch && project) {
+      await handleSyncSettings({ ...project.playerSettings, ...changePlan.settingsPatch })
+    }
     const ok = await runQueue(changePlan.steps, async (step) => {
       const r = await executeTool(step.tool, step.args as Record<string, unknown>)
       setChangeResults(prev => ({ ...prev, [step.stepNumber]: r }))
@@ -472,8 +484,11 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
               planning={proposeChange.isPending}
               running={changeRunning}
               results={changeResults}
+              currentSettings={project?.playerSettings}
+              isPlaying={changePlan?.isPlaying}
               onPlan={handlePlanChange}
               onRun={() => void handleRunChange()}
+              onStopPlaymode={() => void handleStopPlaymodeForChange()}
             />
           )}
 

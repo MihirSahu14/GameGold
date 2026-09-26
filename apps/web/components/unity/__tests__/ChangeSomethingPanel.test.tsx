@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import React from 'react'
-import type { UnityChangePlan } from '@gamegold/types'
+import type { PlayerSettings, UnityChangePlan } from '@gamegold/types'
 import { ChangeSomethingPanel } from '@/components/unity/ChangeSomethingPanel'
 
 const plan: UnityChangePlan = {
@@ -10,6 +10,10 @@ const plan: UnityChangePlan = {
     { stepNumber: 1, description: 'Set speed', tool: 'component.setField', args: {}, category: 'component', completed: false },
     { stepNumber: 2, description: 'Play', tool: 'playmode.enter', args: {}, category: 'playmode', completed: false },
   ],
+}
+
+const settings: PlayerSettings = {
+  look: 'plain', chapterColors: {}, textSpeedCps: 40, wordmarkTitle: false, ambience: false, volume: 0.5,
 }
 
 describe('ChangeSomethingPanel (§3)', () => {
@@ -33,5 +37,24 @@ describe('ChangeSomethingPanel (§3)', () => {
     expect(screen.getByText(/boom/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /run these/i }))
     expect(onRun).toHaveBeenCalled()
+  })
+
+  // Gap 44: a plan made while Unity was playing must not be runnable — those edits are lost on Stop.
+  it('blocks Run these while Unity is playing and offers Stop instead', () => {
+    const onStopPlaymode = vi.fn()
+    render(<ChangeSomethingPanel plan={plan} planning={false} running={false} results={{}}
+      onPlan={vi.fn()} onRun={vi.fn()} isPlaying onStopPlaymode={onStopPlaymode} />)
+    expect(screen.queryByRole('button', { name: /run these/i })).toBeNull()
+    expect(screen.getByRole('alert')).toHaveTextContent(/stop play mode first/i)
+    fireEvent.click(screen.getByRole('button', { name: /stop/i }))
+    expect(onStopPlaymode).toHaveBeenCalled()
+  })
+
+  // Gap 45: a settings patch shows as a first "item" describing the diff, not a component.setField step.
+  it('shows the settings patch as a diff against current Player Settings', () => {
+    const planWithSettings: UnityChangePlan = { ...plan, settingsPatch: { textSpeedCps: 30 } }
+    render(<ChangeSomethingPanel plan={planWithSettings} planning={false} running={false} results={{}}
+      currentSettings={settings} onPlan={vi.fn()} onRun={vi.fn()} />)
+    expect(screen.getByText(/Player settings:/)).toHaveTextContent('text speed 40 → 30')
   })
 })

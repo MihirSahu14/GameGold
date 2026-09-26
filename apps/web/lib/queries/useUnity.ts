@@ -442,15 +442,48 @@ export function useUpdateRuntime(projectId: string) {
 
 // The LLM needs names/components/fields, not file hashes; the server trims to ~6k chars as well.
 export function changeSnapshot(s: UnitySnapshot): Omit<UnitySnapshot, 'files'> {
-  return { scene: s.scene, objects: s.objects, playerSettings: s.playerSettings }
+  return { scene: s.scene, isPlaying: s.isPlaying, objects: s.objects, playerSettings: s.playerSettings }
 }
 
 export function useProposeChange(projectId: string) {
   return useMutation({
     mutationFn: async (request: string) => {
-      const snapshot = changeSnapshot(await snapshotUnity())
-      const res = await api.post<UnityChangePlan>(`/projects/${projectId}/unity/change`, { request, snapshot })
-      return res.data
+      const full = await snapshotUnity()
+      const res = await api.post<UnityChangePlan>(`/projects/${projectId}/unity/change`, {
+        request, snapshot: changeSnapshot(full),
+      })
+      // gap 44: the panel needs to know if Unity was playing when this was planned, to gate "Run these".
+      return { ...res.data, isPlaying: !!full.isPlaying }
     },
   })
+}
+
+// ─── Gap 45: Player Settings patch from "Change something" ───────────────────
+
+const SETTINGS_FIELD_LABELS: Record<keyof PlayerSettings, string> = {
+  look: 'look',
+  textSpeedCps: 'text speed',
+  wordmarkTitle: 'wordmark title',
+  ambience: 'ambience',
+  volume: 'volume',
+  chapterColors: 'chapter tint',
+}
+
+// One line per changed key, e.g. "text speed 40 → 30" or "chapter tint intro #2a3f5c → #ff5277".
+export function describeSettingsPatch(current: PlayerSettings, patch: Partial<PlayerSettings>): string[] {
+  const lines: string[] = []
+  for (const key of Object.keys(patch) as (keyof PlayerSettings)[]) {
+    const label = SETTINGS_FIELD_LABELS[key] ?? key
+    if (key === 'chapterColors') {
+      const next = patch.chapterColors ?? {}
+      for (const [chapter, color] of Object.entries(next)) {
+        if (current.chapterColors[chapter] !== color) lines.push(`${label} ${chapter} ${current.chapterColors[chapter] ?? '(none)'} → ${color}`)
+      }
+      continue
+    }
+    const before = current[key]
+    const after = patch[key]
+    if (before !== after) lines.push(`${label} ${String(before)} → ${String(after)}`)
+  }
+  return lines
 }

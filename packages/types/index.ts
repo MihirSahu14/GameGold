@@ -445,6 +445,7 @@ export type UnitySnapshotObject = {
 /** scene.snapshot from the bridge. playerSettings is the raw file text (null = no file). */
 export type UnitySnapshot = {
   scene: string
+  isPlaying: boolean
   objects: UnitySnapshotObject[]
   playerSettings: string | null
   files: UnitySnapshotFile[]
@@ -463,6 +464,10 @@ export type UnityDiffItem = {
 export type UnityChangePlan = {
   summary: string
   steps: UnityBuildStep[]
+  /** Player Settings keys to apply first (text speed/look/tint/wordmark/ambience/volume) — gap 45. */
+  settingsPatch?: Partial<PlayerSettings> | null
+  /** Whether Unity was in Play mode when this was planned — gap 44. */
+  isPlaying?: boolean
 }
 
 // ─── API Responses ───────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
-import type { Asset, UnitySnapshotFile, UnitySyncRecord } from '@gamegold/types'
+import type { Asset, PlayerSettings, UnitySnapshotFile, UnitySyncRecord } from '@gamegold/types'
 
 vi.mock('@/lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn() } }))
 vi.mock('@/lib/utils', () => ({ downloadBlob: vi.fn() }))
@@ -11,7 +11,8 @@ vi.mock('@/lib/rasterize', () => ({ svgToPngDataUri: vi.fn() }))
 import { api } from '@/lib/api'
 import {
   diffUnity, sha256Hex, recordWrite, stepSource, overwriteTarget, pullFromUnity, settingsFromFile,
-  playerSettingsFile, runtimeVersion, runtimeOutdated, useUpdateRuntime, useProposeChange, DIALOGUE_JSON_PATH, PLAYER_SETTINGS_PATH, RUNTIME_PATH,
+  playerSettingsFile, runtimeVersion, runtimeOutdated, useUpdateRuntime, useProposeChange, describeSettingsPatch,
+  DIALOGUE_JSON_PATH, PLAYER_SETTINGS_PATH, RUNTIME_PATH,
 } from '@/lib/queries/useUnity'
 
 const G = 'Assets/Resources/GameGold'
@@ -187,5 +188,47 @@ describe('useProposeChange (§3)', () => {
     const { files: _f, ...rest } = snap
     expect(api.post).toHaveBeenCalledWith('/projects/p1/unity/change', { request: 'faster text', snapshot: rest })
     vi.unstubAllGlobals()
+  })
+
+  // Gap 44: the panel disables "Run these" using this flag, so it must reflect the fresh snapshot.
+  it('carries isPlaying from the snapshot into the returned plan', async () => {
+    const snap = { scene: 'Story', isPlaying: true, objects: [], playerSettings: null, files: [] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ success: true, message: 'ok', data: snap }) }))
+    vi.mocked(api.post).mockResolvedValue({ data: { summary: 's', steps: [] } })
+    const qc = new QueryClient()
+    const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client: qc }, children)
+    const { result } = renderHook(() => useProposeChange('p1'), { wrapper })
+    let plan
+    await act(async () => { plan = await result.current.mutateAsync('faster text') })
+    expect(plan).toEqual({ summary: 's', steps: [], isPlaying: true })
+    vi.unstubAllGlobals()
+  })
+})
+
+// ─── Gap 45: describing a Player Settings patch as a readable diff ───────────
+
+describe('describeSettingsPatch', () => {
+  const current: PlayerSettings = {
+    look: 'plain', chapterColors: { intro: '#2a3f5c' }, textSpeedCps: 40, wordmarkTitle: false, ambience: false, volume: 0.5,
+  }
+
+  it('describes a scalar field change', () => {
+    expect(describeSettingsPatch(current, { textSpeedCps: 30 })).toEqual(['text speed 40 → 30'])
+  })
+
+  it('describes a chapter tint change by chapter id', () => {
+    expect(describeSettingsPatch(current, { chapterColors: { intro: '#ff5277' } })).toEqual([
+      'chapter tint intro #2a3f5c → #ff5277',
+    ])
+  })
+
+  it('skips fields that did not actually change', () => {
+    expect(describeSettingsPatch(current, { textSpeedCps: 40, ambience: true })).toEqual(['ambience false → true'])
+  })
+
+  it('describes several fields at once', () => {
+    expect(describeSettingsPatch(current, { textSpeedCps: 30, wordmarkTitle: true })).toEqual([
+      'text speed 40 → 30', 'wordmark title false → true',
+    ])
   })
 })
