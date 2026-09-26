@@ -13,12 +13,13 @@ from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.unity import (
     UnityBuildPlanOut, UnityBuildPlanInDB, StepCompleteRequest, UnitySyncCreate, UnitySyncInDB, UnitySyncOut,
+    UnityChangeCreate, UnityChangeOut,
 )
 from app.routers.auth import get_current_user
 from app.services.deployment_service import export_build_pack, safe_filename
 from app.prompts.unity_prompt import NARRATIVE_GENRES
 from app.services.unity_service import (
-    UNITY_TEMPLATES, generate_build_plan, narrative_plan, pick_dialogue, template_version,
+    UNITY_TEMPLATES, generate_build_plan, narrative_plan, pick_dialogue, plan_change, template_version,
 )
 
 router = APIRouter(prefix="/projects/{project_id}/unity", tags=["unity"])
@@ -192,3 +193,25 @@ async def record_sync(project_id: str, body: UnitySyncCreate, current_user: dict
         {"project_id": project_id, "path": rec.path}, {"$set": rec.model_dump()}, upsert=True
     )
     return UnitySyncOut(**rec.model_dump())
+
+
+# ─── "Change something" (edit-through-GameGold §3) ───────────────────────────
+
+@router.post("/change", response_model=UnityChangeOut, response_model_by_alias=True)
+@limiter.limit(LLM_RATE_LIMIT)
+async def propose_change(
+    request: Request,
+    response: Response,
+    project_id: str,
+    body: UnityChangeCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Words → scene steps for the web to run through the bridge. Not saved as the build plan."""
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    try:
+        async with project_llm_slot(project_id):
+            summary, steps = await plan_change(body.request, body.snapshot)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return UnityChangeOut(summary=summary, steps=steps)

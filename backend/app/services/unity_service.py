@@ -10,6 +10,9 @@ from pathlib import Path
 
 from app.models.unity import UnityBuildStep
 from app.prompts.unity_prompt import UNITY_PLAN_SYSTEM_PROMPT, build_unity_plan_prompt
+from app.prompts.unity_change_prompt import (
+    CHANGE_ALLOWED_TOOLS, CHANGE_MAX_STEPS, UNITY_CHANGE_SYSTEM_PROMPT, build_unity_change_prompt,
+)
 from app.services.llm_utils import _list, complete, extract_json
 
 # GameGold-shipped runtime scripts (C# source, not prompts) — read once at import.
@@ -156,3 +159,31 @@ def _summarize_assets(assets: list[dict]) -> str:
         return "No assets generated yet."
     lines = [f"- {a.get('name', '?')} ({a.get('type', '?')})" for a in assets]
     return "\n".join(lines)
+
+
+async def plan_change(request: str, snapshot: dict) -> tuple[str, list[UnityBuildStep]]:
+    """"Change something": scene-only bridge steps. Unknown/forbidden tools are dropped, capped at 12."""
+    data = extract_json(
+        await complete(UNITY_CHANGE_SYSTEM_PROMPT, build_unity_change_prompt(request, snapshot), max_tokens=2000)
+    )
+    steps: list[UnityBuildStep] = []
+    for raw in _list(data.get("steps")):
+        if len(steps) >= CHANGE_MAX_STEPS:
+            break
+        try:
+            tool = str(raw.get("tool", ""))
+            if tool not in CHANGE_ALLOWED_TOOLS:
+                continue
+            steps.append(UnityBuildStep(
+                step_number=len(steps) + 1,
+                description=str(raw.get("description", "")),
+                tool=tool,
+                args=dict(raw.get("args") or {}),
+                category=tool.split(".")[0],
+            ))
+        except Exception:
+            continue
+    summary = str(data.get("summary", "")).strip()
+    if not steps:
+        raise ValueError(summary or "No scene steps for that change — story, settings and art are edited in GameGold.")
+    return summary or "Proposed change", steps

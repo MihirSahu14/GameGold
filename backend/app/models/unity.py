@@ -76,3 +76,24 @@ class UnitySyncInDB(BaseModel):
     source: str
     version: Optional[int] = None
     synced_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ─── "Change something" (edit-through-GameGold §3) — proposed steps, never persisted ──
+
+class UnityChangeCreate(BaseModel):
+    request: str = Field(max_length=1000)
+    snapshot: dict[str, Any] = {}  # scene.snapshot data; trimmed before it reaches the LLM
+
+    @field_validator("request")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Describe the change you want")
+        return v.strip()
+
+
+class UnityChangeOut(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    summary: str
+    steps: list[UnityBuildStep]

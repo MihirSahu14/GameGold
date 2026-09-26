@@ -11,7 +11,7 @@ vi.mock('@/lib/rasterize', () => ({ svgToPngDataUri: vi.fn() }))
 import { api } from '@/lib/api'
 import {
   diffUnity, sha256Hex, recordWrite, stepSource, overwriteTarget, pullFromUnity, settingsFromFile,
-  playerSettingsFile, runtimeVersion, runtimeOutdated, useUpdateRuntime, DIALOGUE_JSON_PATH, PLAYER_SETTINGS_PATH, RUNTIME_PATH,
+  playerSettingsFile, runtimeVersion, runtimeOutdated, useUpdateRuntime, useProposeChange, DIALOGUE_JSON_PATH, PLAYER_SETTINGS_PATH, RUNTIME_PATH,
 } from '@/lib/queries/useUnity'
 
 const G = 'Assets/Resources/GameGold'
@@ -171,6 +171,21 @@ describe('Update runtime (gap 40)', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:7432/tool/asset.createScript')
     expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({ className: 'DialoguePlayer', path: RUNTIME_PATH, code })
     expect(api.post).toHaveBeenCalledWith('/projects/p1/unity/synced', expect.objectContaining({ path: RUNTIME_PATH, source: 'runtime', version: 3 }))
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('useProposeChange (§3)', () => {
+  it('snapshots Unity, drops file hashes, and asks the backend for steps', async () => {
+    const snap = { scene: 'Story', objects: [{ name: 'GameGold Dialogue', components: ['DialoguePlayer'], children: [] }], playerSettings: null, files: [{ path: 'x', length: 1, sha256: 'h' }] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ success: true, message: 'ok', data: snap }) }))
+    vi.mocked(api.post).mockResolvedValue({ data: { summary: 's', steps: [] } })
+    const qc = new QueryClient()
+    const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client: qc }, children)
+    const { result } = renderHook(() => useProposeChange('p1'), { wrapper })
+    await act(async () => { await result.current.mutateAsync('faster text') })
+    const { files: _f, ...rest } = snap
+    expect(api.post).toHaveBeenCalledWith('/projects/p1/unity/change', { request: 'faster text', snapshot: rest })
     vi.unstubAllGlobals()
   })
 })

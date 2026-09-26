@@ -442,6 +442,12 @@ export type UnityDiffItem = {
   file?: UnitySnapshotFile
 }
 
+/** "Change something": proposed bridge steps (never persisted as the plan). */
+export type UnityChangePlan = {
+  summary: string
+  steps: UnityBuildStep[]
+}
+
 // ─── API Responses ───────────────────────────────────────────────────────────
 
 export interface ApiResponse<T> {

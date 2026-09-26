@@ -7,15 +7,17 @@ import { MissingScripts } from '@/components/unity/MissingScripts'
 import { PlayControls } from '@/components/unity/PlayControls'
 import { UnityChangesPanel } from '@/components/unity/UnityChangesPanel'
 import { RuntimeUpdate } from '@/components/unity/RuntimeUpdate'
+import { ChangeSomethingPanel } from '@/components/unity/ChangeSomethingPanel'
 import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
 import { useToastStore } from '@/store/toastStore'
-import type { PlayerSettings, UnityDiffItem } from '@gamegold/types'
+import type { PlayerSettings, UnityChangePlan, UnityDiffItem } from '@gamegold/types'
 import { useAssets } from '@/lib/queries/useAssets'
 import {
   useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset, playerSettingsFile,
   PLAYER_SETTINGS_PATH, runQueue, useUnitySyncs, usePullFromUnity, useSyncToUnity, snapshotUnity, diffUnity, overwriteTarget,
-  recordWrite, stepSource, useRuntimeTemplate, useUpdateRuntime, runtimeOutdated, RUNTIME_PATH,
+  recordWrite, stepSource, useRuntimeTemplate, useUpdateRuntime, runtimeOutdated, RUNTIME_PATH, useProposeChange,
 } from '@/lib/queries/useUnity'
+import type { ToolResult } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { toastError } from '@/lib/api'
@@ -70,6 +72,10 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const { data: syncs, refetch: refetchSyncs } = useUnitySyncs(id)
   const { data: runtimeTemplate } = useRuntimeTemplate()
   const updateRuntime = useUpdateRuntime(id)
+  const proposeChange = useProposeChange(id)
+  const [changePlan, setChangePlan] = useState<UnityChangePlan | null>(null)
+  const [changeResults, setChangeResults] = useState<Record<number, ToolResult>>({})
+  const [changeRunning, setChangeRunning] = useState(false)
   const pullFromUnity = usePullFromUnity(id)
   const syncToUnity = useSyncToUnity(id)
   const [diffItems, setDiffItems] = useState<UnityDiffItem[] | null>(null)
@@ -191,11 +197,33 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     })
   }
 
+  // ─── "Change something" (§3): proposed steps only — never saved as the build plan ───
+  function handlePlanChange(request: string) {
+    proposeChange.mutate(request, {
+      onSuccess: (p) => { setChangePlan(p); setChangeResults({}) },
+      onError: (err) => toastError(err, err instanceof Error ? err.message : 'Could not plan that change.'),
+    })
+  }
+
+  async function handleRunChange() {
+    if (!changePlan) return
+    if (isBusy) return flagBusy()
+    setChangeRunning(true)
+    setChangeResults({})
+    const ok = await runQueue(changePlan.steps, async (step) => {
+      const r = await executeTool(step.tool, step.args as Record<string, unknown>)
+      setChangeResults(prev => ({ ...prev, [step.stepNumber]: r }))
+      return r.success
+    })
+    setChangeRunning(false)
+    useToastStore.getState().pushToast(ok ? 'Change applied in Unity.' : 'Stopped at a failed step — see its message.', ok ? 'info' : 'error')
+  }
+
   function handleToggleStepDone(stepNumber: number, completed: boolean) {
     markStep.mutate({ stepNumber, completed }, { onError: (err) => toastError(err, 'Could not save step progress.') })
   }
 
-  const isBusy = executingStep !== null || runAllProgress !== null
+  const isBusy = executingStep !== null || runAllProgress !== null || changeRunning
 
   // Gap 40: only offer "Update runtime" once GameGold's DialoguePlayer has been sent to this project.
   const runtimeRecord = syncs?.find(r => r.path === RUNTIME_PATH)
@@ -435,6 +463,17 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
               syncedVersion={runtimeRecord?.version ?? null}
               busy={updateRuntime.isPending}
               onUpdate={handleUpdateRuntime}
+            />
+          )}
+
+          {mcpStatus === 'connected' && (
+            <ChangeSomethingPanel
+              plan={changePlan}
+              planning={proposeChange.isPending}
+              running={changeRunning}
+              results={changeResults}
+              onPlan={handlePlanChange}
+              onRun={() => void handleRunChange()}
             />
           )}
 

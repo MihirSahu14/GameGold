@@ -5,7 +5,7 @@ import { downloadBlob } from '../utils'
 import { svgToPngDataUri } from '../rasterize'
 import type {
   Asset, AssetKind, PlayerSettings, UnityBuildPlan, UnityDiffItem, UnityDiffStatus, UnitySnapshot,
-  UnitySnapshotFile, UnitySyncRecord,
+  UnitySnapshotFile, UnitySyncRecord, UnityChangePlan,
 } from '@gamegold/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -430,5 +430,22 @@ export function useUpdateRuntime(projectId: string) {
       return result
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ['unity-syncs', projectId] }),
+  })
+}
+
+// ─── "Change something" (§3): words → scene steps, run through the same queue; never saved as the plan ──
+
+// The LLM needs names/components/fields, not file hashes; the server trims to ~6k chars as well.
+export function changeSnapshot(s: UnitySnapshot): Omit<UnitySnapshot, 'files'> {
+  return { scene: s.scene, objects: s.objects, playerSettings: s.playerSettings }
+}
+
+export function useProposeChange(projectId: string) {
+  return useMutation({
+    mutationFn: async (request: string) => {
+      const snapshot = changeSnapshot(await snapshotUnity())
+      const res = await api.post<UnityChangePlan>(`/projects/${projectId}/unity/change`, { request, snapshot })
+      return res.data
+    },
   })
 }
