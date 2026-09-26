@@ -22,6 +22,7 @@ from app.models.assets import (
     GenerateDialogueRequest,
     SuggestAssetsResponse,
     UpdateGuideRequest,
+    UploadSpriteRequest,
 )
 from app.prompts.asset_prompts import build_regen_block
 from app.routers.auth import get_current_user
@@ -245,6 +246,41 @@ async def create_sprites_batch(
                 continue
             out.assets.append(await _insert_sprite(db, project_id, item, image_prompt, guide, url))
     return out
+
+
+UPLOADED_SPRITE_GUIDE = [
+    "This image was pulled from your Unity project (Assets/Resources/GameGold/), so it is already imported there",
+    "In the Project window select it and check the Inspector: Texture Type = Sprite (2D and UI)",
+    "Use Sync to Unity on this card to write GameGold's copy back if the two ever differ",
+]
+
+
+@router.post(
+    "/sprites/upload",
+    response_model=AssetOut,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_sprite(
+    project_id: str,
+    body: UploadSpriteRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Store a designer-made PNG (e.g. pulled from Unity) as a sprite — not a placeholder, no LLM."""
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    return await insert_and_return(db, AssetInDB(
+        project_id=project_id,
+        type="sprite",
+        name=body.name,
+        description="Pulled from Unity",
+        unity_guide=UnityGuide(
+            steps=UPLOADED_SPRITE_GUIDE, completed=[False] * len(UPLOADED_SPRITE_GUIDE)
+        ).model_dump(),
+        url=body.data_uri,
+        kind=body.kind,
+        placeholder=False,
+    ))
 
 
 @router.post(

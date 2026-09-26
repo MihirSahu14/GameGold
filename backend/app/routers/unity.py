@@ -11,7 +11,9 @@ from fastapi.responses import StreamingResponse
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
-from app.models.unity import UnityBuildPlanOut, UnityBuildPlanInDB, StepCompleteRequest
+from app.models.unity import (
+    UnityBuildPlanOut, UnityBuildPlanInDB, StepCompleteRequest, UnitySyncCreate, UnitySyncInDB, UnitySyncOut,
+)
 from app.routers.auth import get_current_user
 from app.services.deployment_service import export_build_pack, safe_filename
 from app.prompts.unity_prompt import NARRATIVE_GENRES
@@ -166,3 +168,25 @@ async def export_pack(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ─── Read-back: hashes of what GameGold last wrote to Unity (edit-through-GameGold §4) ──
+
+@router.get("/synced", response_model=list[UnitySyncOut], response_model_by_alias=True)
+async def list_syncs(project_id: str, current_user: dict = Depends(get_current_user)):
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    docs = await db.unity_syncs.find({"project_id": project_id}).to_list(1000)
+    return [UnitySyncOut(**d) for d in docs]
+
+
+@router.post("/synced", response_model=UnitySyncOut, response_model_by_alias=True)
+async def record_sync(project_id: str, body: UnitySyncCreate, current_user: dict = Depends(get_current_user)):
+    """The web calls this after a Sync / plan write succeeds; one record per Unity path."""
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    rec = UnitySyncInDB(project_id=project_id, **body.model_dump())
+    await db.unity_syncs.update_one(
+        {"project_id": project_id, "path": rec.path}, {"$set": rec.model_dump()}, upsert=True
+    )
+    return UnitySyncOut(**rec.model_dump())

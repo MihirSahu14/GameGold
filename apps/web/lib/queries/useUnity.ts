@@ -3,7 +3,10 @@ import { useCallback } from 'react'
 import { api } from '../api'
 import { downloadBlob } from '../utils'
 import { svgToPngDataUri } from '../rasterize'
-import type { Asset, PlayerSettings, UnityBuildPlan } from '@gamegold/types'
+import type {
+  Asset, AssetKind, PlayerSettings, UnityBuildPlan, UnityDiffItem, UnityDiffStatus, UnitySnapshot,
+  UnitySnapshotFile, UnitySyncRecord,
+} from '@gamegold/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -198,7 +201,8 @@ export function syncCall(asset: Asset): { tool: string; args: Record<string, unk
   return null
 }
 
-export function useSyncToUnity() {
+export function useSyncToUnity(projectId: string) {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (asset: Asset) => {
       const call = syncCall(asset)
@@ -209,8 +213,11 @@ export function useSyncToUnity() {
         : call.args
       const result = await executeTool(call.tool, args)
       if (!result.success) throw new Error(result.message)
+      // ponytail: a lost record only makes the next "Check Unity" show this file as changed — not worth failing the sync
+      await recordWrite(projectId, call.tool, args, asset._id).catch(() => {})
       return result
     },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['unity-syncs', projectId] }),
   })
 }
 
@@ -239,4 +246,155 @@ export async function runQueue<T extends { completed: boolean }>(
   }
   onProgress?.(todo.length, todo.length)
   return true
+}
+
+// ─── Read-back from Unity (edit through GameGold §4) ─────────────────────────
+
+export const GAMEGOLD_FOLDER = 'Assets/Resources/GameGold'
+const RUNTIME_HEADER = /^\/\/ GameGold DialoguePlayer v(\d+)/
+
+export function runtimeVersion(code: string): number | null {
+  const m = RUNTIME_HEADER.exec(code)
+  return m ? Number(m[1]) : null
+}
+
+export async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource)
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function base64Bytes(b64: string): Uint8Array {
+  const bin = atob(b64.slice(b64.indexOf(',') + 1)) // tolerates a data: prefix, like the bridge
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0))
+}
+
+// The exact bytes the bridge writes for this call (File.WriteAllText = UTF-8, no BOM); null = not a file write we track.
+function bytesWritten(tool: string, args: Record<string, unknown>): Uint8Array | null {
+  if (tool === 'asset.createText' && typeof args.content === 'string') return new TextEncoder().encode(args.content)
+  if (tool === 'asset.importSprite' && typeof args.base64 === 'string') return base64Bytes(args.base64)
+  if (tool === 'asset.createScript' && typeof args.code === 'string' && runtimeVersion(args.code) !== null) {
+    return new TextEncoder().encode(args.code)
+  }
+  return null
+}
+
+// After a successful write, tell GameGold what it put at that path so "Check Unity for changes" can diff.
+export async function recordWrite(projectId: string, tool: string, args: Record<string, unknown>, source: string): Promise<void> {
+  const bytes = bytesWritten(tool, args)
+  if (!bytes || typeof args.path !== 'string') return
+  const version = tool === 'asset.createScript' ? runtimeVersion(String(args.code)) : null
+  await api.post(`/projects/${projectId}/unity/synced`, {
+    path: args.path, sha256: await sha256Hex(bytes), source, ...(version !== null ? { version } : {}),
+  })
+}
+
+// Which GameGold item a plan step's write came from.
+export function stepSource(tool: string, args: Record<string, unknown>, assets: Asset[]): string {
+  if (tool === 'asset.createText' && typeof args.dialogue === 'string') {
+    return assets.find((a) => a.type === 'dialogue' && a.name === args.dialogue)?._id ?? 'plan'
+  }
+  if (tool === 'asset.importSprite') return assets.find((a) => a.type === 'sprite' && a.name === args.name)?._id ?? 'plan'
+  if (tool === 'asset.createScript') return 'runtime'
+  return 'plan'
+}
+
+const STATUS_ORDER: Record<UnityDiffStatus, number> = { changed: 0, missing: 1, unsynced: 2, 'in-sync': 3 }
+
+// Unity's files vs what GameGold last wrote there (only Resources/GameGold — the runtime script is tracked separately).
+export function diffUnity(files: UnitySnapshotFile[], records: UnitySyncRecord[]): UnityDiffItem[] {
+  const tracked = records.filter((r) => r.path.startsWith(`${GAMEGOLD_FOLDER}/`))
+  const byPath = new Map(tracked.map((r) => [r.path, r]))
+  const items: UnityDiffItem[] = files.map((file) => {
+    const record = byPath.get(file.path)
+    const status: UnityDiffStatus = !record ? 'unsynced' : record.sha256 === file.sha256 ? 'in-sync' : 'changed'
+    return { path: file.path, status, file, record }
+  })
+  const present = new Set(files.map((f) => f.path))
+  for (const record of tracked) if (!present.has(record.path)) items.push({ path: record.path, status: 'missing', record })
+  return items.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.path.localeCompare(b.path))
+}
+
+// What "Overwrite from GameGold" re-sends for this path: the settings, the asset that syncs there, or nothing.
+export function overwriteTarget(path: string, assets: Asset[], record: UnitySyncRecord | undefined): Asset | 'settings' | null {
+  if (path === PLAYER_SETTINGS_PATH) return 'settings'
+  const matches = assets.filter((a) => syncCall(a)?.args.path === path)
+  return matches.find((a) => a._id === record?.source) ?? matches[0] ?? null
+}
+
+// Inverse of playerSettingsFile.
+export function settingsFromFile(file: Record<string, unknown>): PlayerSettings {
+  const { chapterColors, ...rest } = file as Omit<PlayerSettings, 'chapterColors'> & { chapterColors?: { chapter: string; color: string }[] }
+  return { ...rest, chapterColors: Object.fromEntries((chapterColors ?? []).map((c) => [c.chapter, c.color])) }
+}
+
+const PULL_KINDS: Record<string, AssetKind> = { Backgrounds: 'background', Portraits: 'portrait' }
+
+// "Pull into GameGold": read the Unity file and store it as GameGold's copy, then record its hash.
+export async function pullFromUnity(
+  projectId: string,
+  item: UnityDiffItem,
+  assets: Asset[],
+  exec: (tool: string, args: Record<string, unknown>) => Promise<ToolResult> = executeTool,
+): Promise<void> {
+  const read = await exec('asset.readFile', { path: item.path })
+  if (!read.success) throw new Error(read.message)
+  const b64 = (read.data as { base64: string }).base64
+  const bytes = base64Bytes(b64)
+  let source: string
+  if (item.path === DIALOGUE_JSON_PATH || item.path === PLAYER_SETTINGS_PATH) {
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>
+    } catch {
+      throw new Error(`${item.path} in Unity is not valid JSON.`)
+    }
+    if (item.path === PLAYER_SETTINGS_PATH) {
+      await api.patch(`/projects/${projectId}`, { playerSettings: settingsFromFile(parsed) })
+      source = 'settings'
+    } else {
+      const stories = assets.filter((a) => a.type === 'dialogue')
+      const target = stories.find((a) => a._id === item.record?.source) ?? stories.find((a) => a.placeholder === false) ?? stories[0]
+      const res = target
+        ? await api.put<Asset>(`/projects/${projectId}/assets/${target._id}/tree`, parsed)
+        : await api.post<Asset>(`/projects/${projectId}/assets/dialogue/import`, { name: 'Story from Unity', tree: parsed })
+      source = res.data._id
+    }
+  } else if (item.path.toLowerCase().endsWith('.png')) {
+    const parts = item.path.split('/')
+    const res = await api.post<Asset>(`/projects/${projectId}/assets/sprites/upload`, {
+      name: parts[parts.length - 1].replace(/\.png$/i, ''),
+      kind: PULL_KINDS[parts[parts.length - 2]] ?? 'sprite',
+      dataUri: `data:image/png;base64,${b64}`,
+    })
+    source = res.data._id
+  } else {
+    throw new Error('GameGold can only pull the story, player settings and PNG images.')
+  }
+  await api.post(`/projects/${projectId}/unity/synced`, { path: item.path, sha256: await sha256Hex(bytes), source })
+}
+
+export async function snapshotUnity(): Promise<UnitySnapshot> {
+  const r = await executeTool('scene.snapshot', {})
+  if (!r.success) throw new Error(r.message)
+  return r.data as UnitySnapshot
+}
+
+export function useUnitySyncs(projectId: string) {
+  return useQuery({
+    queryKey: ['unity-syncs', projectId],
+    queryFn: async () => (await api.get<UnitySyncRecord[]>(`/projects/${projectId}/unity/synced`)).data,
+    enabled: !!projectId,
+  })
+}
+
+export function usePullFromUnity(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ item, assets }: { item: UnityDiffItem; assets: Asset[] }) => pullFromUnity(projectId, item, assets),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['assets', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['unity-syncs', projectId] })
+    },
+  })
 }

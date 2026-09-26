@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 from typing import Any, Optional
 from datetime import datetime
@@ -39,3 +39,40 @@ class StepCompleteRequest(BaseModel):
 
     step_number: int
     completed: bool
+
+
+# ─── Read-back: what GameGold last wrote to each Unity path (edit-through-GameGold §4) ──
+
+class UnitySyncCreate(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    path: str = Field(min_length=8, max_length=300)       # e.g. Assets/Resources/GameGold/dialogue.json
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")        # of the exact bytes sent to the bridge
+    source: str = Field(min_length=1, max_length=100)     # asset id | "settings" | "runtime"
+    version: Optional[int] = None                         # built-in runtime template version (gap 40)
+
+    @field_validator("path")
+    @classmethod
+    def under_assets(cls, v: str) -> str:
+        if not v.startswith("Assets/") or ".." in v or ":" in v or "\\" in v:
+            raise ValueError("path must stay under Assets/")
+        return v
+
+
+class UnitySyncOut(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    path: str
+    sha256: str
+    source: str
+    version: Optional[int] = None
+    synced_at: datetime
+
+
+class UnitySyncInDB(BaseModel):
+    project_id: str
+    path: str
+    sha256: str
+    source: str
+    version: Optional[int] = None
+    synced_at: datetime = Field(default_factory=datetime.utcnow)

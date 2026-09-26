@@ -124,6 +124,10 @@ def mock_db():
     db.unity_plans.update_one = AsyncMock()
     db.unity_plans.replace_one = AsyncMock()
 
+    db.unity_syncs = MagicMock()
+    db.unity_syncs.find = MagicMock(return_value=make_cursor([]))
+    db.unity_syncs.update_one = AsyncMock()
+
     db.deployments = MagicMock()
     db.deployments.find = MagicMock(return_value=make_cursor([]))
     db.deployments.find_one = AsyncMock(return_value=None)

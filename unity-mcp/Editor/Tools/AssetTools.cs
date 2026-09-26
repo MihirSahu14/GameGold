@@ -126,5 +126,21 @@ namespace GameGold.MCP
             return GameGoldMCP.Ok($"Imported sprite '{name}' at {path}",
                 $"{{\"path\":\"{GameGoldMCP.EscapeJson(path)}\"}}");
         }
+
+        private const long MaxReadBytes = 8 * 1024 * 1024;
+
+        /// <summary>args: { path } — base64 of a file under Assets/Resources/GameGold/ (max 8 MB), for "Pull into GameGold".</summary>
+        internal static string ReadFile(string body)
+        {
+            var path = SafeAssetPath(SimpleJson.Parse(body).GetString("path"));
+            if (path == null || !path.StartsWith(SceneTools.GameGoldFolder + "/"))
+                return GameGoldMCP.Error($"'path' must be under {SceneTools.GameGoldFolder}/");
+            if (!File.Exists(path)) return GameGoldMCP.Error($"No file at {path}");
+            if (new FileInfo(path).Length > MaxReadBytes) return GameGoldMCP.Error($"{path} is larger than 8 MB");
+
+            var b64 = Convert.ToBase64String(File.ReadAllBytes(path));
+            return GameGoldMCP.Ok($"Read {path}",
+                $"{{\"path\":\"{GameGoldMCP.EscapeJson(path)}\",\"base64\":\"{b64}\"}}");
+        }
     }
 }

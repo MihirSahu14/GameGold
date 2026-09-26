@@ -52,7 +52,7 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
   const regenerateScript = useGenerateScript(projectId)
   const regenerateDialogue = useGenerateDialogue(projectId)
   const unity = useUnityConnection()
-  const syncToUnity = useSyncToUnity()
+  const syncToUnity = useSyncToUnity(projectId)
   const canSync = syncCall(asset) !== null
   const isRegenerating =
     regenerateSprite.isPending || regenerateScript.isPending || regenerateDialogue.isPending

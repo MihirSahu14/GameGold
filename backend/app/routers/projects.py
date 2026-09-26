@@ -256,5 +256,5 @@ async def delete_project(project_id: str, current_user: dict = Depends(get_curre
     check_project_ownership(project, current_user["_id"])
     await db.projects.delete_one({"_id": oid})
     # Cascade: delete everything scoped to this project
-    for coll in (db.gdds, db.systems, db.assets, db.playtests, db.bugs, db.deployments, db.unity_plans):
+    for coll in (db.gdds, db.systems, db.assets, db.playtests, db.bugs, db.deployments, db.unity_plans, db.unity_syncs):
         await coll.delete_many({"project_id": project_id})

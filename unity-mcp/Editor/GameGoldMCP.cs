@@ -44,6 +44,7 @@ namespace GameGold.MCP
         {
             ["scene.list"]           = SceneTools.List,
             ["scene.new"]            = SceneTools.New,
+            ["scene.snapshot"]       = SceneTools.Snapshot,
             ["gameobject.create"]    = GameObjectTools.Create,
             ["gameobject.delete"]    = GameObjectTools.Delete,
             ["gameobject.find"]      = GameObjectTools.Find,
@@ -52,6 +53,7 @@ namespace GameGold.MCP
             ["asset.createScript"]   = AssetTools.CreateScript,
             ["asset.importSprite"]   = AssetTools.ImportSprite,
             ["asset.createText"]     = AssetTools.CreateText,
+            ["asset.readFile"]       = AssetTools.ReadFile,
             ["playmode.enter"]       = PlayModeTools.Enter,
             ["playmode.exit"]        = PlayModeTools.Exit,
         };

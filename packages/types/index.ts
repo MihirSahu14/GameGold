@@ -405,6 +405,43 @@ export type UnityBuildPlan = {
   missingScripts?: string[]
 }
 
+// ─── Read-back from Unity (edit through GameGold) ───────────────────────────
+
+/** What GameGold last wrote to a Unity path (sha256 of the exact bytes sent). */
+export type UnitySyncRecord = {
+  path: string
+  sha256: string
+  source: string // asset id | 'settings' | 'runtime'
+  version?: number | null // built-in runtime template version
+  syncedAt: string
+}
+
+export type UnitySnapshotFile = { path: string; length: number; sha256: string }
+
+export type UnitySnapshotObject = {
+  name: string
+  components: string[]
+  dialoguePlayer?: Record<string, string>
+  children: UnitySnapshotObject[]
+}
+
+/** scene.snapshot from the bridge. playerSettings is the raw file text (null = no file). */
+export type UnitySnapshot = {
+  scene: string
+  objects: UnitySnapshotObject[]
+  playerSettings: string | null
+  files: UnitySnapshotFile[]
+}
+
+export type UnityDiffStatus = 'changed' | 'missing' | 'unsynced' | 'in-sync'
+
+export type UnityDiffItem = {
+  path: string
+  status: UnityDiffStatus
+  record?: UnitySyncRecord
+  file?: UnitySnapshotFile
+}
+
 // ─── API Responses ───────────────────────────────────────────────────────────
 
 export interface ApiResponse<T> {

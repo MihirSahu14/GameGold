@@ -5,11 +5,16 @@ import { useProject, useUpdateRisk, useUpdatePlayerSettings } from '@/lib/querie
 import { RiskPanel } from '@/components/unity/RiskPanel'
 import { MissingScripts } from '@/components/unity/MissingScripts'
 import { PlayControls } from '@/components/unity/PlayControls'
+import { UnityChangesPanel } from '@/components/unity/UnityChangesPanel'
 import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
 import { useToastStore } from '@/store/toastStore'
-import type { PlayerSettings } from '@gamegold/types'
+import type { PlayerSettings, UnityDiffItem } from '@gamegold/types'
 import { useAssets } from '@/lib/queries/useAssets'
-import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset, playerSettingsFile, PLAYER_SETTINGS_PATH, runQueue } from '@/lib/queries/useUnity'
+import {
+  useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset, playerSettingsFile,
+  PLAYER_SETTINGS_PATH, runQueue, useUnitySyncs, usePullFromUnity, useSyncToUnity, snapshotUnity, diffUnity, overwriteTarget,
+  recordWrite, stepSource,
+} from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { toastError } from '@/lib/api'
@@ -61,6 +66,12 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const { status: mcpStatus, unityInfo, check: checkMCP, executeTool } = useUnityMCP()
   const updateSettings = useUpdatePlayerSettings(id)
   const [syncingSettings, setSyncingSettings] = useState(false)
+  const { refetch: refetchSyncs } = useUnitySyncs(id)
+  const pullFromUnity = usePullFromUnity(id)
+  const syncToUnity = useSyncToUnity(id)
+  const [diffItems, setDiffItems] = useState<UnityDiffItem[] | null>(null)
+  const [checkingUnity, setCheckingUnity] = useState(false)
+  const [busyPath, setBusyPath] = useState<string | null>(null)
 
   const STORAGE_KEY = `unity-checklist-${id}`
   const [checked, setChecked] = useState<boolean[]>(() => Array(SETUP_STEPS.length).fill(false))
@@ -117,13 +128,57 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     setSyncingSettings(true)
     try {
       await updateSettings.mutateAsync(s)
-      const r = await executeTool('asset.createText', { path: PLAYER_SETTINGS_PATH, content: playerSettingsFile(s) })
+      const args = { path: PLAYER_SETTINGS_PATH, content: playerSettingsFile(s) }
+      const r = await executeTool('asset.createText', args)
+      if (r.success) await recordWrite(id, 'asset.createText', args, 'settings').catch(() => {})
       toast(r.success ? 'Player settings synced to Unity.' : `Settings sync failed: ${r.message}`, r.success ? 'info' : 'error')
     } catch (err) {
       toastError(err, 'Could not save player settings.')
     } finally {
       setSyncingSettings(false)
     }
+  }
+
+  // ─── Read-back: Unity's GameGold files vs what GameGold last wrote there ───
+  async function handleCheckUnity() {
+    setCheckingUnity(true)
+    try {
+      const [snapshot, syncs] = await Promise.all([snapshotUnity(), refetchSyncs()])
+      if (syncs.error) throw syncs.error
+      setDiffItems(diffUnity(snapshot.files, syncs.data ?? []))
+    } catch (err) {
+      toastError(err, 'Could not read the Unity project.')
+    } finally {
+      setCheckingUnity(false)
+    }
+  }
+
+  async function handlePull(item: UnityDiffItem) {
+    setBusyPath(item.path)
+    try {
+      await pullFromUnity.mutateAsync({ item, assets: assets ?? [] })
+      useToastStore.getState().pushToast(`Pulled ${item.path.split('/').pop()} into GameGold.`, 'info')
+    } catch (err) {
+      toastError(err, err instanceof Error ? err.message : 'Pull failed.')
+    } finally {
+      setBusyPath(null)
+    }
+    await handleCheckUnity()
+  }
+
+  async function handleOverwrite(item: UnityDiffItem) {
+    const target = overwriteTarget(item.path, assets ?? [], item.record)
+    if (!target || !project) return
+    setBusyPath(item.path)
+    try {
+      if (target === 'settings') await handleSyncSettings(project.playerSettings)
+      else await syncToUnity.mutateAsync(target)
+    } catch (err) {
+      toastError(err, err instanceof Error ? err.message : 'Overwrite failed.')
+    } finally {
+      setBusyPath(null)
+    }
+    await handleCheckUnity()
   }
 
   function handleToggleStepDone(stepNumber: number, completed: boolean) {
@@ -160,6 +215,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
       const result = await executeTool(tool, resolved.args)
       setStepResults(prev => ({ ...prev, [stepNumber]: result }))
       if (!result.success) return false
+      await recordWrite(id, tool, resolved.args, stepSource(tool, args, assets ?? [])).catch(() => {})
       await markStep.mutateAsync({ stepNumber, completed: true })
       return true
     } catch (err) {
@@ -354,6 +410,18 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
               busy={syncingSettings || updateSettings.isPending}
               onSave={handleSaveSettings}
               onSync={handleSyncSettings}
+            />
+          )}
+
+          {mcpStatus === 'connected' && (
+            <UnityChangesPanel
+              items={diffItems}
+              checking={checkingUnity}
+              busyPath={busyPath}
+              canOverwrite={(item) => overwriteTarget(item.path, assets ?? [], item.record) !== null}
+              onCheck={() => void handleCheckUnity()}
+              onPull={(item) => void handlePull(item)}
+              onOverwrite={(item) => void handleOverwrite(item)}
             />
           )}
 

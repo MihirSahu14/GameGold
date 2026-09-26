@@ -1,4 +1,7 @@
-from pydantic import BaseModel, Field, ConfigDict
+import base64
+import binascii
+
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 from typing import Any, Literal, Optional
 from datetime import datetime
@@ -97,6 +100,32 @@ class GenerateDialogueRequest(BaseModel):
 class ImportDialogueRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     tree: DialogueTree
+
+
+PNG_DATA_URI_PREFIX = "data:image/png;base64,"
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+class UploadSpriteRequest(BaseModel):
+    """A PNG the designer made/edited in Unity, pulled back into GameGold (no LLM)."""
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    name: str = Field(min_length=1, max_length=100)
+    kind: AssetKind = "sprite"
+    data_uri: str = Field(max_length=12_000_000)  # ~8 MB of PNG once base64-encoded
+
+    @field_validator("data_uri")
+    @classmethod
+    def png_only(cls, v: str) -> str:
+        if not v.startswith(PNG_DATA_URI_PREFIX):
+            raise ValueError("must be a data:image/png;base64 URI")
+        try:
+            raw = base64.b64decode(v[len(PNG_DATA_URI_PREFIX):], validate=True)
+        except (binascii.Error, ValueError):
+            raise ValueError("invalid base64")
+        if not raw.startswith(PNG_MAGIC):
+            raise ValueError("not a PNG")
+        return v
 
 
 class UpdateGuideRequest(BaseModel):
