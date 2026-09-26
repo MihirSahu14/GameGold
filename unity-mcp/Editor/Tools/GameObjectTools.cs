@@ -41,7 +41,7 @@ namespace GameGold.MCP
             EditorUtility.SetDirty(go);
 
             return GameGoldMCP.Ok($"Created GameObject '{name}'",
-                $"{{\"name\":\"{GameGoldMCP.EscapeJson(go.name)}\",\"instanceId\":{go.GetInstanceID()}}}");
+                $"{{\"name\":\"{GameGoldMCP.EscapeJson(go.name)}\"}}");
         }
 
         /// <summary>args: { name }</summary>
