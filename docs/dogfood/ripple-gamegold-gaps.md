@@ -43,3 +43,4 @@ Ripple = narrative game (Avery / Skyler, hidden attachment traits). Repo: `Proje
 | 36 | Unity (runner) | Clicking RUN while another step runs is now ignored (good), but silently — the user can't tell their click did nothing | "Run all" button that queues steps and stops on the first failure |
 
 **Milestone 2026-09-26:** Ripple built end-to-end in Unity (RippleGG) purely through GameGold's UI: generated plan (21 steps, no LLM) → DialoguePlayer + story JSON + 14 sprites + scene → Play mode, 0 errors.
+| 37 | Abuse / cost | **Deferred until end-to-end game flow works (Mihir, 2026-09-26).** 20 LLM calls/min per user (~28k/day), spoofable IP on register → unlimited accounts, batch = 1 hit for ~24 calls, no global/daily caps, limits reset on restart | Global daily LLM budget in Mongo (default 200/day) · per-user 30/day + 5/min · batch counts per item · real client IP + register 5/hour · all as Render env vars · Anthropic console spend limit |
