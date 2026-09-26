@@ -4,7 +4,7 @@ generated assets and produces steps that the build pack (GAMEGOLD.md) and the
 basic browser bridge (localhost:7432) both use.
 """
 from app.models.unity import UnityBuildStep
-from app.prompts.unity_prompt import UNITY_PLAN_SYSTEM_PROMPT, build_unity_plan_prompt
+from app.prompts.unity_prompt import build_unity_plan_prompt, unity_plan_system_prompt
 from app.services.llm_utils import _list, complete, extract_json
 
 
@@ -19,7 +19,7 @@ async def generate_build_plan(
     """Returns (summary, steps). Only calls the LLM to plan — nothing executes here."""
     data = extract_json(
         await complete(
-            UNITY_PLAN_SYSTEM_PROMPT,
+            unity_plan_system_prompt(genre),
             build_unity_plan_prompt(
                 game_title, genre, platform, pillars, prototype_goal, _summarize_assets(assets)
             ),

@@ -4,11 +4,40 @@ Input = the designer's pillars + prototype goal (core loop) + generated assets.
 """
 from app.prompts.grounding import GROUNDING_RULES
 
-UNITY_PLAN_SYSTEM_PROMPT = """\
+_GREYBOX_INTRO = """\
 You are a senior Unity developer building a PROTOTYPE that proves one core mechanic:
-greybox geometry, labeled placeholder art, one mechanic — nothing else. Given the
-designer's pillars, prototype goal (the core loop) and generated assets, produce a
-step-by-step Unity build plan.
+greybox geometry, labeled placeholder art, one mechanic — nothing else.
+"""
+
+# Also written verbatim into the build pack's GAMEGOLD.md for narrative projects.
+NARRATIVE_SCAFFOLD = """\
+Narrative scaffold (story runtime + dialogue UI, not a greybox level):
+- Story runtime: ink-unity-integration. Add it to Packages/manifest.json as a git
+  dependency: "com.inkle.ink-unity-integration": "https://github.com/inkle/ink-unity-integration.git#upm".
+  Version 2.x imports each .ink file as an InkFile asset (no compiled .json
+  TextAsset) — reference the InkFile, never look for a .json.
+- Dialogue player: one MonoBehaviour that steps the ink Story, reveals lines with a
+  typewriter effect, shows the current choices as buttons, and reads line tags:
+  #speaker: <name>, #bg: <background>, #chapter: <title>.
+- Backgrounds and character portraits are UI Images on a Screen Space Canvas
+  (background full-screen behind, portrait beside the textbox).
+- Text: legacy uGUI Text works out of the box. If you use TextMeshPro, its
+  Essential Resources must be imported first (Window → TextMeshPro → Import TMP
+  Essential Resources) or the text renders blank.
+"""
+
+_NARRATIVE_INTRO = """\
+You are a senior Unity developer building a PROTOTYPE of a NARRATIVE game: prove the
+story experience with a working dialogue loop, placeholder backgrounds and portraits —
+nothing else. No platformer, no physics, no level geometry.
+
+""" + NARRATIVE_SCAFFOLD
+
+NARRATIVE_GENRES = {"narrative", "visual-novel"}
+
+_PLAN_BODY = """\
+Given the designer's pillars, prototype goal (the core loop) and generated assets,
+produce a step-by-step Unity build plan.
 
 You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
 {
@@ -43,8 +72,8 @@ Rules:
   grounded steps beat padding.
 - Start with scene.new, then build ONLY what the prototype goal needs — no menus,
   no save systems, no polish, no second mechanic.
-- Anything without a sprite asset is a primitive (cube, quad, capsule) named
-  "PLACEHOLDER_<thing>".
+- Anything without a sprite asset is a placeholder named "PLACEHOLDER_<thing>"
+  (a primitive, or a plain UI Image for narrative games).
 - description: plain-English intent in Unity terms — component names and field
   values, e.g. "Add Rigidbody2D to Player, gravity scale 0". Never mention tool
   names in a description: it must read as an instruction for a human or any
@@ -64,6 +93,13 @@ Rules:
 - category must exactly match one of: scene, gameobject, component, asset, playmode.
 - args must be valid for the chosen tool. Do not invent tool names.
 """ + GROUNDING_RULES
+
+UNITY_PLAN_SYSTEM_PROMPT = _GREYBOX_INTRO + _PLAN_BODY
+
+
+def unity_plan_system_prompt(genre: str) -> str:
+    """Narrative games need a story runtime + dialogue UI, not a greybox level."""
+    return (_NARRATIVE_INTRO if genre in NARRATIVE_GENRES else _GREYBOX_INTRO) + _PLAN_BODY
 
 
 def build_unity_plan_prompt(

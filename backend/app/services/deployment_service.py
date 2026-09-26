@@ -19,6 +19,7 @@ from app.prompts.deployment_prompts import (
     build_press_kit_prompt,
     build_build_guide_prompt,
 )
+from app.prompts.unity_prompt import NARRATIVE_GENRES, NARRATIVE_SCAFFOLD
 from app.services.gates import open_placeholders
 from app.services.llm_utils import _list, complete, extract_json
 
@@ -217,6 +218,10 @@ def _gamegold_md(project: dict, steps: list[dict], written: list[tuple[dict, str
         "## Won't do",
         *_bullets(card.get("wont_do") or [], "(none yet)"),
         "",
+    ]
+    if project.get("genre") in NARRATIVE_GENRES:
+        lines += ["## Narrative scaffold", "", NARRATIVE_SCAFFOLD]
+    lines += [
         "## Assets",
         "| File | Type | Status |",
         "|---|---|---|",

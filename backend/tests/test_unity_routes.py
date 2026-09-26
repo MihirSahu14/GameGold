@@ -133,3 +133,50 @@ def test_export_build_pack_without_plan_still_ships_the_brief(client, mock_db):
     zf = zipfile.ZipFile(io.BytesIO(resp.content))
     assert "No build plan yet" in zf.read("GAMEGOLD.md").decode()
     assert json.loads(zf.read("plan.json"))["steps"] == []
+
+
+# ─── Genre-aware plan prompt (#6) ────────────────────────────────────────────
+
+def test_plan_system_prompt_branches_on_genre():
+    from app.prompts.unity_prompt import unity_plan_system_prompt
+
+    platformer = unity_plan_system_prompt("platformer")
+    assert "greybox" in platformer.lower()
+    assert "ink-unity-integration" not in platformer
+
+    for genre in ("narrative", "visual-novel"):
+        narrative = unity_plan_system_prompt(genre)
+        assert "https://github.com/inkle/ink-unity-integration.git#upm" in narrative
+        assert "Packages/manifest.json" in narrative
+        assert "InkFile" in narrative
+        assert "#speaker" in narrative and "#bg" in narrative and "#chapter" in narrative
+        assert "Essential Resources" in narrative
+        assert "greybox platformer" not in narrative.lower()
+
+
+def test_generate_plan_uses_narrative_prompt_for_narrative_genre(client, mock_db, monkeypatch):
+    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "genre": "narrative", "concept_card": CARD}
+    plan = {"summary": "s", "steps": [{
+        "description": "Create the dialogue canvas", "tool": "gameobject.create",
+        "args": {"name": "DialogueCanvas"}, "category": "gameobject",
+    }]}
+    llm = MagicMock(return_value=make_llm_response(json.dumps(plan)))
+    monkeypatch.setattr("litellm.completion", llm)
+    mock_db.unity_plans.find_one.side_effect = lambda q: {
+        "_id": ObjectId(), **mock_db.unity_plans.replace_one.call_args[0][1]
+    }
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/unity/plan/generate")
+    assert resp.status_code == 201
+    system = llm.call_args.kwargs["messages"][0]["content"]
+    assert "ink-unity-integration" in system
+
+
+def test_build_pack_includes_narrative_scaffold_only_for_narrative(client, mock_db):
+    mock_db.unity_plans.find_one.return_value = None
+    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "genre": "visual-novel", "concept_card": CARD}
+    guide = zipfile.ZipFile(io.BytesIO(client.get(f"/projects/{TEST_PROJECT_ID}/unity/export").content)).read("GAMEGOLD.md").decode()
+    assert "ink-unity-integration.git#upm" in guide and "InkFile" in guide
+
+    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "concept_card": CARD}
+    guide = zipfile.ZipFile(io.BytesIO(client.get(f"/projects/{TEST_PROJECT_ID}/unity/export").content)).read("GAMEGOLD.md").decode()
+    assert "ink-unity-integration" not in guide
