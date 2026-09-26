@@ -39,3 +39,7 @@ Ripple = narrative game (Avery / Skyler, hidden attachment traits). Repo: `Proje
 | 32 | Assets | No delete for assets; duplicates (`cafe_night` ×2) and the typo'd one stay and get shipped to Unity | Delete action on AssetCard (+ confirm) |
 | 33 | Assets | After a successful generate, the new sprite didn't appear until a page reload | Invalidate/append the assets query on success |
 | 34 | Unity (plan) | New-scene step refused because the previous scene had unsaved changes; plan had no way to save it | `scene.new` takes `saveCurrent` (saves titled dirty scenes, never discards); narrative plan sets it ✅ |
+| 35 | Look & feel | GameGold's built-in DialoguePlayer is plain (flat art + textbox); Ripple's riskiest assumption is *feel*, and the halftone/duotone memory look, title wordmark and ambient audio from the hand-built reference aren't available in GameGold | "Look" presets for the runtime (halftone/duotone shader, per-chapter tint, wordmark title, procedural ambience) chosen on the Unity page |
+| 36 | Unity (runner) | Clicking RUN while another step runs is now ignored (good), but silently — the user can't tell their click did nothing | "Run all" button that queues steps and stops on the first failure |
+
+**Milestone 2026-09-26:** Ripple built end-to-end in Unity (RippleGG) purely through GameGold's UI: generated plan (21 steps, no LLM) → DialoguePlayer + story JSON + 14 sprites + scene → Play mode, 0 errors.
