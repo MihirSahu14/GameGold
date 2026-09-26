@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { Asset, AssetProposal, ArtStyle, ScriptType } from '@gamegold/types'
+import type { Asset, AssetProposal, ArtStyle, AssetKind, ScriptType } from '@gamegold/types'
 
 // ─── List all assets for a project ───────────────────────────────────────────
 export function useAssets(projectId: string) {
@@ -46,7 +46,7 @@ function useGenerateAsset<TPayload extends RegenerateFields>(projectId: string, 
 // ─── Generate ─────────────────────────────────────────────────────────────────
 export function useGenerateSprite(projectId: string) {
   return useGenerateAsset<
-    { name: string; description: string; style: ArtStyle } & RegenerateFields
+    { name: string; description: string; style: ArtStyle; kind?: AssetKind } & RegenerateFields
   >(projectId, 'sprites')
 }
 

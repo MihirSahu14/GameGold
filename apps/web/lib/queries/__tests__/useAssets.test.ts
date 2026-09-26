@@ -164,6 +164,41 @@ describe('generate hooks with regenerateOf', () => {
   })
 })
 
+describe('useGenerateSprite', () => {
+  it('POSTs the kind field along with the sprite payload', async () => {
+    const { useGenerateSprite } = await import('@/lib/queries/useAssets')
+    const SPRITE_ASSET: Asset = {
+      ...SCRIPT_ASSET,
+      _id: 'asset3',
+      type: 'sprite',
+      code: undefined,
+      scriptType: undefined,
+      url: 'data:image/svg+xml;base64,abc',
+      style: 'illustrated',
+      kind: 'background',
+    }
+    mockApi.post.mockResolvedValueOnce({ data: SPRITE_ASSET })
+    const { wrapper } = makeSetup()
+
+    const { result } = renderHook(() => useGenerateSprite(PROJECT_ID), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({
+        name: 'Forest',
+        description: 'a lush forest',
+        style: 'illustrated',
+        kind: 'background',
+      })
+    })
+
+    expect(mockApi.post).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/assets/sprites`, {
+      name: 'Forest',
+      description: 'a lush forest',
+      style: 'illustrated',
+      kind: 'background',
+    })
+  })
+})
+
 describe('useDeleteAsset', () => {
   it('invalidates gates after deleting an asset', async () => {
     const { useDeleteAsset } = await import('@/lib/queries/useAssets')

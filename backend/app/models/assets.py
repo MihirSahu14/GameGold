@@ -5,6 +5,7 @@ from datetime import datetime
 
 
 AssetType = Literal["sprite", "script", "dialogue"]
+AssetKind = Literal["sprite", "background", "portrait"]
 ArtStyle = Literal["pixel", "illustrated"]
 
 ScriptType = Literal[
@@ -53,6 +54,7 @@ class GenerateSpriteRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(min_length=1, max_length=2000)
     style: ArtStyle = "pixel"
+    kind: AssetKind = "sprite"
     regenerate_of: Optional[str] = None
     note: str = Field(default="", max_length=2000)
 
@@ -108,6 +110,7 @@ class AssetOut(BaseModel):
     # Sprite
     url: Optional[str] = None
     style: Optional[ArtStyle] = None
+    kind: AssetKind = "sprite"  # legacy docs predate this field
     image_prompt: Optional[str] = None
     # Script
     code: Optional[str] = None
@@ -129,6 +132,7 @@ class AssetInDB(BaseModel):
     disclosed: bool = False
     url: Optional[str] = None
     style: Optional[ArtStyle] = None
+    kind: AssetKind = "sprite"
     image_prompt: Optional[str] = None
     code: Optional[str] = None
     script_type: Optional[ScriptType] = None

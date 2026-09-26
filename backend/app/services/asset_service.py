@@ -3,6 +3,7 @@ Phase 3 asset generation. Each artifact (sprite prompt, C# script, dialogue
 tree) is generated together with its Unity setup guide in a single LLM call.
 """
 import base64
+import re
 
 from app.models.assets import AssetProposal, DialogueTree, UnityGuide
 from app.prompts.asset_prompts import (
@@ -10,7 +11,7 @@ from app.prompts.asset_prompts import (
     SCRIPT_SYSTEM_PROMPT,
     DIALOGUE_SYSTEM_PROMPT,
     SUGGEST_SYSTEM_PROMPT,
-    SVG_SPRITE_SYSTEM_PROMPT,
+    SVG_SPRITE_SYSTEM_PROMPTS,
     build_sprite_prompt,
     build_script_prompt,
     build_dialogue_prompt,
@@ -18,6 +19,26 @@ from app.prompts.asset_prompts import (
     build_svg_sprite_prompt,
 )
 from app.services.llm_utils import _list, complete, extract_json
+
+_SVG_TAG_RE = re.compile(r"<svg[^>]*>.*?</svg>", re.IGNORECASE | re.DOTALL)
+
+
+def extract_svg(text: str) -> str:
+    """Pull SVG markup out of an LLM reply.
+    Preferred shape: raw `<svg ...>...</svg>` markup with nothing else.
+    Falls back to the older `{"svg": "..."}` JSON shape for compatibility.
+    Raises ValueError if neither is found."""
+    match = _SVG_TAG_RE.search(text)
+    if match:
+        return match.group(0)
+    try:
+        data = extract_json(text)
+    except ValueError:
+        raise ValueError("LLM returned no SVG for sprite fallback")
+    svg = str(data.get("svg", "")).strip()
+    if not svg:
+        raise ValueError("LLM returned no SVG for sprite fallback")
+    return svg
 
 
 def _make_guide(data: dict) -> UnityGuide:
@@ -51,13 +72,13 @@ async def suggest_assets(
 
 
 async def generate_sprite_assets(
-    name: str, description: str, style: str, game_context: str, regen: str = ""
+    name: str, description: str, style: str, game_context: str, regen: str = "", kind: str = "sprite"
 ) -> tuple[str, UnityGuide]:
     """Returns (image_prompt, unity_guide)."""
     data = extract_json(
         await complete(
             SPRITE_SYSTEM_PROMPT,
-            build_sprite_prompt(name, description, style, game_context, regen),
+            build_sprite_prompt(name, description, style, game_context, regen, kind),
         )
     )
     image_prompt = str(data.get("imagePrompt", "")).strip()
@@ -66,14 +87,13 @@ async def generate_sprite_assets(
     return image_prompt, _make_guide(data)
 
 
-async def generate_svg_sprite(name: str, image_prompt: str, style: str) -> str:
+async def generate_svg_sprite(name: str, image_prompt: str, style: str, kind: str = "sprite") -> str:
     """Fallback when Replicate is not configured: returns an SVG data URI."""
-    data = extract_json(
-        await complete(SVG_SPRITE_SYSTEM_PROMPT, build_svg_sprite_prompt(name, image_prompt, style))
+    system_prompt = SVG_SPRITE_SYSTEM_PROMPTS.get(kind, SVG_SPRITE_SYSTEM_PROMPTS["sprite"])
+    raw = await complete(
+        system_prompt, build_svg_sprite_prompt(name, image_prompt, style, kind), max_tokens=8000
     )
-    svg = str(data.get("svg", "")).strip()
-    if not svg:
-        raise ValueError("LLM returned no SVG for sprite fallback")
+    svg = extract_svg(raw)
     encoded = base64.b64encode(svg.encode()).decode()
     return f"data:image/svg+xml;base64,{encoded}"
 

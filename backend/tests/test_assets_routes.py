@@ -191,6 +191,78 @@ def test_create_sprite_svg_fallback_without_replicate_token(client, mock_db, mon
     assert stored["url"].startswith("data:image/svg+xml;base64,")
 
 
+def test_create_sprite_defaults_kind_to_sprite(client, mock_db, monkeypatch):
+    """No `kind` in the request → defaults to 'sprite' and is persisted."""
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    monkeypatch.setattr(
+        "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_SPRITE_JSON))
+    )
+    monkeypatch.setattr(
+        "app.routers.assets.generate_sprite_image",
+        AsyncMock(return_value="data:image/png;base64,abc123"),
+    )
+
+    inserted = _fake_asset_doc(
+        type="sprite",
+        name="Knight",
+        url="data:image/png;base64,abc123",
+        style="pixel",
+        kind="sprite",
+        image_prompt="a small knight",
+        code=None,
+        script_type=None,
+    )
+    mock_db.assets.insert_one.return_value = MagicMock(inserted_id=inserted["_id"])
+    mock_db.assets.find_one.return_value = inserted
+
+    resp = client.post(
+        f"/projects/{TEST_PROJECT_ID}/assets/sprites",
+        json={"name": "Knight", "description": "small knight", "style": "pixel"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["kind"] == "sprite"
+    stored = mock_db.assets.insert_one.call_args[0][0]
+    assert stored["kind"] == "sprite"
+
+
+def test_create_sprite_background_kind_persisted(client, mock_db, monkeypatch):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    monkeypatch.setattr(
+        "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_SPRITE_JSON))
+    )
+    monkeypatch.setattr(
+        "app.routers.assets.generate_sprite_image",
+        AsyncMock(return_value="data:image/png;base64,abc123"),
+    )
+
+    inserted = _fake_asset_doc(
+        type="sprite",
+        name="Forest",
+        url="data:image/png;base64,abc123",
+        style="illustrated",
+        kind="background",
+        image_prompt="a lush forest",
+        code=None,
+        script_type=None,
+    )
+    mock_db.assets.insert_one.return_value = MagicMock(inserted_id=inserted["_id"])
+    mock_db.assets.find_one.return_value = inserted
+
+    resp = client.post(
+        f"/projects/{TEST_PROJECT_ID}/assets/sprites",
+        json={
+            "name": "Forest",
+            "description": "a lush forest clearing",
+            "style": "illustrated",
+            "kind": "background",
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["kind"] == "background"
+    stored = mock_db.assets.insert_one.call_args[0][0]
+    assert stored["kind"] == "background"
+
+
 def test_create_sprite_returns_201_with_data_uri(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     monkeypatch.setattr(

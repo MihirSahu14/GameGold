@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { Asset } from '@gamegold/types'
 import { UnityGuide } from './UnityGuide'
-import { downloadBlob, downloadHref } from '@/lib/utils'
+import { downloadBlob, downloadHref, cn } from '@/lib/utils'
 import { toastError } from '@/lib/api'
 import {
   useApproveAsset,
@@ -158,7 +158,10 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
           <img
             src={asset.url}
             alt={asset.name}
-            className="w-full aspect-square object-contain bg-zinc-950 rounded-lg border border-zinc-800"
+            className={cn(
+              'w-full object-contain bg-zinc-950 rounded-lg border border-zinc-800',
+              asset.kind === 'background' ? 'aspect-video' : 'aspect-square',
+            )}
             style={asset.style === 'pixel' ? { imageRendering: 'pixelated' } : undefined}
           />
         )}

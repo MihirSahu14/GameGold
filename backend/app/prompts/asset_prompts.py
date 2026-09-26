@@ -50,8 +50,15 @@ Bilinear for illustrated), and placing it in a scene.
 """ + GROUNDING_RULES
 
 
+KIND_GUIDE_NOTE = {
+    "sprite": "This is a game sprite — the Unity guide should cover importing it as a Sprite (2D and UI).",
+    "background": "This is a full-scene BACKGROUND, not a sprite — the Unity guide should cover setting it as a scene background or full-screen UI Image, not sprite import steps.",
+    "portrait": "This is a character PORTRAIT for dialogue/UI, not a gameplay sprite — the Unity guide should cover setting it as a UI Image (e.g. in a dialogue panel), not sprite-sheet import steps.",
+}
+
+
 def build_sprite_prompt(
-    name: str, description: str, style: str, game_context: str, regen: str = ""
+    name: str, description: str, style: str, game_context: str, regen: str = "", kind: str = "sprite"
 ) -> str:
     style_text = (
         "pixel art, crisp pixels, limited palette, 32x32 to 64x64 scale"
@@ -59,9 +66,11 @@ def build_sprite_prompt(
         else "2D illustrated, clean vector-like shapes, smooth shading"
     )
     context = f"\nGame context:\n{game_context}\n" if game_context else ""
+    kind_note = KIND_GUIDE_NOTE.get(kind, KIND_GUIDE_NOTE["sprite"])
     return f"""\
-Create the image prompt and Unity guide for this sprite.
+Create the image prompt and Unity guide for this asset.
 {context}
+Asset kind: {kind}. {kind_note}
 Sprite name: {name}
 Description: {description}
 Art style: {style_text}
@@ -216,14 +225,15 @@ Return the JSON object now.
 
 
 # ─── SVG fallback sprites (used when REPLICATE_API_TOKEN is not set) ──────────
+# Reply with ONLY raw <svg>...</svg> markup — no JSON, no prose, no markdown fences.
+# (Older prompt versions asked for a JSON-wrapped "svg" string; asset_service still
+# falls back to parsing that shape if raw markup isn't found in the reply.)
 
-SVG_SPRITE_SYSTEM_PROMPT = """\
+SVG_SPRITE_SYSTEM_PROMPTS = {
+    "sprite": """\
 You are a pixel art designer. Given a sprite description, create a 16x16 pixel art SVG.
 
-Respond with ONLY a valid JSON object — no prose, no markdown fences:
-{
-  "svg": "complete SVG string"
-}
+Respond with ONLY the raw SVG markup — no JSON, no prose, no markdown fences.
 
 SVG rules:
 - viewBox="0 0 16 16", shapeRendering="crispEdges", width="64" height="64".
@@ -233,16 +243,44 @@ SVG rules:
 - Use 4-8 colors maximum.
 - ONLY <rect> elements inside the <svg>. No <text>, <circle>, <path>, <use>.
 - Wrap everything in <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shapeRendering="crispEdges" width="64" height="64">...</svg>
-"""
+""",
+    "background": """\
+You are a game background artist. Given a scene description, create a flat vector SVG background.
+
+Respond with ONLY the raw SVG markup — no JSON, no prose, no markdown fences.
+
+SVG rules:
+- viewBox="0 0 320 180", width="1280" height="720".
+- Full-bleed: must include a background fill covering the entire viewBox.
+- Flat vector shapes only: <rect>, <polygon>, <circle>, <ellipse>, <path>. No <text>,
+  no <image>, no filters, no heavy gradients.
+- 6-10 muted colors with strong light/dark value contrast for readability.
+- Compose the scene described by the prompt. No characters unless explicitly asked.
+- Wrap everything in <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" width="1280" height="720">...</svg>
+""",
+    "portrait": """\
+You are a character portrait artist. Given a character description, create a flat vector bust portrait SVG.
+
+Respond with ONLY the raw SVG markup — no JSON, no prose, no markdown fences.
+
+SVG rules:
+- viewBox="0 0 240 320", width="480" height="640".
+- Transparent background — do not add a full-canvas background fill.
+- A single character bust (head + shoulders) in flat vector shapes.
+- Simple, readable face showing the requested expression.
+- 5-8 colors maximum. No text.
+- Wrap everything in <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" width="480" height="640">...</svg>
+""",
+}
 
 
-def build_svg_sprite_prompt(name: str, image_prompt: str, style: str) -> str:
+def build_svg_sprite_prompt(name: str, image_prompt: str, style: str, kind: str = "sprite") -> str:
     style_note = "pixel art (limited palette, strong silhouette)" if style == "pixel" else "2D illustrated (clean shapes, vibrant colors)"
     return f"""\
-Create the pixel art SVG for this game sprite.
+Create the SVG for this game asset.
 Name: {name}
 Visual description: {image_prompt}
 Style: {style_note}
 
-Return the JSON object now.
+Return the raw SVG markup now.
 """

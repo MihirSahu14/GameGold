@@ -158,13 +158,13 @@ async def create_sprite(
     try:
         async with project_llm_slot(project_id):
             image_prompt, guide = await generate_sprite_assets(
-                body.name, body.description, body.style, game_context, regen
+                body.name, body.description, body.style, game_context, regen, body.kind
             )
             try:
                 url = await generate_sprite_image(image_prompt, body.style)
             except SpriteGenerationError:
-                # No Replicate key — fall back to LLM-generated pixel art SVG
-                url = await generate_svg_sprite(body.name, image_prompt, body.style)
+                # No Replicate key — fall back to LLM-generated SVG
+                url = await generate_svg_sprite(body.name, image_prompt, body.style, body.kind)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -178,6 +178,7 @@ async def create_sprite(
                 "unity_guide": guide.model_dump(),
                 "url": url,
                 "style": body.style,
+                "kind": body.kind,
                 "image_prompt": image_prompt,
             },
         )
@@ -190,6 +191,7 @@ async def create_sprite(
             unity_guide=guide.model_dump(),
             url=url,
             style=body.style,
+            kind=body.kind,
             image_prompt=image_prompt,
         )
         out = await insert_and_return(db, asset)

@@ -176,6 +176,7 @@ export interface BalanceAnalysis {
 
 export type AssetType = 'sprite' | 'script' | 'dialogue'
 export type ArtStyle = 'pixel' | 'illustrated'
+export type AssetKind = 'sprite' | 'background' | 'portrait'
 
 export type ScriptType =
   | 'PlayerController2D'
@@ -234,6 +235,7 @@ export interface Asset {
   // Sprite fields
   url?: string
   style?: ArtStyle
+  kind?: AssetKind
   imagePrompt?: string
   // Script fields
   code?: string

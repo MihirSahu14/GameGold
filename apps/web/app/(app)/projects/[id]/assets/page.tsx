@@ -14,9 +14,10 @@ import {
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { AssetCard } from '@/components/assets/AssetCard'
 import { StyleToggle } from '@/components/assets/StyleToggle'
+import { KindToggle } from '@/components/assets/KindToggle'
 import { ProposalsPanel, proposalKey } from '@/components/assets/ProposalsPanel'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
-import type { ArtStyle, AssetProposal, AssetType, ScriptType } from '@gamegold/types'
+import type { ArtStyle, AssetKind, AssetProposal, AssetType, ScriptType } from '@gamegold/types'
 import { cn } from '@/lib/utils'
 
 const TABS: { key: AssetType; label: string; icon: string }[] = [
@@ -67,6 +68,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
   const [spriteName, setSpriteName] = useState('')
   const [spriteDesc, setSpriteDesc] = useState('')
   const [spriteStyle, setSpriteStyle] = useState<ArtStyle>('pixel')
+  const [spriteKind, setSpriteKind] = useState<AssetKind>('sprite')
 
   // Script form
   const [scriptName, setScriptName] = useState('')
@@ -90,6 +92,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
           name: spriteName.trim(),
           description: spriteDesc.trim(),
           style: spriteStyle,
+          kind: spriteKind,
         })
         setSpriteName('')
         setSpriteDesc('')
@@ -137,6 +140,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
           name: proposal.name,
           description: proposal.description,
           style: spriteStyle,
+          kind: spriteKind,
         })
       } else if (proposal.type === 'script') {
         await generateScript.mutateAsync({
@@ -281,6 +285,10 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
             <div className="flex flex-col gap-1">
               <label className="text-zinc-500 text-xs">Art style</label>
               <StyleToggle value={spriteStyle} onChange={setSpriteStyle} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-zinc-500 text-xs">Kind</label>
+              <KindToggle value={spriteKind} onChange={setSpriteKind} />
             </div>
           </div>
         )}
