@@ -121,7 +121,9 @@ def test_export_build_pack_zip(client, mock_db):
     assert zf.read("Scripts/Dasher.cs") == b"class Dasher {}"
     guide = zf.read("GAMEGOLD.md").decode()
     for text in ("Dash between beehives", "- Tense", "- No multiplayer", "`Scripts/Dasher.cs`",
-                 "placeholder", "1. Create the main scene", "unity mcp", "CoplayDev/unity-mcp"):
+                 "placeholder", "1. Create the main scene", "unity mcp", "CoplayDev/unity-mcp",
+                 "winget install Unity.CLI", "unity pipeline install", "unity mcp configure claude",
+                 "AssetDatabase.Refresh()", "unity recompile", "Console", "focus the Editor"):
         assert text in guide
     assert json.loads(zf.read("plan.json"))["steps"][0]["description"] == "Create the main scene"
 

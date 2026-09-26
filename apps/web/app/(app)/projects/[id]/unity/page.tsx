@@ -17,8 +17,10 @@ const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' 
 const SETUP_STEPS = [
   'Download the build pack below (GAMEGOLD.md brief + plan.json + your assets)',
   'Unzip it into your Unity project under Assets/GameGold/',
-  'Connect a Unity MCP server: Unity 6+ → run `unity mcp`; Unity 2021.3+ → install CoplayDev/unity-mcp',
+  'Install the official Unity CLI: `winget install Unity.CLI` (Windows), then open the project in the Editor',
+  'In the project folder run `unity pipeline install`, then `unity mcp configure claude` (alternative: CoplayDev/unity-mcp)',
   'Open Claude Code in the Unity project folder and ask it to build the prototype in Assets/GameGold/GAMEGOLD.md',
+  'Gotchas: focus the Editor after adding packages; `unity eval` AssetDatabase.Refresh() before `unity recompile`; check the Console, not exit codes; eval has a ~5s limit',
   'Review every change in the Editor — greybox and labeled placeholders only, one mechanic',
   'Enter Play mode and play the core loop yourself before inviting testers',
 ]
@@ -137,7 +139,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
           Build It In Unity
         </h1>
         <p style={{ color: '#6b7787', fontSize: '13px', margin: 0, lineHeight: 1.7 }}>
-          Download the build pack and build the prototype with Claude Code plus a Unity MCP server. The basic built-in bridge is a fallback if you can&apos;t run one.
+          Download the build pack and build the prototype with Claude Code plus the official Unity CLI (CoplayDev/unity-mcp works too). The basic built-in bridge is a fallback if you can&apos;t run either.
         </p>
       </div>
 
