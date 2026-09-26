@@ -26,8 +26,10 @@ You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
 }
 
 Rules:
-- playthroughLog: up to 15 steps; only steps the design supports. First person,
-  in this persona's voice.
+- playthroughLog: up to 10 steps; only steps the design supports. First person,
+  in this persona's voice, one sentence each.
+- Keep it tight so the JSON is never cut off: summary ≤ 3 sentences; every other
+  array ≤ 5 items; each item ≤ 2 sentences.
 - Stay strictly within what the design describes — flag gaps as issues instead
   of inventing content.
 - Every balanceSuggestion needs a specific, actionable fix and a plausible

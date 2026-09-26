@@ -109,7 +109,8 @@ async def run_playtest(
     is_narrative: bool = False,
 ) -> PlaytestReportInDB:
     prompt = build_playtest_prompt(persona, design_context, systems_summary, concept_summary, is_narrative)
-    data = extract_json(await complete(PLAYTEST_SYSTEM_PROMPT, prompt, max_tokens=2500))
+    # 2500 truncated narrative reports mid-JSON (gap 49); the prompt also caps list sizes now.
+    data = extract_json(await complete(PLAYTEST_SYSTEM_PROMPT, prompt, max_tokens=6000))
 
     suggestions = []
     for item in _list(data.get("balanceSuggestions")):
