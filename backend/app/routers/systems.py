@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
-from bson import ObjectId
 from datetime import datetime
 
 from app.core.concurrency import project_llm_slot
@@ -58,7 +57,7 @@ async def save_system(
     current_user: dict = Depends(get_current_user),
 ):
     db = get_db()
-    await verify_project_access(project_id, current_user["_id"], db)
+    project = await verify_project_access(project_id, current_user["_id"], db)
 
     now = datetime.utcnow()
     existing = await db.systems.find_one({"project_id": project_id})
@@ -77,7 +76,7 @@ async def save_system(
         doc = await db.systems.find_one({"project_id": project_id})
         return GameSystemOut(**serialize_system(doc))
 
-    # First save — insert and advance project stage
+    # First save — insert
     response.status_code = status.HTTP_201_CREATED
     system_in_db = GameSystemInDB(
         project_id=project_id,
@@ -85,11 +84,6 @@ async def save_system(
         edges=body.edges,
     )
     result = await db.systems.insert_one(system_in_db.model_dump())
-
-    await db.projects.update_one(
-        {"_id": ObjectId(project_id)},
-        {"$set": {"stage": "systems", "updated_at": now}},
-    )
 
     doc = await db.systems.find_one({"_id": result.inserted_id})
     return GameSystemOut(**serialize_system(doc))
@@ -105,7 +99,7 @@ async def analyze_system(
     current_user: dict = Depends(get_current_user),
 ):
     db = get_db()
-    await verify_project_access(project_id, current_user["_id"], db)
+    project = await verify_project_access(project_id, current_user["_id"], db)
 
     # Fetch GDD for context (optional)
     gdd = await db.gdds.find_one({"project_id": project_id})
@@ -115,8 +109,11 @@ async def analyze_system(
         mechanics = strip_html(gdd["sections"].get("mechanics", ""))
         gdd_summary = f"{overview}\n{mechanics}".strip()
 
-    async with project_llm_slot(project_id):
-        analysis = await analyze_balance(body.nodes, body.edges, gdd_summary)
+    try:
+        async with project_llm_slot(project_id):
+            analysis = await analyze_balance(body.nodes, body.edges, gdd_summary)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
     # Cache result on the system doc; if the graph was never saved,
     # insert a full valid doc instead of a cache-only phantom.
@@ -135,11 +132,6 @@ async def analyze_system(
             analysis_cache=analysis,
         )
         await db.systems.insert_one(system_in_db.model_dump())
-        # Mirror first-save behavior so the stage still advances
-        await db.projects.update_one(
-            {"_id": to_object_id(project_id)},
-            {"$set": {"stage": "systems", "updated_at": now}},
-        )
 
     return analysis
 
@@ -153,7 +145,7 @@ async def extract_system(
     current_user: dict = Depends(get_current_user),
 ):
     db = get_db()
-    await verify_project_access(project_id, current_user["_id"], db)
+    project = await verify_project_access(project_id, current_user["_id"], db)
 
     gdd = await db.gdds.find_one({"project_id": project_id})
     if not gdd or not gdd.get("sections"):
@@ -166,8 +158,11 @@ async def extract_system(
         if sections.get(key)
     ).strip()
 
-    async with project_llm_slot(project_id):
-        extracted = await extract_systems(gdd_summary)
+    try:
+        async with project_llm_slot(project_id):
+            extracted = await extract_systems(gdd_summary)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
     now = datetime.utcnow()
     existing = await db.systems.find_one({"project_id": project_id})
@@ -188,9 +183,5 @@ async def extract_system(
     response.status_code = status.HTTP_201_CREATED
     system_in_db = GameSystemInDB(project_id=project_id, nodes=merged_nodes, edges=[])
     result = await db.systems.insert_one(system_in_db.model_dump())
-    await db.projects.update_one(
-        {"_id": to_object_id(project_id)},
-        {"$set": {"stage": "systems", "updated_at": now}},
-    )
     doc = await db.systems.find_one({"_id": result.inserted_id})
     return GameSystemOut(**serialize_system(doc))

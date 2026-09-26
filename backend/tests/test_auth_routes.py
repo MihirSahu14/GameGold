@@ -66,6 +66,22 @@ def test_register_duplicate_email_returns_409(auth_client, mock_db):
     assert resp.status_code == 409
 
 
+def test_register_duplicate_key_race_returns_409(auth_client, mock_db):
+    from pymongo.errors import DuplicateKeyError
+
+    # Both uniqueness checks pass, then a concurrent signup wins the unique index.
+    mock_db.users.find_one = AsyncMock(return_value=None)
+    mock_db.users.insert_one = AsyncMock(side_effect=DuplicateKeyError("E11000 duplicate key"))
+
+    resp = auth_client.post(
+        "/auth/register",
+        json={"email": "new@example.com", "username": "newuser", "password": "longenough123"},
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "Email or username already taken"
+
+
 def test_login_success_sets_cookies(auth_client, mock_db):
     mock_db.users.find_one = AsyncMock(return_value=EXISTING_USER)
 

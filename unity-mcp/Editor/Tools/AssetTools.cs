@@ -15,6 +15,16 @@ namespace GameGold.MCP
             return path;
         }
 
+        private static readonly byte[] PngMagic = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+
+        private static bool IsPng(byte[] bytes)
+        {
+            if (bytes.Length < PngMagic.Length) return false;
+            for (int i = 0; i < PngMagic.Length; i++)
+                if (bytes[i] != PngMagic[i]) return false;
+            return true;
+        }
+
         /// <summary>args: { className, code, path } — creates a C# MonoBehaviour file.</summary>
         internal static string CreateScript(string body)
         {
@@ -28,6 +38,11 @@ namespace GameGold.MCP
             if (string.IsNullOrEmpty(path))       path = $"Assets/Scripts/{className}.cs";
             path = SafeAssetPath(path);
             if (path == null) return GameGoldMCP.Error("'path' must stay under Assets/");
+            // Only runtime .cs — no Editor/ scripts (run with editor privileges on load), no .rsp/.asmdef/.asmref
+            if (!path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                return GameGoldMCP.Error("'path' must be a .cs file");
+            if (Array.Exists(path.Split('/'), seg => seg.Equals("Editor", StringComparison.OrdinalIgnoreCase)))
+                return GameGoldMCP.Error("Scripts may not be created inside an Editor folder");
 
             // Ensure directory exists
             var dir = Path.GetDirectoryName(path);
@@ -54,18 +69,21 @@ namespace GameGold.MCP
             if (string.IsNullOrEmpty(path))        path = $"Assets/Sprites/{name}.png";
             path = SafeAssetPath(path);
             if (path == null) return GameGoldMCP.Error("'path' must stay under Assets/");
+            if (!path.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                return GameGoldMCP.Error("'path' must be a .png file");
 
             // Strip data URI prefix if present
             var commaIdx = base64Data.IndexOf(',');
             if (commaIdx >= 0) base64Data = base64Data.Substring(commaIdx + 1);
 
-            var dir = Path.GetDirectoryName(path);
-            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir!);
-
             byte[] bytes;
             try { bytes = Convert.FromBase64String(base64Data); }
             catch { return GameGoldMCP.Error("Invalid base64 image data"); }
 
+            if (!IsPng(bytes)) return GameGoldMCP.Error("Image data is not a PNG");
+
+            var dir = Path.GetDirectoryName(path);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir!);
             File.WriteAllBytes(path, bytes);
             AssetDatabase.ImportAsset(path);
 

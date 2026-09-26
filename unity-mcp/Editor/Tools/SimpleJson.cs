@@ -1,76 +1,92 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 
 namespace GameGold.MCP
 {
     /// <summary>
-    /// Minimal JSON parser for MCP tool arguments. Only handles flat and one-level-nested
-    /// objects with string/number/bool values — sufficient for all MCP tool args.
-    /// Avoids shipping a full JSON library as a Unity Editor dependency.
+    /// Minimal JSON parser for MCP tool arguments. Handles nested objects with
+    /// string/number/bool/null values — sufficient for all MCP tool args.
+    /// Arrays are skipped (no tool takes one). Avoids shipping a full JSON library
+    /// as a Unity Editor dependency.
     /// </summary>
     internal class SimpleJson
     {
+        // A JSON null is stored as a null value: Has(key) is true, getters return their default.
         private readonly Dictionary<string, string> _values = new();
         private readonly Dictionary<string, SimpleJson> _objects = new();
 
         internal static SimpleJson Parse(string json)
         {
-            var result = new SimpleJson();
-            if (string.IsNullOrWhiteSpace(json)) return result;
-
-            json = json.Trim();
-            if (!json.StartsWith("{") || !json.EndsWith("}")) return result;
-            json = json.Substring(1, json.Length - 2).Trim();
-
+            if (string.IsNullOrWhiteSpace(json)) return new SimpleJson();
             int i = 0;
-            while (i < json.Length)
+            try
             {
-                // Skip whitespace and commas
-                while (i < json.Length && (json[i] == ',' || json[i] == ' ' || json[i] == '\n' || json[i] == '\r' || json[i] == '\t')) i++;
-                if (i >= json.Length) break;
+                SkipWs(json, ref i);
+                return i < json.Length && json[i] == '{' ? ParseObject(json, ref i) : new SimpleJson();
+            }
+            catch (FormatException) { return new SimpleJson(); } // malformed → empty args; tools report missing fields
+        }
 
-                // Read key
-                if (json[i] != '"') { i++; continue; }
+        private static SimpleJson ParseObject(string json, ref int i)
+        {
+            var result = new SimpleJson();
+            i++; // '{'
+            while (true)
+            {
+                SkipWs(json, ref i);
+                if (i >= json.Length) throw new FormatException("Unterminated object");
+                if (json[i] == '}') { i++; return result; }
+                if (json[i] == ',') { i++; continue; }
+                if (json[i] != '"') throw new FormatException("Expected key");
+
                 var key = ReadString(json, ref i);
+                SkipWs(json, ref i);
+                if (i >= json.Length || json[i] != ':') throw new FormatException("Expected ':'");
+                i++;
+                SkipWs(json, ref i);
+                if (i >= json.Length) throw new FormatException("Missing value");
 
-                // Skip colon
-                while (i < json.Length && json[i] != ':') i++;
-                i++; // skip ':'
-                while (i < json.Length && (json[i] == ' ' || json[i] == '\t')) i++;
-
-                if (i >= json.Length) break;
-
-                // Read value
-                if (json[i] == '"')
-                {
-                    result._values[key] = ReadString(json, ref i);
-                }
-                else if (json[i] == '{')
-                {
-                    // Nested object — find matching closing brace
-                    int depth = 0, start = i;
-                    do {
-                        if (json[i] == '{') depth++;
-                        else if (json[i] == '}') depth--;
-                        i++;
-                    } while (depth > 0 && i < json.Length);
-                    result._objects[key] = Parse(json.Substring(start, i - start));
-                }
+                char c = json[i];
+                if (c == '"') result._values[key] = ReadString(json, ref i);
+                else if (c == '{') result._objects[key] = ParseObject(json, ref i);
+                else if (c == '[') SkipArray(json, ref i);
                 else
                 {
                     // number, bool, null
                     int start = i;
-                    while (i < json.Length && json[i] != ',' && json[i] != '}' && json[i] != '\n') i++;
-                    result._values[key] = json.Substring(start, i - start).Trim();
+                    while (i < json.Length && json[i] != ',' && json[i] != '}' && !char.IsWhiteSpace(json[i])) i++;
+                    var raw = json.Substring(start, i - start);
+                    result._values[key] = raw == "null" ? null : raw;
                 }
             }
-            return result;
+        }
+
+        private static void SkipWs(string json, ref int i)
+        {
+            while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
+        }
+
+        private static void SkipArray(string json, ref int i)
+        {
+            int depth = 0;
+            while (i < json.Length)
+            {
+                char c = json[i];
+                if (c == '"') { ReadString(json, ref i); continue; } // brackets inside strings don't count
+                if (c == '[' || c == '{') depth++;
+                else if (c == ']' || c == '}') depth--;
+                i++;
+                if (depth == 0) return;
+            }
+            throw new FormatException("Unterminated array");
         }
 
         private static string ReadString(string json, ref int i)
         {
             i++; // skip opening quote
-            var sb = new System.Text.StringBuilder();
+            var sb = new StringBuilder();
             while (i < json.Length && json[i] != '"')
             {
                 if (json[i] == '\\' && i + 1 < json.Length)
@@ -80,15 +96,28 @@ namespace GameGold.MCP
                     {
                         case '"': sb.Append('"'); break;
                         case '\\': sb.Append('\\'); break;
+                        case '/': sb.Append('/'); break;
                         case 'n': sb.Append('\n'); break;
                         case 'r': sb.Append('\r'); break;
                         case 't': sb.Append('\t'); break;
+                        case 'b': sb.Append('\b'); break;
+                        case 'f': sb.Append('\f'); break;
+                        case 'u':
+                            if (i + 4 < json.Length &&
+                                int.TryParse(json.Substring(i + 1, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var code))
+                            {
+                                sb.Append((char)code); // surrogate pairs arrive as two \u escapes and recombine naturally
+                                i += 4;
+                            }
+                            else throw new FormatException("Bad \\u escape");
+                            break;
                         default: sb.Append(json[i]); break;
                     }
                 }
                 else sb.Append(json[i]);
                 i++;
             }
+            if (i >= json.Length) throw new FormatException("Unterminated string");
             i++; // skip closing quote
             return sb.ToString();
         }
@@ -96,16 +125,18 @@ namespace GameGold.MCP
         internal bool Has(string key) => _values.ContainsKey(key) || _objects.ContainsKey(key);
 
         internal string GetString(string key, string defaultValue = "")
-            => _values.TryGetValue(key, out var v) ? v : defaultValue;
+            => _values.TryGetValue(key, out var v) && v != null ? v : defaultValue;
 
         internal float GetFloat(string key, float defaultValue = 0f)
-            => _values.TryGetValue(key, out var v) && float.TryParse(v, out var f) ? f : defaultValue;
+            => _values.TryGetValue(key, out var v) &&
+               float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var f) ? f : defaultValue;
 
         internal int GetInt(string key, int defaultValue = 0)
-            => _values.TryGetValue(key, out var v) && int.TryParse(v, out var n) ? n : defaultValue;
+            => _values.TryGetValue(key, out var v) &&
+               int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : defaultValue;
 
         internal bool GetBool(string key, bool defaultValue = false)
-            => _values.TryGetValue(key, out var v) ? v.ToLower() == "true" : defaultValue;
+            => _values.TryGetValue(key, out var v) && v != null ? v.ToLowerInvariant() == "true" : defaultValue;
 
         internal SimpleJson GetObject(string key)
             => _objects.TryGetValue(key, out var obj) ? obj : new SimpleJson();

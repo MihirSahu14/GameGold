@@ -8,19 +8,20 @@ from app.db.mongodb import get_db, to_object_id
 from app.models.playtest import (
     RunPlaytestRequest,
     PlaytestReportOut,
+    PlaytestSessionCreate,
+    PlaytestSessionInDB,
+    SessionSynthesisOut,
     BugCreate,
     BugUpdate,
     BugOut,
     BugInDB,
 )
 from app.routers.auth import get_current_user
-from app.services.playtest_service import run_playtest
+from app.services.playtest_service import run_playtest, synthesize_sessions
 from app.services.llm_utils import strip_html
 
 router = APIRouter(prefix="/projects/{project_id}/playtest", tags=["playtest"])
 bugs_router = APIRouter(prefix="/projects/{project_id}/bugs", tags=["bugs"])
-
-STAGE_ORDER = ["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"]
 
 
 def serialize(doc: dict) -> dict:
@@ -35,15 +36,6 @@ async def verify_project_access(project_id: str, user_id: str, db) -> dict:
     if str(project["user_id"]) != user_id:
         raise HTTPException(status_code=403, detail="Not your project")
     return project
-
-
-async def advance_stage(db, project: dict, target: str) -> None:
-    current = project.get("stage", "concept")
-    if STAGE_ORDER.index(target) > STAGE_ORDER.index(current):
-        await db.projects.update_one(
-            {"_id": project["_id"]},
-            {"$set": {"stage": target, "updated_at": datetime.utcnow()}},
-        )
 
 
 # ─── Playtest reports ─────────────────────────────────────────────────────────
@@ -86,6 +78,9 @@ async def run_simulation(
             for key in ("overview", "mechanics", "progression", "levels")
         ]
         gdd_summary = "\n".join(p for p in parts if p)[:5000]
+    if not gdd_summary:
+        # Nothing to play through — the LLM would invent the whole game.
+        raise HTTPException(status_code=409, detail="Generate a GDD before running a playtest")
 
     system = await db.systems.find_one({"project_id": project_id})
     systems_summary = ""
@@ -111,10 +106,54 @@ async def run_simulation(
         raise HTTPException(status_code=502, detail=str(exc))
 
     result = await db.playtests.insert_one(report.model_dump())
-    await advance_stage(db, project, "playtesting")
 
     doc = await db.playtests.find_one({"_id": result.inserted_id})
     return PlaytestReportOut(**serialize(doc))
+
+
+
+# ─── Human sessions (the only playtests that count toward gates) ─────────────
+
+@router.post(
+    "/sessions",
+    response_model=PlaytestReportOut,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+)
+async def log_session(
+    project_id: str,
+    body: PlaytestSessionCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    session = PlaytestSessionInDB(project_id=project_id, **body.model_dump())
+    result = await db.playtests.insert_one(session.model_dump())
+    doc = await db.playtests.find_one({"_id": result.inserted_id})
+    return PlaytestReportOut(**serialize(doc))
+
+
+@router.post("/sessions/synthesize", response_model=SessionSynthesisOut)
+@limiter.limit(LLM_RATE_LIMIT)
+async def synthesize(
+    request: Request,
+    response: Response,
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    docs = await db.playtests.find({"project_id": project_id, "kind": "session"}).sort("created_at", -1).to_list(50)
+    notes = [str(d.get("notes") or "").strip() for d in docs]
+    notes = [n for n in notes if n]
+    if not notes:
+        raise HTTPException(status_code=409, detail="Log a playtest session with notes first")
+    try:
+        async with project_llm_slot(project_id):
+            summary = await synthesize_sessions(notes)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return SessionSynthesisOut(summary=summary)
 
 
 @router.delete("/{report_id}", status_code=status.HTTP_204_NO_CONTENT)

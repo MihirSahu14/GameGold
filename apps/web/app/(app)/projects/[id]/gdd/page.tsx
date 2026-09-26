@@ -7,6 +7,7 @@ import { useGDD, useGenerateGDD, useSaveGDD, useRefineGDDSection } from '@/lib/q
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { GDDQuestionsPanel } from '@/components/gdd/GDDQuestionsPanel'
+import { downloadBlob } from '@/lib/utils'
 import type { GDDSections } from '@gamegold/types'
 
 // TipTap/ProseMirror is ~413 kB of this route's First Load JS (measured by C2) — only
@@ -48,11 +49,21 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
   const [refineInput, setRefineInput] = useState('')
   const [showRefine, setShowRefine] = useState(false)
   const [questions, setQuestions] = useState<string[] | null>(null)
+  const [dirty, setDirty] = useState(false)
+
+  // Warn before closing the tab with unsaved edits.
+  useEffect(() => {
+    if (!dirty) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [dirty])
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (gdd?.sections) {
       setLocalSections(gdd.sections)
+      setDirty(false)
     }
   }, [gdd])
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -62,6 +73,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
 
   async function handleGenerate(answers?: Record<string, string>) {
     if (!project?.conceptCard) return
+    if (hasGDD && !answers && !window.confirm('Regenerate the whole GDD with AI? This replaces every section, including your edits.')) return
     try {
       const result = await generateGDD.mutateAsync({ conceptCard: project.conceptCard, answers })
       if ('needsInfo' in result) {
@@ -79,6 +91,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
   async function handleSave() {
     try {
       await saveGDD.mutateAsync(localSections as GDDSections)
+      setDirty(false)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch {
@@ -88,6 +101,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
 
   function handleSectionChange(content: string) {
     setLocalSections((prev) => ({ ...prev, [activeSection]: content }))
+    setDirty(true)
   }
 
   function handleExport() {
@@ -105,13 +119,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
       return `## ${s.label}\n\n${body}`
     })
     const md = `# ${project?.title ?? 'Game'} — Game Design Document\n\n${parts.join('\n\n---\n\n')}\n`
-    const blob = new Blob([md], { type: 'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${(project?.title ?? 'gdd').replace(/\s+/g, '_')}_GDD.md`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadBlob(new Blob([md], { type: 'text/markdown' }), `${(project?.title ?? 'gdd').replace(/\s+/g, '_')}_GDD.md`)
   }
 
   async function handleRefine() {
@@ -128,6 +136,7 @@ export default function GDDPage({ params }: { params: Promise<{ id: string }> })
         instructions: refineInput,
       })
       setLocalSections((prev) => ({ ...prev, [activeSection]: result.content }))
+      setDirty(true)
       setRefineInput('')
       setShowRefine(false)
     } catch (err) {

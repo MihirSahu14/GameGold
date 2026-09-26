@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import type { Asset } from '@gamegold/types'
 import { UnityGuide } from './UnityGuide'
+import { downloadBlob, downloadHref } from '@/lib/utils'
+import { toastError } from '@/lib/api'
 import {
   useApproveAsset,
   useGenerateSprite,
@@ -25,13 +27,13 @@ const TYPE_META: Record<Asset['type'], { icon: string; label: string; badge: str
 }
 
 function download(filename: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadBlob(new Blob([content], { type: mime }), filename)
+}
+
+function flagClass(on: boolean): string {
+  return on
+    ? 'text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-900/40 text-emerald-400 transition-colors disabled:opacity-40'
+    : 'text-xs px-2 py-0.5 rounded-full font-medium text-zinc-600 border border-zinc-800 hover:text-emerald-400 hover:border-emerald-900 transition-colors disabled:opacity-40'
 }
 
 export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGuide }: AssetCardProps) {
@@ -75,7 +77,7 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
       setShowRegenerate(false)
       setNote('')
     } catch (err) {
-      console.error('Regeneration failed:', err)
+      toastError(err, 'Regeneration failed.')
     }
   }
 
@@ -91,10 +93,9 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
     } else if (asset.type === 'dialogue' && asset.tree) {
       download(`${asset.name.replace(/\s+/g, '_')}_dialogue.json`, JSON.stringify(asset.tree, null, 2), 'application/json')
     } else if (asset.type === 'sprite' && asset.url) {
-      const a = document.createElement('a')
-      a.href = asset.url
-      a.download = `${asset.name.replace(/\s+/g, '_')}.png`
-      a.click()
+      // Placeholder sprites are SVG data URIs — don't mislabel them as .png.
+      const ext = asset.url.startsWith('data:image/svg') ? 'svg' : 'png'
+      downloadHref(asset.url, `${asset.name.replace(/\s+/g, '_')}.${ext}`)
     }
   }
 
@@ -115,15 +116,31 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
         <button
           onClick={() => approveAsset.mutate({ assetId: asset._id, approved: !asset.approved })}
           disabled={approveAsset.isPending}
-          className={
-            asset.approved
-              ? 'text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-900/40 text-emerald-400 transition-colors disabled:opacity-40'
-              : 'text-xs px-2 py-0.5 rounded-full font-medium text-zinc-600 border border-zinc-800 hover:text-emerald-400 hover:border-emerald-900 transition-colors disabled:opacity-40'
-          }
+          className={flagClass(asset.approved)}
           title={asset.approved ? 'Approved — click to unapprove' : 'Mark as approved'}
         >
           {asset.approved ? '✓ Approved' : '✓'}
         </button>
+        {asset.placeholder && (
+          <>
+            <button
+              onClick={() => approveAsset.mutate({ assetId: asset._id, replaced: !asset.replaced })}
+              disabled={approveAsset.isPending}
+              className={flagClass(asset.replaced)}
+              title={asset.replaced ? 'Replaced with final work — click to undo' : 'Mark as replaced'}
+            >
+              {asset.replaced ? '↺ Replaced' : '↺'}
+            </button>
+            <button
+              onClick={() => approveAsset.mutate({ assetId: asset._id, disclosed: !asset.disclosed })}
+              disabled={approveAsset.isPending}
+              className={flagClass(asset.disclosed)}
+              title={asset.disclosed ? 'Disclosed as AI content — click to undo' : 'Mark as disclosed'}
+            >
+              {asset.disclosed ? '⚑ Disclosed' : '⚑'}
+            </button>
+          </>
+        )}
         <button
           onClick={() => onDelete(asset._id)}
           className="text-zinc-700 hover:text-red-400 transition-colors text-sm ml-1"

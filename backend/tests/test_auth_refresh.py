@@ -42,6 +42,18 @@ def _fake_refresh_store(mock_db) -> dict:
             if record.get("user_id") == query.get("user_id") and record.get("revoked") == query.get("revoked"):
                 record.update(update["$set"])
 
+    async def find_one_and_update(query, update):
+        # Mirrors the route's filter: jti match, not revoked, not expired.
+        record = store.get(query.get("jti"))
+        if not record or record.get("revoked") != query["revoked"]:
+            return None
+        if record["expires_at"] <= query["expires_at"]["$gt"]:
+            return None
+        before = dict(record)
+        record.update(update["$set"])
+        return before
+
+    mock_db.refresh_tokens.find_one_and_update = AsyncMock(side_effect=find_one_and_update)
     mock_db.refresh_tokens.insert_one = AsyncMock(side_effect=insert_one)
     mock_db.refresh_tokens.find_one = AsyncMock(side_effect=find_one)
     mock_db.refresh_tokens.update_one = AsyncMock(side_effect=update_one)

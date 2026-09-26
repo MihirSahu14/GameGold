@@ -38,7 +38,7 @@ TEST_PROJECT = {
     "_id": ObjectId(TEST_PROJECT_ID),
     "user_id": TEST_USER_ID,
     "title": "Test Game",
-    "stage": "gdd",
+    "stage": "pitch",
     "genre": "rpg",
     "platform": "pc",
     "tone": "epic",
@@ -79,10 +79,12 @@ def mock_db():
     db.refresh_tokens.find_one = AsyncMock(return_value=None)
     db.refresh_tokens.insert_one = AsyncMock()
     db.refresh_tokens.update_one = AsyncMock()
+    db.refresh_tokens.find_one_and_update = AsyncMock(return_value=None)
 
     db.login_attempts = MagicMock()
     db.login_attempts.find_one = AsyncMock(return_value=None)
     db.login_attempts.update_one = AsyncMock()
+    db.login_attempts.find_one_and_update = AsyncMock(return_value={"failed_count": 1})
 
     db.projects = MagicMock()
     db.projects.find_one = AsyncMock(return_value=None)
@@ -153,6 +155,8 @@ def client(mock_db, monkeypatch):
     monkeypatch.setattr("app.routers.unity.get_db", lambda: mock_db)
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
+    monkeypatch.setattr("app.main.migrate_stages", AsyncMock(return_value={}))
+    monkeypatch.setattr("app.main.migrate_emails", AsyncMock(return_value={}))
 
     from app.core.rate_limit import limiter
     limiter.reset()
@@ -175,8 +179,11 @@ def auth_client(mock_db, monkeypatch):
     from app.core.rate_limit import limiter
 
     monkeypatch.setattr("app.routers.auth.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.routers.oauth.get_db", lambda: mock_db)
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
+    monkeypatch.setattr("app.main.migrate_stages", AsyncMock(return_value={}))
+    monkeypatch.setattr("app.main.migrate_emails", AsyncMock(return_value={}))
     limiter.reset()
 
     with TestClient(app) as c:

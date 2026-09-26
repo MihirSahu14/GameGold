@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { downloadBlob } from '../utils'
 import type { DeploymentItem, StorePlatform, BuildPlatform } from '@gamegold/types'
 
 // ─── List all deployment items for a project ────────────────────────────────
@@ -23,7 +24,7 @@ function useGenerateDeploymentItem<TPayload>(projectId: string, path: string) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['deployment', projectId] })
-      // Backend advances stage to 'deployment' on first item — refresh project so sidebar unlocks
+      // refresh project + gates
       void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
     },
   })
@@ -57,6 +58,7 @@ export function useUpdateDeploymentGuide(projectId: string) {
       queryClient.setQueryData<DeploymentItem[]>(['deployment', projectId], (prev) =>
         prev?.map((item) => (item._id === updated._id ? updated : item)),
       )
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
 }
@@ -73,12 +75,15 @@ export function useDeleteDeploymentItem(projectId: string) {
       queryClient.setQueryData<DeploymentItem[]>(['deployment', projectId], (prev) =>
         prev?.filter((item) => item._id !== itemId),
       )
+      // Deleting a build guide can un-meet the ship gate's "every step checked" item.
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
 }
 
 // ─── Export bundle ────────────────────────────────────────────────────────────
 export function useExportBundle(projectId: string) {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async () => {
       const res = await api.get(`/projects/${projectId}/export`, { responseType: 'blob' })
@@ -86,12 +91,25 @@ export function useExportBundle(projectId: string) {
       const match = disposition?.match(/filename="(.+)"/)
       const filename = match?.[1] ?? 'game_bundle.zip'
 
-      const url = URL.createObjectURL(res.data as Blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      a.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(res.data as Blob, filename)
+    },
+    // The bundle carries AI_DISCLOSURE.md, which satisfies the provenance gate check.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
+    },
+  })
+}
+
+// ─── AI provenance report ─────────────────────────────────────────────────────
+export function useExportProvenance(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.get(`/projects/${projectId}/export/provenance`, { responseType: 'blob' })
+      downloadBlob(res.data as Blob, 'AI_DISCLOSURE.md')
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
 }

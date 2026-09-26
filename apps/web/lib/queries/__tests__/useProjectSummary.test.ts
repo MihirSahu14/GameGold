@@ -61,6 +61,19 @@ describe('stalenessMessage', () => {
     expect(stalenessMessage(summary, 'systems')).toMatch(/GDD changed since/)
   })
 
+  it('uses singular wording for the Unity setup', async () => {
+    const { stalenessMessage } = await import('@/lib/queries/useProjectSummary')
+    const summary = {
+      gdd: stage(false, null),
+      systems: stage(false, null),
+      assets: stage(true, '2024-01-02T00:00:00Z'),
+      playtest: stage(false, null),
+      unity: stage(true, '2024-01-01T00:00:00Z'),
+      deployment: stage(false, null),
+    }
+    expect(stalenessMessage(summary, 'unity')).toBe('assets changed since this Unity setup was generated.')
+  })
+
   it('returns null when the upstream stage has no content', async () => {
     const { stalenessMessage } = await import('@/lib/queries/useProjectSummary')
     const summary = {

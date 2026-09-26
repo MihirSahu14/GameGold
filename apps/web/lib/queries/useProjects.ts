@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { Project, ConceptCard } from '@gamegold/types'
+import type { Project, ProjectCreate, ConceptCard, PitchInterview } from '@gamegold/types'
 
 // ─── Fetch all projects ───────────────────────────────────────────────────────
 export function useProjects() {
@@ -29,7 +29,7 @@ export function useProject(id: string) {
 export function useCreateProject() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (data: Partial<Project>) => {
+    mutationFn: async (data: ProjectCreate) => {
       const res = await api.post<Project>('/projects', data)
       return res.data
     },
@@ -56,17 +56,26 @@ export function useUpdateConceptCard(projectId: string) {
   })
 }
 
-// ─── Advance stage to 'unity' (called from Unity Integration page) ───────────
-export function useMarkUnityComplete(projectId: string) {
+// ─── Update cut list ──────────────────────────────────────────────────────────
+export function useUpdateCutList(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async () => {
-      const res = await api.patch<Project>(`/projects/${projectId}`, { stage: 'unity' })
+    mutationFn: async (cutList: string[]) => {
+      const res = await api.patch<Project>(`/projects/${projectId}`, { cutList })
       return res.data
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['projects', projectId], data)
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
+// ─── Pitch interview (asks; never writes the pitch) ──────────────────────────
+export function usePitchInterview(projectId: string) {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.post<PitchInterview>(`/projects/${projectId}/pitch/interview`)
+      return res.data
     },
   })
 }

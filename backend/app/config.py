@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     # Password reset email — unset means log-only (no provider wired yet)
     email_provider: str = ""
 
+    # Google + GitHub sign-in — a provider with an empty id/secret answers 503
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    # Fixed redirect targets for the OAuth flow (never user-controlled)
+    frontend_url: str = "http://localhost:3000"
+    api_public_url: str = "http://localhost:8000"
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "https://gamegold.vercel.app"]
 

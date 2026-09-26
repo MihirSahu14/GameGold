@@ -1,17 +1,19 @@
 """
-Phase 6 Unity MCP — backend routes.
-The browser executes MCP tool calls directly against localhost:7432 (Unity Editor
-on the developer's machine). This router handles only plan generation + persistence.
+Unity routes: prototype plan generation + persistence, and the build pack export
+(primary path: Claude Code + a Unity MCP server). The browser still executes plan
+steps against localhost:7432 for the basic built-in bridge.
 """
+import io
+
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
-from bson import ObjectId
-from datetime import datetime
+from fastapi.responses import StreamingResponse
 
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.unity import UnityBuildPlanOut, UnityBuildPlanInDB, StepCompleteRequest
 from app.routers.auth import get_current_user
+from app.services.deployment_service import export_build_pack, safe_filename
 from app.services.unity_service import generate_build_plan
 
 router = APIRouter(prefix="/projects/{project_id}/unity", tags=["unity"])
@@ -58,18 +60,16 @@ async def generate_plan(
     project_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Ask Claude to generate a Unity build plan from the project's GDD + assets."""
+    """Ask the LLM for a prototype build plan from the pitch (pillars + core loop) + assets."""
     db = get_db()
     project = await verify_project_access(project_id, current_user["_id"], db)
 
-    # Gather context
-    gdd = await db.gdds.find_one({"project_id": project_id})
-    system = await db.systems.find_one({"project_id": project_id})
-    assets_cursor = db.assets.find({"project_id": project_id})
-    assets = await assets_cursor.to_list(200)
-
-    gdd_sections: dict = (gdd or {}).get("sections", {})
-    system_nodes: list = (system or {}).get("nodes", [])
+    card = project.get("concept_card") or {}
+    prototype_goal = str(card.get("core_loop") or "").strip()
+    if not prototype_goal:
+        # Without a core loop the model would invent the whole prototype.
+        raise HTTPException(status_code=409, detail="Write your core loop on the Pitch page first")
+    assets = await db.assets.find({"project_id": project_id}).to_list(200)
 
     try:
         async with project_llm_slot(project_id):
@@ -77,8 +77,8 @@ async def generate_plan(
                 game_title=project.get("title", "Untitled"),
                 genre=project.get("genre", ""),
                 platform=project.get("platform", ""),
-                gdd_sections=gdd_sections,
-                system_nodes=system_nodes,
+                pillars=[str(p) for p in card.get("pillars") or []],
+                prototype_goal=prototype_goal,
                 assets=assets,
             )
     except ValueError as exc:
@@ -131,3 +131,20 @@ async def mark_step(
     )
     doc = await db.unity_plans.find_one({"project_id": project_id})
     return UnityBuildPlanOut(**serialize(doc))
+
+
+@router.get("/export")
+async def export_pack(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Zip: GAMEGOLD.md brief + plan.json + asset files, for Claude Code + a Unity MCP server."""
+    db = get_db()
+    project = await verify_project_access(project_id, current_user["_id"], db)
+    zip_bytes = await export_build_pack(db, project)
+    filename = f"{safe_filename(project.get('title', 'game').replace(' ', '_'), 'game')}_build_pack.zip"
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

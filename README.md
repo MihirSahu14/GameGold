@@ -4,6 +4,8 @@
 
 Named after the industry term *"gone gold"* — the moment a game is finished, approved, and ready to ship. GameGold is the platform that gets you there.
 
+**Live:** [gamegold.vercel.app](https://gamegold.vercel.app) · **Stack:** Next.js 16, FastAPI, MongoDB, LiteLLM (Claude in prod) · **Unity:** in-Editor MCP server (C#) · **Tests:** 135 backend pytest tests
+
 ---
 
 ## What is GameGold?
@@ -40,26 +42,27 @@ Every generated artifact — sprites, scripts, dialogue trees, architecture docs
 
 > *Dragging assets into Unity, wiring up components, building scenes — that's the craft. GameGold handles the generation and guidance. You handle the creation.*
 
-**Future integration (Phase 6):** When the Unity MCP server ships, Claude will be able to act inside the Unity Editor directly — creating GameObjects, attaching scripts, setting Inspector values through real Editor APIs. Scene composition, gameplay feel, and creative decisions always stay entirely in your hands.
+**Unity MCP integration:** a C# MCP server (`unity-mcp/`) runs inside the Unity Editor on `localhost:7432`. From the Unity Integration stage, the browser calls its tools directly: create GameObjects, import sprites, add components and set fields, enter Play mode. Scene composition, gameplay feel, and creative decisions always stay entirely in your hands.
 
 ---
 
-## The 6 Phases
+## The 7 Stages
 
-| Phase | Description | Status |
+| Stage | Description | Status |
 |---|---|---|
-| **1. Concept & GDD** | Concept Card → AI-generated Game Design Document → edit in-browser | ✅ Complete |
-| **2. Systems Design** | Visual node graph for game entities + Claude balance analyzer | ✅ Complete |
-| **3. Asset Production** | Sprite generator + step-by-step Unity guides + dialogue trees + C# scaffolding | ✅ Complete |
-| **4. Playtesting** | AI playtest simulator (4 player personas) + bug tracker with Unity-specific tweak instructions | ✅ Complete |
-| **5. Deployment** | Store page generator, press kit, Unity build instructions, full export bundle | ✅ Complete |
-| **6. Unity MCP Server** | Model Context Protocol server inside the Unity Editor — Claude reads scene hierarchy, creates GameObjects, attaches scripts, writes Inspector values directly | 🔜 Next |
+| **1. Concept** | Concept Card: title, genre, tone, core loop, unique hook | ✅ Live |
+| **2. GDD** | AI-generated 8-section Game Design Document, edited in-browser (TipTap), per-section AI refine | ✅ Live |
+| **3. Systems** | Visual node graph for game entities (ReactFlow) + AI balance analyzer | ✅ Live |
+| **4. Assets** | Sprite generator + C# scaffolding + dialogue trees, each with a step-by-step Unity guide | ✅ Live |
+| **5. Unity Integration** | In-Editor MCP server: the browser creates GameObjects, imports sprites, sets component fields, enters Play mode | ✅ Live (needs Unity open locally) |
+| **6. Playtesting** | AI playtest simulator (4 player personas) + bug tracker with Unity-specific tweak instructions | ✅ Live |
+| **7. Deployment** | Store page generator, press kit, Unity build instructions, full export bundle | ✅ Live |
 
 ---
 
 ## Unity Integration — How It Works
 
-GameGold is Unity-primary. Every output in Phase 3 onward includes a dedicated **Unity Setup Guide** — a collapsible, step-by-step panel that walks you through integrating the generated asset into your project.
+GameGold is Unity-primary. Every output from Stage 4 onward includes a dedicated **Unity Setup Guide** — a collapsible, step-by-step panel that walks you through integrating the generated asset into your project.
 
 ### Example: Generated Sprite
 ```
@@ -94,14 +97,14 @@ GameGold is Unity-primary. Every output in Phase 3 onward includes a dedicated *
 
 Steps are **checkable** — you mark them off as you work. Progress is saved per asset. The developer stays in control of their Unity workspace at every moment.
 
-**Phase 6 upgrade:** These instruction steps become one-click actions via direct Unity project integration — but the creative work (scene layout, gameplay feel, what goes where) always stays with you.
+**With Unity connected:** the Unity Integration stage can run these steps as tool calls through the MCP bridge — but the creative work (scene layout, gameplay feel, what goes where) always stays with you.
 
 ---
 
 ## Tech Stack
 
 ### Frontend (`apps/web`)
-- **Next.js 14** (App Router) + TypeScript
+- **Next.js 16** (App Router) + TypeScript
 - **Tailwind CSS** for styling
 - **TipTap** — rich text GDD editor
 - **ReactFlow** — visual systems node graph
@@ -119,8 +122,8 @@ Steps are **checkable** — you mark them off as you work. Progress is saved per
 ### Infrastructure
 - **Vercel** — frontend deployment
 - **Render** — backend deployment
-- **Cloudflare R2** — asset file storage (Phase 3)
-- **Unity MCP Server** — Model Context Protocol server (C# Unity package) giving Claude live Editor access (Phase 6)
+- **Cloudflare R2** — asset file storage
+- **Unity MCP Server** — Model Context Protocol server (C# Unity package) listening on `localhost:7432`; the browser calls it directly
 
 ---
 
@@ -161,7 +164,7 @@ GameGold/
 │       ├── services/           # LLM, balance, asset, replicate, playtest, auth services
 │       ├── prompts/            # GDD, balance, asset, playtest system prompts
 │       └── db/                 # MongoDB connection
-├── tests/                      # 92 pytest tests (backend)
+├── tests/                      # 135 pytest tests (backend)
 └── packages/
     ├── types/                  # Shared TypeScript types
     └── config/                 # Shared tsconfig
@@ -311,7 +314,7 @@ Full interactive docs available at `http://localhost:8000/docs` when the backend
 
 ## Features
 
-### Phase 1 — Concept & GDD
+### Stages 1–2 — Concept & GDD
 
 **Concept Card** — define the foundation of your game:
 - Title, tagline, genre, platform
@@ -330,7 +333,7 @@ Each section is editable in the built-in rich text editor (headings, lists, code
 
 ---
 
-### Phase 2 — Systems Design
+### Stage 3 — Systems Design
 
 **Visual Node Graph** — model your game's entities and relationships:
 - Drag to add nodes: entities (characters, items), mechanics, events, states
@@ -348,7 +351,7 @@ Analysis uses your GDD (overview + mechanics) as context so Claude understands y
 
 ---
 
-### Phase 3 — Asset Production
+### Stage 4 — Asset Production
 
 Three asset types, each generated **together with its Unity setup guide** in a single AI call:
 
@@ -360,7 +363,7 @@ Every guide is a **checkable step list** — progress is saved per asset as you 
 
 ---
 
-### Phase 4 — Playtesting
+### Stage 6 — Playtesting
 
 **AI Playtest Simulator** — pick a player persona and AI plays through your game using the GDD and systems graph:
 
@@ -375,22 +378,25 @@ Each run produces a report: first-person playthrough log, **softlocks**, **pacin
 
 ---
 
-## Roadmap
+### Stage 5 — Unity Integration
 
-**Phase 6 — Unity MCP Server (next)**
-A Model Context Protocol server that runs inside the Unity Editor as a C# package. Claude gets live access to the Editor — it can read the scene hierarchy, create and configure GameObjects, attach components, set Inspector values, and import assets. No file-system guesswork from outside Unity; everything goes through real Editor APIs. GameGold's web UI gets a "Send to Unity" action on each generated artifact. Creative decisions (scene layout, gameplay tuning) always remain yours.
+A C# package (`unity-mcp/`) that runs an MCP server inside the Unity Editor on `localhost:7432`. The GameGold web app calls it straight from the browser, so no file-system guesswork from outside Unity; everything goes through real Editor APIs.
+
+Tools: `scene.list`, `scene.new`, `gameobject.create`, `gameobject.find`, `gameobject.delete`, `component.add`, `component.setField`, `asset.importSprite`, `asset.createScript`, `playmode.enter`, `playmode.exit`.
+
+To use it: copy `unity-mcp/` into your Unity project's `Packages/` folder, open the project, then open the Unity Integration stage in GameGold.
 
 ---
 
 ## Built By
 
-**Mihir Sahu** — [mihirsahu.vercel.app](https://mihirsahu.vercel.app)
+**Mihir Sahu** — [mihirsahu.dev](https://mihirsahu.dev)
 
 CS Graduate, University of Wisconsin-Madison. Full-stack engineer and game developer bridging the gap between game design and AI-powered software tooling.
 
 ---
 
-*GameGold is actively in development. Phases 1–5 are complete and running.*
+*GameGold is actively in development. All 7 stages are live.*
 
 ---
 

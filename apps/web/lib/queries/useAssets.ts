@@ -30,10 +30,14 @@ function useGenerateAsset<TPayload extends RegenerateFields>(projectId: string, 
         queryClient.setQueryData<Asset[]>(['assets', projectId], (prev) =>
           prev?.map((a) => (a._id === asset._id ? asset : a)),
         )
+        // Regenerating resets placeholder/replaced/disclosed — the ship gate can flip.
+        void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
       } else {
         void queryClient.invalidateQueries({ queryKey: ['assets', projectId] })
         // Backend advances stage to 'assets' on first asset — refresh project so sidebar unlocks
         void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+        // A new asset can open/close the ship gate's placeholder check.
+        void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
       }
     },
   })
@@ -71,18 +75,22 @@ export function useSuggestAssets(projectId: string) {
   })
 }
 
-// ─── Approve ──────────────────────────────────────────────────────────────────
+// ─── Approve / provenance flags ──────────────────────────────────────────────
+type AssetFlags = Partial<Pick<Asset, 'approved' | 'replaced' | 'disclosed'>>
+
 export function useApproveAsset(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ assetId, approved }: { assetId: string; approved: boolean }) => {
-      const res = await api.patch<Asset>(`/projects/${projectId}/assets/${assetId}`, { approved })
+    mutationFn: async ({ assetId, ...flags }: { assetId: string } & AssetFlags) => {
+      const res = await api.patch<Asset>(`/projects/${projectId}/assets/${assetId}`, flags)
       return res.data
     },
     onSuccess: (updated) => {
       queryClient.setQueryData<Asset[]>(['assets', projectId], (prev) =>
         prev?.map((a) => (a._id === updated._id ? updated : a)),
       )
+      // replaced/disclosed feed the ship gate
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
 }
@@ -118,6 +126,8 @@ export function useDeleteAsset(projectId: string) {
       queryClient.setQueryData<Asset[]>(['assets', projectId], (prev) =>
         prev?.filter((a) => a._id !== assetId),
       )
+      // Removing an open placeholder (or the last asset) can flip the ship gate.
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
     },
   })
 }

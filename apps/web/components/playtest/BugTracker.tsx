@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { Bug, BugSeverity, BugStatus } from '@gamegold/types'
 import { useBugs, useCreateBug, useUpdateBug, useDeleteBug } from '@/lib/queries/usePlaytest'
 import { cn } from '@/lib/utils'
+import { toastError } from '@/lib/api'
 
 const SEVERITIES: { value: BugSeverity; label: string; badge: string }[] = [
   { value: 'low', label: 'Low', badge: 'bg-zinc-800 text-zinc-400' },
@@ -37,12 +38,17 @@ export function BugTracker({ projectId }: { projectId: string }) {
 
   async function handleCreate() {
     if (!title.trim()) return
-    await createBug.mutateAsync({
-      title: title.trim(),
-      description: description.trim(),
-      severity,
-      gddSection: gddSection || undefined,
-    })
+    try {
+      await createBug.mutateAsync({
+        title: title.trim(),
+        description: description.trim(),
+        severity,
+        gddSection: gddSection || undefined,
+      })
+    } catch (err) {
+      toastError(err, 'Could not save the bug.')
+      return
+    }
     setTitle('')
     setDescription('')
     setSeverity('medium')

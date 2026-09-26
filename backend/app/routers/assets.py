@@ -2,13 +2,12 @@ import json
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
-from datetime import datetime
 
 from app.core.concurrency import project_llm_slot
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.assets import (
-    ApproveAssetRequest,
+    AssetUpdate,
     AssetOut,
     AssetInDB,
     GenerateSpriteRequest,
@@ -31,8 +30,6 @@ from app.services.llm_utils import strip_html
 
 router = APIRouter(prefix="/projects/{project_id}/assets", tags=["assets"])
 
-STAGE_ORDER = ["concept", "gdd", "systems", "assets", "unity", "playtesting", "deployment"]
-
 
 def serialize_asset(doc: dict) -> dict:
     doc["_id"] = str(doc["_id"])
@@ -46,16 +43,6 @@ async def verify_project_access(project_id: str, user_id: str, db) -> dict:
     if str(project["user_id"]) != user_id:
         raise HTTPException(status_code=403, detail="Not your project")
     return project
-
-
-async def advance_stage(db, project: dict, target: str) -> None:
-    """Move the project stage forward to `target` — never backwards."""
-    current = project.get("stage", "concept")
-    if STAGE_ORDER.index(target) > STAGE_ORDER.index(current):
-        await db.projects.update_one(
-            {"_id": project["_id"]},
-            {"$set": {"stage": target, "updated_at": datetime.utcnow()}},
-        )
 
 
 async def build_game_context(db, project_id: str, extra_section: str) -> str:
@@ -85,6 +72,7 @@ async def load_regen_target(db, project_id: str, asset_id: str, asset_type: str)
 async def update_and_return(db, asset_id: str, fields: dict) -> AssetOut:
     """Regeneration: overwrite the artifact in place (same _id), reset approval."""
     fields["approved"] = False
+    fields["replaced"] = False  # regenerated = AI content again
     await db.assets.update_one({"_id": to_object_id(asset_id)}, {"$set": fields})
     doc = await db.assets.find_one({"_id": to_object_id(asset_id)})
     return AssetOut(**serialize_asset(doc))
@@ -205,7 +193,6 @@ async def create_sprite(
             image_prompt=image_prompt,
         )
         out = await insert_and_return(db, asset)
-    await advance_stage(db, project, "assets")
     return out
 
 
@@ -263,7 +250,6 @@ async def create_script(
             script_type=body.script_type,
         )
         out = await insert_and_return(db, asset)
-    await advance_stage(db, project, "assets")
     return out
 
 
@@ -319,25 +305,27 @@ async def create_dialogue(
             tree=tree.model_dump(),
         )
         out = await insert_and_return(db, asset)
-    await advance_stage(db, project, "assets")
     return out
 
 
-# ─── Approve ─────────────────────────────────────────────────────────────────
+# ─── Approve / provenance flags ──────────────────────────────────────────────
 
 @router.patch("/{asset_id}", response_model=AssetOut, response_model_by_alias=True)
-async def set_asset_approved(
+async def update_asset_flags(
     project_id: str,
     asset_id: str,
-    body: ApproveAssetRequest,
+    body: AssetUpdate,
     current_user: dict = Depends(get_current_user),
 ):
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
 
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=422, detail="No fields to update")
     result = await db.assets.update_one(
         {"_id": to_object_id(asset_id), "project_id": project_id},
-        {"$set": {"approved": body.approved}},
+        {"$set": updates},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Asset not found")

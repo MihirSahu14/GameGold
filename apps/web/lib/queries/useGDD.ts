@@ -61,6 +61,7 @@ export function useSaveGDD(projectId: string) {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['gdd', projectId], data)
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'summary'] })
     },
   })
 }

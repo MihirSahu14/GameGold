@@ -1,8 +1,9 @@
 """
 Phase 5 deployment generation: store page copy, press kit, Unity build guides,
-and the export bundle. The export bundle aggregates existing data (GDD +
-assets) — no LLM call.
+the AI provenance report, and the export bundle. The export bundle aggregates
+existing data (GDD + assets) — no LLM call.
 """
+import asyncio
 import base64
 import io
 import json
@@ -18,7 +19,8 @@ from app.prompts.deployment_prompts import (
     build_press_kit_prompt,
     build_build_guide_prompt,
 )
-from app.services.llm_utils import complete, extract_json
+from app.services.gates import open_placeholders
+from app.services.llm_utils import _list, complete, extract_json
 
 
 async def generate_store_page(platform: str, game_context: str) -> dict:
@@ -32,8 +34,8 @@ async def generate_store_page(platform: str, game_context: str) -> dict:
         "title": title,
         "short_description": str(data.get("shortDescription", "")).strip(),
         "long_description": str(data.get("longDescription", "")).strip(),
-        "tags": [str(t) for t in data.get("tags", [])],
-        "bullets": [str(b) for b in data.get("bullets", [])],
+        "tags": [str(t) for t in _list(data.get("tags"))],
+        "bullets": [str(b) for b in _list(data.get("bullets"))],
     }
 
 
@@ -45,7 +47,7 @@ async def generate_press_kit(game_context: str) -> dict:
     return {
         "tagline": tagline,
         "description": str(data.get("description", "")).strip(),
-        "key_features": [str(f) for f in data.get("keyFeatures", [])],
+        "key_features": [str(f) for f in _list(data.get("keyFeatures"))],
         "dev_blurb": str(data.get("devBlurb", "")).strip(),
     }
 
@@ -54,7 +56,7 @@ async def generate_build_guide(platform: str, title: str) -> UnityGuide:
     data = extract_json(
         await complete(BUILD_GUIDE_SYSTEM_PROMPT, build_build_guide_prompt(platform, title))
     )
-    steps = [str(s) for s in data.get("steps", [])]
+    steps = [str(s) for s in _list(data.get("steps"))]
     if not steps:
         raise ValueError("LLM returned no build guide steps")
     return UnityGuide(steps=steps, completed=[False] * len(steps))
@@ -80,7 +82,7 @@ def _readme_text(title: str, assets: list[dict]) -> str:
         lines.append("No assets were generated yet.\n")
     for asset in assets:
         guide = asset.get("unity_guide") or {}
-        steps = guide.get("steps", [])
+        steps = _list(guide.get("steps"))
         lines.append(f"## {asset.get('type')}: {asset.get('name')}\n")
         for i, step in enumerate(steps, start=1):
             lines.append(f"{i}. {step}")
@@ -95,23 +97,157 @@ async def export_project_bundle(db, project_id: str, title: str) -> bytes:
     cursor = db.assets.find({"project_id": project_id})
     assets = await cursor.to_list(500)
 
+    # Zipping + base64-decoding sprites is CPU-bound — keep it off the event loop.
+    return await asyncio.to_thread(_build_zip, title, sections, assets)
+
+
+def _write_assets(zf: zipfile.ZipFile, assets: list[dict]) -> list[tuple[dict, str]]:
+    """Write each asset's file into the zip; returns (asset, path) for every file written."""
+    used: set[str] = set()
+    written: list[tuple[dict, str]] = []
+
+    def unique(folder: str, name: str, ext: str) -> str:
+        """Two assets with the same name must not overwrite each other in the zip."""
+        path, n = f"{folder}/{name}.{ext}", 1
+        while path.lower() in used:
+            n += 1
+            path = f"{folder}/{name}_{n}.{ext}"
+        used.add(path.lower())
+        return path
+
+    for asset in assets:
+        name = safe_filename(str(asset.get("name", "asset")).replace(" ", "_"))
+        asset_type = asset.get("type")
+        path = None
+        if asset_type == "script" and asset.get("code"):
+            path = unique("Scripts", name, "cs")
+            zf.writestr(path, asset["code"])
+        elif asset_type == "sprite" and asset.get("url"):
+            url = asset["url"]
+            if url.startswith("data:") and "base64," in url:
+                # SVG-fallback sprites are stored as data:image/svg+xml — keep them .svg
+                ext = "svg" if url.startswith("data:image/svg") else "png"
+                path = unique("Sprites", name, ext)
+                zf.writestr(path, base64.b64decode(url.split("base64,", 1)[1]))
+        elif asset_type == "dialogue" and asset.get("tree"):
+            path = unique("Dialogue", name, "json")
+            zf.writestr(path, json.dumps(asset["tree"], indent=2))
+        if path:
+            written.append((asset, path))
+    return written
+
+
+# ─── AI provenance report (no LLM) ────────────────────────────────────────────
+
+# Every GameGold asset is Steam "Pre-Generated" AI content (made during development).
+DISCLOSURE_CATEGORIES = {
+    "sprite": "Art (pre-generated)",
+    "script": "Code (pre-generated)",
+    "dialogue": "Text & dialogue (pre-generated)",
+}
+
+
+def _yes_no(value: bool) -> str:
+    return "yes" if value else "no"
+
+
+def _md_cell(value: object) -> str:
+    """Escape a value for a Markdown table cell: no `|` or newlines to break the row."""
+    return str(value).replace("|", "\\|").replace("\n", " ").replace("\r", "")
+
+
+def provenance_markdown(title: str, assets: list[dict]) -> str:
+    lines = [
+        f"# {title} — AI content disclosure",
+        "",
+        "Every asset below was generated with AI by GameGold during development",
+        "(Steam: Pre-Generated AI content). Nothing is generated live at runtime.",
+        "",
+    ]
+    if not assets:
+        lines += ["No AI-generated assets.", ""]
+    for asset_type, category in DISCLOSURE_CATEGORIES.items():
+        group = [a for a in assets if a.get("type") == asset_type]
+        if not group:
+            continue
+        lines += [f"## {category}", "", "| Asset | Placeholder | Replaced | Disclosed |", "|---|---|---|---|"]
+        lines += [
+            f"| {_md_cell(a.get('name', '?'))} | {_yes_no(a.get('placeholder', True))} "
+            f"| {_yes_no(a.get('replaced', False))} | {_yes_no(a.get('disclosed', False))} |"
+            for a in group
+        ]
+        lines.append("")
+    lines.append(f"Undisclosed placeholders still in the build: {len(open_placeholders(assets))}")
+    return "\n".join(lines) + "\n"
+
+
+def _build_zip(title: str, sections: dict, assets: list[dict]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("GDD.md", _gdd_to_markdown(title, sections))
         zf.writestr("README.md", _readme_text(title, assets))
-
-        for asset in assets:
-            name = safe_filename(str(asset.get("name", "asset")).replace(" ", "_"))
-            asset_type = asset.get("type")
-            if asset_type == "script" and asset.get("code"):
-                zf.writestr(f"Scripts/{name}.cs", asset["code"])
-            elif asset_type == "sprite" and asset.get("url"):
-                url = asset["url"]
-                if url.startswith("data:") and "base64," in url:
-                    encoded = url.split("base64,", 1)[1]
-                    ext = "svg" if url.startswith("data:image/svg") else "png"
-                    zf.writestr(f"Sprites/{name}.{ext}", base64.b64decode(encoded))
-            elif asset_type == "dialogue" and asset.get("tree"):
-                zf.writestr(f"Dialogue/{name}.json", json.dumps(asset["tree"], indent=2))
-
+        zf.writestr("AI_DISCLOSURE.md", provenance_markdown(title, assets))
+        _write_assets(zf, assets)
     return buffer.getvalue()
+
+
+# ─── Unity build pack (primary bridge: Claude Code + a Unity MCP server) ─────
+
+def _bullets(items: list, empty: str) -> list[str]:
+    lines = [f"- {item}" for item in items if str(item).strip()]
+    return lines or [empty]
+
+
+def _gamegold_md(project: dict, steps: list[dict], written: list[tuple[dict, str]]) -> str:
+    card = project.get("concept_card") or {}
+    lines = [
+        f"# {project.get('title', 'Untitled')} — GameGold build pack",
+        "",
+        "Drop this folder into your Unity project's `Assets/` folder. Then open Claude Code in the",
+        "Unity project with a Unity MCP server connected — Unity's official MCP (`unity mcp`, Unity 6+)",
+        "or CoplayDev/unity-mcp (Unity 2021.3+) — and ask it to build the prototype described here.",
+        "You own the build: review every change in the Editor.",
+        "",
+        "## Prototype goal",
+        str(card.get("core_loop") or "(not written yet — add it on the Pitch page)"),
+        "",
+        "## Pillars",
+        *_bullets(card.get("pillars") or [], "(none yet)"),
+        "",
+        "## Won't do",
+        *_bullets(card.get("wont_do") or [], "(none yet)"),
+        "",
+        "## Assets",
+        "| File | Type | Status |",
+        "|---|---|---|",
+    ]
+    for asset, path in written:
+        status = "placeholder" if asset.get("placeholder", True) and not asset.get("replaced") else "final"
+        lines.append(f"| `{path}` | {asset.get('type')} | {status} |")
+    lines += ["", "## Build steps"]
+    if steps:
+        lines += [f"{i}. {step.get('description', '')}" for i, step in enumerate(steps, start=1)]
+    else:
+        lines.append("No build plan yet — generate one on the Unity page, or build straight from the goal above.")
+    return "\n".join(lines) + "\n"
+
+
+def _build_pack_zip(project: dict, plan: dict | None, assets: list[dict]) -> bytes:
+    steps = (plan or {}).get("steps") or []
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        written = _write_assets(zf, assets)
+        zf.writestr(
+            "plan.json",
+            json.dumps({"summary": (plan or {}).get("summary", ""), "steps": steps}, indent=2, default=str),
+        )
+        zf.writestr("GAMEGOLD.md", _gamegold_md(project, steps, written))
+    return buffer.getvalue()
+
+
+async def export_build_pack(db, project: dict) -> bytes:
+    project_id = str(project["_id"])
+    plan = await db.unity_plans.find_one({"project_id": project_id})
+    assets = await db.assets.find({"project_id": project_id}).to_list(500)
+    # Zipping + base64-decoding sprites is CPU-bound — keep it off the event loop.
+    return await asyncio.to_thread(_build_pack_zip, project, plan, assets)

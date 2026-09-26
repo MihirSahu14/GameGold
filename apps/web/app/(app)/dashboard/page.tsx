@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useProjects, useCreateProject } from '@/lib/queries/useProjects'
 import { useAuthStore } from '@/store/authStore'
 import type { GameGenre, GamePlatform } from '@gamegold/types'
+import { STAGE_LABELS, firstRoute } from '@/lib/stages'
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
@@ -28,7 +29,7 @@ const selectStyle: React.CSSProperties = {
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
-  const { data: projects, isLoading } = useProjects()
+  const { data: projects, isLoading, isError, refetch } = useProjects()
   const createProject = useCreateProject()
   const router = useRouter()
   const [showModal, setShowModal] = useState(false)
@@ -39,10 +40,10 @@ export default function DashboardPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     try {
-      const project = await createProject.mutateAsync({ title, genre, platform, stage: 'concept' })
+      const project = await createProject.mutateAsync({ title, genre, platform })
       setShowModal(false)
       setTitle('')
-      router.push(`/projects/${project._id}/concept`)
+      router.push(`/projects/${project._id}/${firstRoute(project.stage)}`)
     } catch {
       alert('Could not create project — check the console for details.')
     }
@@ -91,12 +92,19 @@ export default function DashboardPage() {
             />
           ))}
         </div>
+      ) : isError ? (
+        <div className="text-[13px] text-[#8b97a7]">
+          <p className="mb-3">Couldn&apos;t load your games.</p>
+          <button onClick={() => void refetch()} className="border border-[#1b2533] px-4 py-2 text-[#c8d4e2] hover:bg-[#141c27]">
+            RETRY
+          </button>
+        </div>
       ) : projects && projects.length > 0 ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
           {projects.map((project) => (
             <button
               key={project._id}
-              onClick={() => router.push(`/projects/${project._id}/concept`)}
+              onClick={() => router.push(`/projects/${project._id}/${firstRoute(project.stage)}`)}
               style={{
                 textAlign: 'left',
                 background: '#0b1018',
@@ -141,7 +149,7 @@ export default function DashboardPage() {
                     ...pixel,
                   }}
                 >
-                  {project.stage}
+                  {STAGE_LABELS[project.stage] ?? project.stage}
                 </span>
               </div>
               <h3 style={{ color: '#eaf2ff', fontSize: '14px', margin: '0 0 6px', fontWeight: 700, letterSpacing: '0.5px' }}>

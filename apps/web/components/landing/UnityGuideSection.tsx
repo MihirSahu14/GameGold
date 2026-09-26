@@ -186,12 +186,12 @@ export function UnityGuideSection() {
               fontSize: '10px',
               letterSpacing: '2px',
               color: '#07090d',
-              background: '#ff5277',
+              background: '#39d98a',
               padding: '3px 10px',
               fontFamily: 'var(--font-space-mono), monospace',
             }}
           >
-            NEXT
+            LIVE
           </span>
         </div>
         <h3

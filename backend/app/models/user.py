@@ -2,7 +2,7 @@ import re
 
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
-from typing import Literal
+from typing import Literal, Optional
 from datetime import datetime
 
 
@@ -12,6 +12,11 @@ def _check_bcrypt_byte_limit(password: str) -> str:
     if len(password.encode("utf-8")) > 72:
         raise ValueError("Password must be at most 72 bytes")
     return password
+
+
+def normalize_email(email: str) -> str:
+    """The one canonical form for stored and looked-up emails."""
+    return email.strip().lower()
 
 
 def _check_password_strength(password: str) -> str:
@@ -29,6 +34,7 @@ class UserCreate(BaseModel):
 
     _validate_password_bytes = field_validator("password")(_check_bcrypt_byte_limit)
     _validate_password_strength = field_validator("password")(_check_password_strength)
+    _normalize_email = field_validator("email")(normalize_email)
 
 
 class UserLogin(BaseModel):
@@ -36,6 +42,7 @@ class UserLogin(BaseModel):
     password: str = Field(max_length=72)
 
     _validate_password_bytes = field_validator("password")(_check_bcrypt_byte_limit)
+    _normalize_email = field_validator("email")(normalize_email)
 
 
 class UserOut(BaseModel):
@@ -54,13 +61,20 @@ class UserOut(BaseModel):
 class UserInDB(BaseModel):
     email: str
     username: str
-    hashed_password: str
+    hashed_password: Optional[str] = None  # None for Google/GitHub-only accounts
+    oauth: dict[str, str] = {}  # provider -> provider user id
     plan: Literal["free", "pro"] = "free"
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+    _normalize_email = field_validator("email")(normalize_email)
+
+
+class OAuthExchange(BaseModel):
+    code: str = Field(max_length=128)
 
 
 class ResetPasswordRequest(BaseModel):

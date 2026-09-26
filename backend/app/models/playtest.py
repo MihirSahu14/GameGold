@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from pydantic.alias_generators import to_camel
 from typing import Literal, Optional
 from datetime import datetime
@@ -7,6 +7,8 @@ from datetime import datetime
 PlaytestPersona = Literal["casual", "hardcore", "speedrunner", "completionist"]
 BugSeverity = Literal["low", "medium", "high", "critical"]
 BugStatus = Literal["open", "in-progress", "fixed", "wontfix"]
+PlaytestKind = Literal["ai_persona", "session"]
+TesterRing = Literal["self", "friends", "discord", "steam_playtest", "ea"]
 
 
 class BalanceSuggestion(BaseModel):
@@ -26,7 +28,13 @@ class PlaytestReportOut(BaseModel):
 
     id: str = Field(alias="_id")
     project_id: str
-    persona: PlaytestPersona
+    kind: PlaytestKind = "ai_persona"  # legacy docs predate sessions — all AI
+    persona: Optional[PlaytestPersona] = None
+    # Human session fields (kind == "session")
+    testers: Optional[int] = None
+    ring: Optional[TesterRing] = None
+    kept_playing_unprompted: Optional[int] = None
+    notes: str = ""
     summary: str = ""
     playthrough_log: list[str] = []
     softlocks: list[str] = []
@@ -39,6 +47,7 @@ class PlaytestReportOut(BaseModel):
 
 class PlaytestReportInDB(BaseModel):
     project_id: str
+    kind: PlaytestKind = "ai_persona"
     persona: PlaytestPersona
     summary: str = ""
     playthrough_log: list[str] = []
@@ -48,6 +57,35 @@ class PlaytestReportInDB(BaseModel):
     fun_highlights: list[str] = []
     balance_suggestions: list[dict] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PlaytestSessionCreate(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    testers: int = Field(ge=1, le=100000)
+    ring: TesterRing
+    kept_playing_unprompted: int = Field(default=0, ge=0)
+    notes: str = Field(default="", max_length=10000)
+
+    @model_validator(mode="after")
+    def kept_within_testers(self):
+        if self.kept_playing_unprompted > self.testers:
+            raise ValueError("keptPlayingUnprompted cannot exceed testers")
+        return self
+
+
+class PlaytestSessionInDB(BaseModel):
+    project_id: str
+    kind: PlaytestKind = "session"
+    testers: int
+    ring: TesterRing
+    kept_playing_unprompted: int = 0
+    notes: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SessionSynthesisOut(BaseModel):
+    summary: str
 
 
 # ─── Bugs ─────────────────────────────────────────────────────────────────────

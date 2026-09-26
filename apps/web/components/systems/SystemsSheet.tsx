@@ -50,8 +50,10 @@ export function SystemsSheet({ nodes, edges, onSave }: SystemsSheetProps) {
                 <input
                   aria-label={`label-${node.id}`}
                   className="w-full bg-zinc-800 border border-zinc-700 px-2 py-1 text-zinc-50 text-xs focus:outline-none focus:border-zinc-500"
-                  value={node.label}
-                  onChange={(e) => updateNode(node.id, { label: e.target.value })}
+                  defaultValue={node.label}
+                  onBlur={(e) => {
+                    if (e.target.value !== node.label) updateNode(node.id, { label: e.target.value })
+                  }}
                 />
               </td>
               <td className="py-1.5 pr-4">

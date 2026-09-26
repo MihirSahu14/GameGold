@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 const mockApi = api as unknown as {
   post: ReturnType<typeof vi.fn>
   patch: ReturnType<typeof vi.fn>
+  delete: ReturnType<typeof vi.fn>
 }
 
 const PROJECT_ID = 'proj123'
@@ -118,7 +119,9 @@ describe('generate hooks with regenerateOf', () => {
       note: 'add coyote time',
     })
     expect(qc.getQueryData(['assets', PROJECT_ID])).toEqual([regenerated, other])
-    expect(invalidate).not.toHaveBeenCalled()
+    // Regenerating resets placeholder/replaced/disclosed, so gates (not the assets list) refresh.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects', PROJECT_ID, 'gates'] })
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['assets', PROJECT_ID] })
   })
 
   it('invalidates the assets list on a plain (non-regenerate) generate', async () => {
@@ -137,5 +140,44 @@ describe('generate hooks with regenerateOf', () => {
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['assets', PROJECT_ID] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects', PROJECT_ID, 'gates'] })
+  })
+
+  it('invalidates gates when a regenerate resets placeholder/replaced/disclosed', async () => {
+    const { useGenerateScript } = await import('@/lib/queries/useAssets')
+    mockApi.post.mockResolvedValueOnce({ data: { ...SCRIPT_ASSET, placeholder: true } })
+    const { qc, wrapper } = makeSetup()
+    qc.setQueryData(['assets', PROJECT_ID], [SCRIPT_ASSET])
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+
+    const { result } = renderHook(() => useGenerateScript(PROJECT_ID), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({
+        name: 'PlayerController',
+        scriptType: 'PlayerController2D',
+        description: 'movement',
+        regenerateOf: 'asset1',
+      })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects', PROJECT_ID, 'gates'] })
+  })
+})
+
+describe('useDeleteAsset', () => {
+  it('invalidates gates after deleting an asset', async () => {
+    const { useDeleteAsset } = await import('@/lib/queries/useAssets')
+    mockApi.delete.mockResolvedValueOnce({})
+    const { qc, wrapper } = makeSetup()
+    qc.setQueryData(['assets', PROJECT_ID], [SCRIPT_ASSET])
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+
+    const { result } = renderHook(() => useDeleteAsset(PROJECT_ID), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync('asset1')
+    })
+
+    expect(qc.getQueryData(['assets', PROJECT_ID])).toEqual([])
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects', PROJECT_ID, 'gates'] })
   })
 })

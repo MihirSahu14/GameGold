@@ -59,7 +59,7 @@ export default function LandingV2Page() {
               Current landing
             </a>
             <a
-              href="https://mihirsahu.vercel.app"
+              href="https://mihirsahu.dev"
               className="text-zinc-400 transition-colors hover:text-zinc-100"
             >
               Built by Mihir Sahu

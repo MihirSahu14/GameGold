@@ -10,14 +10,12 @@ export interface User {
 
 // ─── Project ─────────────────────────────────────────────────────────────────
 
-export type ProjectStage =
-  | 'concept'
-  | 'gdd'
-  | 'systems'
-  | 'assets'
-  | 'unity'
-  | 'playtesting'
-  | 'deployment'
+export type ProjectStage = 'pitch' | 'prototype' | 'slice' | 'production' | 'ship' | 'killed'
+
+export type PrototypeDecision = 'continue' | 'pivot' | 'kill'
+
+/** Manual gate checkboxes (keys stay snake_case — they are dict keys server-side). */
+export type GateCheck = 'comprehension_resolved' | 'alpha_feature_lock' | 'beta_content_complete'
 
 export type GameGenre =
   | 'platformer'
@@ -52,20 +50,40 @@ export interface ConceptCard {
   uniqueHook: string
   targetAudience: string
   estimatedScope: 'jam' | 'indie' | 'mid' | 'large'
+  pillars: string[]
+  wontDo: string[]
+}
+
+export type PitchInterview = {
+  questions: string[]
+  options: string[]
+  comparables: string[]
 }
 
 export interface Project {
   _id: string
   userId: string
   title: string
-  tagline: string
   genre: GameGenre
   platform: GamePlatform
   tone: GameTone
   stage: ProjectStage
   conceptCard?: ConceptCard
+  prototypeDecision: PrototypeDecision | null
+  gates: Partial<Record<GateCheck, boolean>>
+  cutList: string[]
+  stageEnteredAt: string | null
+  alphaAt: string | null
+  provenanceGeneratedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+export type ProjectCreate = {
+  title: string
+  genre?: GameGenre
+  platform?: GamePlatform
+  tone?: GameTone
 }
 
 export interface StageSummary {
@@ -80,6 +98,13 @@ export interface ProjectSummary {
   playtest: StageSummary
   unity: StageSummary
   deployment: StageSummary
+}
+
+export type GateStatus = {
+  stage: ProjectStage
+  met: boolean
+  missing: string[]
+  total: number
 }
 
 // ─── GDD ─────────────────────────────────────────────────────────────────────
@@ -200,6 +225,10 @@ export interface Asset {
   name: string
   description: string
   approved: boolean
+  /** Provenance (ship gate): every generated asset starts as an AI placeholder. */
+  placeholder: boolean
+  replaced: boolean
+  disclosed: boolean
   unityGuide: UnityGuide
   createdAt: string
   // Sprite fields
@@ -217,6 +246,8 @@ export interface Asset {
 
 export type PlaytestPersona = 'casual' | 'hardcore' | 'speedrunner' | 'completionist'
 
+export type TesterRing = 'self' | 'friends' | 'discord' | 'steam_playtest' | 'ea'
+
 export interface BalanceSuggestion {
   issue: string
   fix: string
@@ -226,6 +257,7 @@ export interface BalanceSuggestion {
 export interface PlaytestReport {
   _id: string
   projectId: string
+  kind?: 'ai_persona'
   persona: PlaytestPersona
   summary: string
   playthroughLog: string[]
@@ -235,6 +267,27 @@ export interface PlaytestReport {
   funHighlights: string[]
   balanceSuggestions: BalanceSuggestion[]
   createdAt: string
+}
+
+/** A real human playtest — the only kind that counts toward stage gates. */
+export type PlaytestSession = {
+  _id: string
+  projectId: string
+  kind: 'session'
+  testers: number
+  ring: TesterRing
+  keptPlayingUnprompted: number
+  notes: string
+  createdAt: string
+}
+
+export type PlaytestEntry = PlaytestReport | PlaytestSession
+
+export type PlaytestSessionCreate = {
+  testers: number
+  ring: TesterRing
+  keptPlayingUnprompted: number
+  notes: string
 }
 
 export type BugSeverity = 'low' | 'medium' | 'high' | 'critical'
@@ -278,6 +331,25 @@ export interface DeploymentItem {
   // buildGuide
   buildPlatform?: BuildPlatform
   unityGuide?: UnityGuide
+}
+
+// ─── Unity Build Plan ────────────────────────────────────────────────────────
+
+export type UnityBuildStep = {
+  stepNumber: number
+  description: string
+  tool: string
+  args: Record<string, unknown>
+  category: 'scene' | 'gameobject' | 'component' | 'asset' | 'playmode'
+  completed: boolean
+}
+
+export type UnityBuildPlan = {
+  _id: string
+  projectId: string
+  steps: UnityBuildStep[]
+  summary: string
+  generatedAt: string
 }
 
 // ─── API Responses ───────────────────────────────────────────────────────────

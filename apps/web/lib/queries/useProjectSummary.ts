@@ -43,5 +43,6 @@ export function stalenessMessage(
   if (!upstream.updatedAt || !current.updatedAt) return null
   if (new Date(upstream.updatedAt) <= new Date(current.updatedAt)) return null
 
-  return `${STAGE_LABELS[upstreamKey]} changed since these ${STAGE_LABELS[stage]} were generated.`
+  const subject = stage === 'unity' ? 'this Unity setup was' : `these ${STAGE_LABELS[stage]} were`
+  return `${STAGE_LABELS[upstreamKey]} changed since ${subject} generated.`
 }

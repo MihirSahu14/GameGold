@@ -12,6 +12,9 @@ from bson import ObjectId
 
 from tests.conftest import TEST_PROJECT, TEST_PROJECT_ID, make_cursor, make_llm_response
 
+# Store page / press kit 409 without a GDD or concept — give them one.
+GDD_DOC = {"project_id": TEST_PROJECT_ID, "sections": {"overview": "An epic RPG about bees."}}
+
 CANNED_STORE_PAGE_JSON = json.dumps(
     {
         "title": "Test Game",
@@ -90,6 +93,7 @@ def test_list_deployment_items_403_when_not_owner(client, mock_db):
 
 def test_create_store_page_returns_201(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = GDD_DOC
     monkeypatch.setattr(
         "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_STORE_PAGE_JSON))
     )
@@ -108,36 +112,9 @@ def test_create_store_page_returns_201(client, mock_db, monkeypatch):
     assert body["tags"] == ["rpg"]
 
 
-def test_create_store_page_advances_stage(client, mock_db, monkeypatch):
-    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "stage": "playtesting"}
-    monkeypatch.setattr(
-        "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_STORE_PAGE_JSON))
-    )
-    inserted = _fake_deployment_doc()
-    mock_db.deployments.insert_one.return_value = MagicMock(inserted_id=inserted["_id"])
-    mock_db.deployments.find_one.return_value = inserted
-
-    client.post(f"/projects/{TEST_PROJECT_ID}/deployment/store-page", json={"platform": "steam"})
-    update_call = mock_db.projects.update_one.call_args
-    assert update_call is not None
-    assert update_call[0][1]["$set"]["stage"] == "deployment"
-
-
-def test_create_store_page_never_regresses_stage(client, mock_db, monkeypatch):
-    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "stage": "deployment"}
-    monkeypatch.setattr(
-        "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_STORE_PAGE_JSON))
-    )
-    inserted = _fake_deployment_doc()
-    mock_db.deployments.insert_one.return_value = MagicMock(inserted_id=inserted["_id"])
-    mock_db.deployments.find_one.return_value = inserted
-
-    client.post(f"/projects/{TEST_PROJECT_ID}/deployment/store-page", json={"platform": "steam"})
-    mock_db.projects.update_one.assert_not_called()
-
-
 def test_create_store_page_502_on_bad_llm_output(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = GDD_DOC
     monkeypatch.setattr("litellm.completion", MagicMock(return_value=make_llm_response("not json")))
     resp = client.post(
         f"/projects/{TEST_PROJECT_ID}/deployment/store-page", json={"platform": "steam"}
@@ -149,6 +126,7 @@ def test_create_store_page_502_on_bad_llm_output(client, mock_db, monkeypatch):
 
 def test_create_press_kit_returns_201(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.gdds.find_one.return_value = GDD_DOC
     monkeypatch.setattr(
         "litellm.completion", MagicMock(return_value=make_llm_response(CANNED_PRESS_KIT_JSON))
     )

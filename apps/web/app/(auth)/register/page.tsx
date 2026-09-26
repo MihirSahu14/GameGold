@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { registerUser } from '@/lib/auth'
 import { apiErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
+import { OAuthButtons } from '@/components/auth/OAuthButtons'
 
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
@@ -172,14 +173,14 @@ export default function RegisterPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={8}
-                placeholder="At least 8 characters"
+                minLength={10}
+                placeholder="At least 10 characters, with a letter and a number"
                 disabled={loading} style={inputStyle(loading)}
                 onFocus={(e) => { e.target.style.borderColor = '#4ea8ff' }}
                 onBlur={(e) => { e.target.style.borderColor = '#1b2533' }}
               />
               <div style={{ fontSize: '11px', color: '#3a4757', marginTop: '6px' }}>
-                8 characters minimum
+                10 characters minimum, with a letter and a number
               </div>
             </div>
 
@@ -218,6 +219,9 @@ export default function RegisterPage() {
               {loading ? 'CREATING...' : '▶ CREATE ACCOUNT'}
             </button>
           </form>
+          <div className="mt-5">
+            <OAuthButtons />
+          </div>
         </div>
 
         <p style={{ textAlign: 'center', fontSize: '13px', color: '#4a5a6c', marginTop: '20px' }}>

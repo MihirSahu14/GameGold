@@ -1,23 +1,25 @@
 from app.prompts.grounding import GROUNDING_RULES
 
-GAME_DESIGN_SYSTEM_PROMPT = """You are an expert game designer and writer with 20+ years of experience shipping indie and AAA games.
-Your job is to write clear, detailed, and actionable Game Design Documents (GDDs) that developers can actually build from.
+GAME_DESIGN_SYSTEM_PROMPT = """You are a game design editor. You COMPILE a Game Design Document from the
+designer's own decisions: their pitch (hook, pillars, won't-do list), their answers, and notes from
+real playtest sessions. You never design the game yourself — do not invent.
 
 Guidelines:
-- Be specific and concrete — avoid vague language like "fun mechanics" or "interesting enemies"
-- Think in systems — how do mechanics interact? What emergent behaviors arise?
-- Balance creativity with feasibility given the stated scope
+- Every statement must trace to the concept card, the developer answers, or the playtest notes
+- Keep the designer's pillars and won't-do list verbatim; flag anything that conflicts with them
+- Where the designer has not decided something, mark the gap (see the grounding rules) instead of filling it in
 - Use markdown formatting: headings (##), bullet points, tables where appropriate
 - Write in plain text with markdown — no JSON, no special formatting outside of markdown
-- Each section should be 200-600 words, substantive but focused
+- A short section full of marked gaps beats a padded one
 """ + GROUNDING_RULES
 
 
 SECTION_INSTRUCTIONS = {
     "overview": (
         "Write the **Overview** section of the GDD.\n\n"
-        "Include: game summary, vision statement, key pillars (3-4 design pillars "
-        "that guide every decision), target experience, and success criteria."
+        "Include: game summary, the designer's pillars and won't-do list exactly as written on "
+        "the concept card (never add, drop or reword pillars), target experience, and what the "
+        "playtest notes say players actually experienced."
     ),
     "mechanics": (
         "Write the **Core Mechanics** section of the GDD.\n\n"
@@ -65,12 +67,13 @@ SECTION_INSTRUCTIONS = {
 
 
 def format_concept_card(concept_card: dict) -> str:
-    """Every field, verbatim and untruncated."""
-    lines = [
-        f"- {key}: {value}"
-        for key, value in concept_card.items()
-        if value not in (None, "")
-    ]
+    """Every field, verbatim and untruncated. Lists (pillars, won't-do) are joined with '; '."""
+    lines = []
+    for key, value in concept_card.items():
+        if isinstance(value, list):
+            value = "; ".join(str(v) for v in value if str(v).strip())
+        if value not in (None, ""):
+            lines.append(f"- {key}: {value}")
     return "\n".join(lines) or "(empty concept card)"
 
 
@@ -79,6 +82,7 @@ def build_gdd_prompt(
     section: str,
     prior_sections_summary: str = "",
     answers: dict | None = None,
+    playtest_notes: str = "",
 ) -> str:
     parts = [
         "CONCEPT CARD (complete and authoritative — every detail below is the "
@@ -87,6 +91,11 @@ def build_gdd_prompt(
     if answers:
         answer_lines = "\n".join(f"Q: {q}\nA: {a}" for q, a in answers.items())
         parts.append(f"DEVELOPER ANSWERS (authoritative):\n{answer_lines}")
+    if playtest_notes:
+        parts.append(
+            "PLAYTEST NOTES (real human sessions — authoritative about how the game plays):\n"
+            + playtest_notes
+        )
     if prior_sections_summary:
         parts.append(
             "PREVIOUSLY GENERATED SECTIONS (stay consistent with these):\n"
@@ -98,30 +107,59 @@ def build_gdd_prompt(
     return "\n\n".join(parts)
 
 
-# ─── Concept sufficiency check (interview mode) ───────────────────────────────
+# ─── Pitch interview (also the GDD sufficiency check) ─────────────────────────
 
-CONCEPT_CHECK_SYSTEM_PROMPT = """\
-You review a game concept card before a full Game Design Document is written from it.
-Decide whether the concept contains enough concrete detail to write a specific,
-non-generic GDD (core loop, unique hook, tone, and audience actually described).
+PITCH_INTERVIEW_PROMPT = """\
+You interview a game designer about their pitch. You ask; they decide.
+Read their concept card (hook, pillars, won't-do list, core loop, audience) and find
+what is missing, vague, or contradictory.
 
-You MUST respond with ONLY a valid JSON object — no prose, no markdown fences.
-Either: {"sufficient": true}
-Or:     {"sufficient": false, "questions": ["...", ...]}
+You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
+{
+  "questions": ["...", ...],
+  "options": ["Option A: ...", "Option B: ...", "Option C: ..."],
+  "comparables": ["Game title — what it shares with this pitch", ...]
+}
 
 Rules:
-- At most 5 questions. Each is a single concrete question about the game that the
-  concept card leaves unanswered and that a GDD writer would need answered.
-- Ask about the game itself (mechanics, setting, characters, structure) — never
-  about business, marketing, or team.
-- Only mark insufficient when key creative details are missing or too vague to
-  design from.
+- questions: at most 5. Each is one concrete question about the game itself (mechanics,
+  feel, structure, audience) — never business, marketing, or team. Return [] when the
+  hook, the 3 pillars, the won't-do list, the core loop and the audience are all concrete.
+- options: at most 3 deliberately DIFFERENT directions for the weakest part of the pitch,
+  each starting "Option A:", "Option B:", "Option C:". They are options for the designer to
+  pick from, edit, or ignore — never present one as the answer.
+- comparables: 2-4 real, shipped games that share the hook or core loop, each with the one
+  thing it shares. Never invent games. Return [] if you are not sure.
+- NEVER write the hook, the pillars, or the won't-do list yourself.
 """
 
 
-def build_concept_check_prompt(concept_card: dict) -> str:
+# Fixed questions for concepts too thin to check (no core loop, no hook) and
+# the fail-closed fallback when the LLM sufficiency check itself errors.
+DEFAULT_CLARIFYING_QUESTIONS = [
+    "What does the player do minute to minute — what is the core gameplay loop?",
+    "What makes this game different from others in its genre — what is the unique hook?",
+    "Who is the player character, and what is the setting?",
+    "How does the player progress — levels, unlocks, story beats, or something else?",
+    "Who is the target audience, and how long is a typical play session?",
+]
+
+
+def build_pitch_interview_prompt(concept_card: dict) -> str:
     return (
-        "Review this concept card for sufficiency.\n\n"
+        "Interview the designer about this pitch.\n\n"
         f"CONCEPT CARD:\n{format_concept_card(concept_card)}\n\n"
         "Return the JSON object now."
+    )
+
+
+# ─── Section refinement ───────────────────────────────────────────────────────
+
+def build_refine_prompt(section_name: str, current_content: str, instructions: str) -> str:
+    return (
+        f"You are refining the **{section_name}** section of a Game Design Document.\n\n"
+        f"Current content:\n{current_content}\n\n"
+        f"Developer's instructions: {instructions}\n\n"
+        "Apply the requested changes and return the updated section in markdown format. "
+        "Keep everything that wasn't changed. Be specific and concrete."
     )

@@ -10,5 +10,6 @@ async def send_password_reset(email: str, reset_url: str) -> None:
     # provider is configured yet. Wiring Resend/SES in here is a manual step
     # once settings.email_provider is set to a real provider name.
     if not settings.email_provider:
-        logger.info("Password reset requested for %s: %s", email, reset_url)
+        # Never log the token/link (or the address) — logs aren't a secret store.
+        logger.info("Password reset requested (no email provider configured)")
         return

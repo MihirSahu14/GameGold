@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Text;
@@ -27,7 +28,15 @@ namespace GameGold.MCP
 
         private static HttpListener _listener;
         private static Thread _thread;
-        private static bool _running;
+        private static volatile bool _running;
+
+        // Unity APIs are main-thread only: listener threads enqueue work, EditorApplication.update drains it.
+        private static readonly ConcurrentQueue<Action> _mainThreadQueue = new();
+
+        // Cached on the main thread — Application.* must not be touched from listener threads.
+        private static readonly string _unityVersion;
+        private static readonly string _projectPath;
+        private static readonly string _projectName;
 
         // All registered tools — add new ones here
         private static readonly Dictionary<string, Func<string, string>> _tools = new()
@@ -47,9 +56,21 @@ namespace GameGold.MCP
 
         static GameGoldMCP()
         {
+            _unityVersion = Application.unityVersion;
+            _projectPath  = Application.dataPath.Replace("/Assets", "");
+            _projectName  = System.IO.Path.GetFileName(_projectPath);
+
+            EditorApplication.update += DrainMainThreadQueue;
+            // Release the port before a domain reload, or the next Start() fails with "address in use"
+            AssemblyReloadEvents.beforeAssemblyReload += Stop;
+            EditorApplication.quitting += Stop;
             // Delay start until Editor is ready
             EditorApplication.delayCall += Start;
-            EditorApplication.quitting  += Stop;
+        }
+
+        private static void DrainMainThreadQueue()
+        {
+            while (_mainThreadQueue.TryDequeue(out var action)) action();
         }
 
         [MenuItem("Window/GameGold MCP/Start Server")]
@@ -57,15 +78,26 @@ namespace GameGold.MCP
         {
             if (_running) return;
 
-            _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://localhost:{Port}/");
-            _listener.Start();
-            _running = true;
+            try
+            {
+                _listener = new HttpListener();
+                _listener.Prefixes.Add($"http://localhost:{Port}/");
+                _listener.Start();
+                _running = true;
 
-            _thread = new Thread(Listen) { IsBackground = true };
-            _thread.Start();
+                _thread = new Thread(Listen) { IsBackground = true };
+                _thread.Start();
 
-            Debug.Log($"[GameGold MCP] Server started on http://localhost:{Port}");
+                Debug.Log($"[GameGold MCP] Server started on http://localhost:{Port}");
+            }
+            catch (Exception ex)
+            {
+                _running = false;
+                try { _listener?.Close(); } catch { /* already broken */ }
+                _listener = null;
+                Debug.LogError($"[GameGold MCP] Could not start server on localhost:{Port} ({ex.Message}). " +
+                               "Another Unity instance or process may be using the port. Retry via Window > GameGold MCP > Start Server.");
+            }
         }
 
         [MenuItem("Window/GameGold MCP/Stop Server")]
@@ -73,21 +105,23 @@ namespace GameGold.MCP
         {
             if (!_running) return;
             _running = false;
-            _listener?.Stop();
-            _listener?.Close();
+            try { _listener?.Stop(); _listener?.Close(); }
+            catch (Exception ex) { Debug.LogWarning($"[GameGold MCP] Error while stopping: {ex.Message}"); }
+            _listener = null;
             Debug.Log("[GameGold MCP] Server stopped.");
         }
 
         private static void Listen()
         {
+            var listener = _listener;
             while (_running)
             {
                 try
                 {
-                    var ctx = _listener.GetContext();
+                    var ctx = listener.GetContext();
                     ThreadPool.QueueUserWorkItem(_ => HandleRequest(ctx));
                 }
-                catch (HttpListenerException) when (!_running)
+                catch (Exception) when (!_running)
                 {
                     break; // Normal shutdown
                 }
@@ -116,6 +150,7 @@ namespace GameGold.MCP
             ctx.Response.ContentType = "application/json";
 
             var path = ctx.Request.Url.AbsolutePath.TrimStart('/');
+            bool isTool = path.StartsWith("tool/");
 
             try
             {
@@ -135,11 +170,28 @@ namespace GameGold.MCP
                 }
                 else if (path == "status")
                 {
-                    var projectPath = Application.dataPath.Replace("/Assets", "");
-                    var projectName = System.IO.Path.GetFileName(projectPath);
-                    responseJson = $"{{\"status\":\"ok\",\"version\":\"{Application.unityVersion}\",\"projectPath\":\"{EscapeJson(projectPath)}\",\"projectName\":\"{EscapeJson(projectName)}\"}}";
+                    // The filesystem path only goes to allowlisted browser origins
+                    var pathJson = browserRequest ? $",\"projectPath\":\"{EscapeJson(_projectPath)}\"" : "";
+                    responseJson = $"{{\"status\":\"ok\",\"version\":\"{EscapeJson(_unityVersion)}\",\"projectName\":\"{EscapeJson(_projectName)}\"{pathJson}}}";
                 }
-                else if (path.StartsWith("tool/"))
+                else if (isTool && ctx.Request.HttpMethod != "POST")
+                {
+                    ctx.Response.StatusCode = 405;
+                    responseJson = Error("Tool calls require POST");
+                }
+                else if (isTool && !browserRequest)
+                {
+                    // Tool calls come from the GameGold web app, which always sends an allowlisted Origin
+                    ctx.Response.StatusCode = 403;
+                    responseJson = Error("Origin header required");
+                }
+                else if (isTool && !(ctx.Request.ContentType ?? "").StartsWith("application/json", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Forces a CORS preflight, so cross-site "simple" requests can't reach tools
+                    ctx.Response.StatusCode = 415;
+                    responseJson = Error("Content-Type must be application/json");
+                }
+                else if (isTool)
                 {
                     var toolName = path.Substring("tool/".Length);
                     var body = ReadBody(ctx.Request);
@@ -149,19 +201,19 @@ namespace GameGold.MCP
                         // All Unity API calls must run on the main thread
                         string result = null;
                         var done = new ManualResetEventSlim(false);
-                        EditorApplication.delayCall += () =>
+                        _mainThreadQueue.Enqueue(() =>
                         {
                             try { result = handler(body); }
                             catch (Exception ex) { result = Error(ex.Message); }
                             finally { done.Set(); }
-                        };
+                        });
                         done.Wait(TimeSpan.FromSeconds(10));
                         responseJson = result ?? Error("Tool timed out");
                     }
                     else
                     {
                         ctx.Response.StatusCode = 404;
-                        responseJson = $"{{\"success\":false,\"message\":\"Unknown tool: {toolName}\"}}";
+                        responseJson = Error($"Unknown tool: {toolName}");
                     }
                 }
                 else
@@ -200,6 +252,27 @@ namespace GameGold.MCP
             => $"{{\"success\":false,\"message\":\"{EscapeJson(message)}\"}}";
 
         internal static string EscapeJson(string s)
-            => s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r") ?? "";
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            var sb = new StringBuilder(s.Length + 8);
+            foreach (var c in s)
+            {
+                switch (c)
+                {
+                    case '"':  sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    case '\b': sb.Append("\\b"); break;
+                    case '\f': sb.Append("\\f"); break;
+                    default:
+                        if (c < 0x20) sb.Append("\\u").Append(((int)c).ToString("x4"));
+                        else sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
     }
 }

@@ -36,7 +36,19 @@ def _fake_password_resets(mock_db) -> dict:
         if record:
             record.update(update["$set"])
 
+    async def find_one_and_update(query, update):
+        # Mirrors the route's filter: hash match, unused, not expired.
+        record = store.get(query.get("token_hash"))
+        if not record or record.get("used") != query["used"]:
+            return None
+        if record["expires_at"] <= query["expires_at"]["$gt"]:
+            return None
+        before = dict(record)
+        record.update(update["$set"])
+        return before
+
     mock_db.password_resets = MagicMock()
+    mock_db.password_resets.find_one_and_update = AsyncMock(side_effect=find_one_and_update)
     mock_db.password_resets.insert_one = AsyncMock(side_effect=insert_one)
     mock_db.password_resets.find_one = AsyncMock(side_effect=find_one)
     mock_db.password_resets.update_one = AsyncMock(side_effect=update_one)
