@@ -4,6 +4,7 @@ import { use, useState, useEffect } from 'react'
 import { useProject, useUpdateRisk, useUpdatePlayerSettings } from '@/lib/queries/useProjects'
 import { RiskPanel } from '@/components/unity/RiskPanel'
 import { MissingScripts } from '@/components/unity/MissingScripts'
+import { PlayControls } from '@/components/unity/PlayControls'
 import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
 import { useToastStore } from '@/store/toastStore'
 import type { PlayerSettings } from '@gamegold/types'
@@ -331,6 +332,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                   <div style={{ fontSize: '12px', color: '#6b7787' }}>Open Unity Editor with the GameGold MCP package installed, then connect.</div>
                 )}
               </div>
+              <div className="flex flex-wrap items-center gap-3">
+              {mcpStatus === 'connected' && <PlayControls run={executeTool} />}
               <button
                 onClick={checkMCP}
                 disabled={mcpStatus === 'checking'}
@@ -338,6 +341,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
               >
                 {mcpStatus === 'checking' ? 'CHECKING...' : mcpStatus === 'connected' ? '✓ CONNECTED' : '🔌 CONNECT TO UNITY'}
               </button>
+              </div>
             </div>
           </div>
 
