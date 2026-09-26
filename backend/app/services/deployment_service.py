@@ -20,6 +20,7 @@ from app.prompts.deployment_prompts import (
     build_build_guide_prompt,
 )
 from app.prompts.unity_prompt import NARRATIVE_GENRES, NARRATIVE_SCAFFOLD
+from app.services.unity_service import UNITY_TEMPLATES
 from app.services.gates import open_placeholders
 from app.services.llm_utils import _list, complete, extract_json
 
@@ -257,6 +258,8 @@ def _build_pack_zip(project: dict, plan: dict | None, assets: list[dict]) -> byt
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         written = _write_assets(zf, assets)
+        if project.get("genre") in NARRATIVE_GENRES:
+            zf.writestr("Scripts/DialoguePlayer.cs", UNITY_TEMPLATES["DialoguePlayer"])
         zf.writestr(
             "plan.json",
             json.dumps({"summary": (plan or {}).get("summary", ""), "steps": steps}, indent=2, default=str),

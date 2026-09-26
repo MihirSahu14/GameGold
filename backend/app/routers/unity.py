@@ -4,7 +4,6 @@ Unity routes: prototype plan generation + persistence, and the build pack export
 steps against localhost:7432 for the basic built-in bridge.
 """
 import io
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
@@ -15,14 +14,11 @@ from app.db.mongodb import get_db, to_object_id
 from app.models.unity import UnityBuildPlanOut, UnityBuildPlanInDB, StepCompleteRequest
 from app.routers.auth import get_current_user
 from app.services.deployment_service import export_build_pack, safe_filename
-from app.services.unity_service import generate_build_plan
+from app.prompts.unity_prompt import NARRATIVE_GENRES
+from app.services.unity_service import UNITY_TEMPLATES, generate_build_plan, narrative_plan, pick_dialogue
 
 router = APIRouter(prefix="/projects/{project_id}/unity", tags=["unity"])
 templates_router = APIRouter(prefix="/unity/templates", tags=["unity"])
-
-# GameGold-shipped runtime scripts (C# source, not prompts) — read once at import.
-_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "unity_templates"
-UNITY_TEMPLATES = {p.stem: p.read_text(encoding="utf-8") for p in _TEMPLATE_DIR.glob("*.cs")}
 
 
 @templates_router.get("/{class_name}")
@@ -74,34 +70,42 @@ async def generate_plan(
     project_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Ask the LLM for a prototype build plan from the pitch (pillars + core loop) + assets."""
+    """Narrative: fixed DialoguePlayer plan. Otherwise the LLM plans from the pitch (pillars + core loop) + assets."""
     db = get_db()
     project = await verify_project_access(project_id, current_user["_id"], db)
 
-    card = project.get("concept_card") or {}
-    prototype_goal = str(card.get("core_loop") or "").strip()
-    if not prototype_goal:
-        # Without a core loop the model would invent the whole prototype.
-        raise HTTPException(status_code=409, detail="Write your core loop on the Pitch page first")
     assets = await db.assets.find({"project_id": project_id}).to_list(200)
 
-    try:
-        async with project_llm_slot(project_id):
-            summary, steps = await generate_build_plan(
-                game_title=project.get("title", "Untitled"),
-                genre=project.get("genre", ""),
-                platform=project.get("platform", ""),
-                pillars=[str(p) for p in card.get("pillars") or []],
-                prototype_goal=prototype_goal,
-                assets=assets,
-            )
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+    if project.get("genre") in NARRATIVE_GENRES:
+        # Fixed plan on GameGold's own DialoguePlayer — no LLM call.
+        if pick_dialogue(assets) is None:
+            raise HTTPException(status_code=409, detail="Import or generate your story on the Assets page (Dialogue tab) first")
+        summary, steps = narrative_plan(assets)
+        missing: list[str] = []
+    else:
+        card = project.get("concept_card") or {}
+        prototype_goal = str(card.get("core_loop") or "").strip()
+        if not prototype_goal:
+            # Without a core loop the model would invent the whole prototype.
+            raise HTTPException(status_code=409, detail="Write your core loop on the Pitch page first")
+        try:
+            async with project_llm_slot(project_id):
+                summary, steps, missing = await generate_build_plan(
+                    game_title=project.get("title", "Untitled"),
+                    genre=project.get("genre", ""),
+                    platform=project.get("platform", ""),
+                    pillars=[str(p) for p in card.get("pillars") or []],
+                    prototype_goal=prototype_goal,
+                    assets=assets,
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
 
     plan = UnityBuildPlanInDB(
         project_id=project_id,
         steps=[s.model_dump() for s in steps],  # type: ignore[arg-type]
         summary=summary,
+        missing_scripts=missing,
     )
 
     # Upsert — one plan per project (regenerate replaces)

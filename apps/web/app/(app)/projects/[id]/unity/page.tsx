@@ -3,6 +3,7 @@
 import { use, useState, useEffect } from 'react'
 import { useProject, useUpdateRisk } from '@/lib/queries/useProjects'
 import { RiskPanel } from '@/components/unity/RiskPanel'
+import { MissingScripts } from '@/components/unity/MissingScripts'
 import { useAssets } from '@/lib/queries/useAssets'
 import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
@@ -106,6 +107,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
       alert('Connect to Unity first.')
       return
     }
+    if (executingStep !== null) return // one step at a time — a slow step must finish (and be marked) first
     setExecutingStep(stepNumber)
     try {
       // The LLM can't know file contents — sprite data / script code come from stored assets.
@@ -353,6 +355,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                     </button>
                   </div>
 
+                  <MissingScripts projectId={id} names={plan.missingScripts ?? []} />
+
                   {/* Progress */}
                   <div style={{ marginBottom: '16px' }}>
                     {(() => {
@@ -428,7 +432,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                           {/* Execute button */}
                           <button
                             onClick={() => handleExecuteStep(step.stepNumber, step.tool, step.args as Record<string, unknown>)}
-                            disabled={isRunning || step.completed}
+                            disabled={executingStep !== null || step.completed}
                             style={{
                               flexShrink: 0,
                               background: step.completed ? 'transparent' : color + '22',
@@ -436,7 +440,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                               border: `1px solid ${step.completed ? '#1b2533' : color + '44'}`,
                               padding: '6px 12px',
                               fontSize: '11px',
-                              cursor: step.completed || isRunning ? 'not-allowed' : 'pointer',
+                              cursor: step.completed || executingStep !== null ? 'not-allowed' : 'pointer',
                               letterSpacing: '0.5px',
                               ...mono,
                             }}

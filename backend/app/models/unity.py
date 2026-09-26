@@ -23,6 +23,7 @@ class UnityBuildPlanOut(BaseModel):
     steps: list[UnityBuildStep]
     summary: str
     generated_at: datetime
+    missing_scripts: list[str] = []  # component.add types with no script asset (gap 28)
 
 
 class UnityBuildPlanInDB(BaseModel):
@@ -30,6 +31,7 @@ class UnityBuildPlanInDB(BaseModel):
     steps: list[UnityBuildStep]
     summary: str
     generated_at: datetime = Field(default_factory=datetime.utcnow)
+    missing_scripts: list[str] = []
 
 
 class StepCompleteRequest(BaseModel):

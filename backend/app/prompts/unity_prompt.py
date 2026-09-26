@@ -9,29 +9,22 @@ You are a senior Unity developer building a PROTOTYPE that proves one core mecha
 greybox geometry, labeled placeholder art, one mechanic — nothing else.
 """
 
-# Also written verbatim into the build pack's GAMEGOLD.md for narrative projects.
-NARRATIVE_SCAFFOLD = """\
-Narrative scaffold (story runtime + dialogue UI, not a greybox level):
-- Story runtime: ink-unity-integration. Add it to Packages/manifest.json as a git
-  dependency: "com.inkle.ink-unity-integration": "https://github.com/inkle/ink-unity-integration.git#upm".
-  Version 2.x imports each .ink file as an InkFile asset (no compiled .json
-  TextAsset) — reference the InkFile, never look for a .json.
-- Dialogue player: one MonoBehaviour that steps the ink Story, reveals lines with a
-  typewriter effect, shows the current choices as buttons, and reads line tags:
-  #speaker: <name>, #bg: <background>, #chapter: <title>.
-- Backgrounds and character portraits are UI Images on a Screen Space Canvas
-  (background full-screen behind, portrait beside the textbox).
-- Text: legacy uGUI Text works out of the box. If you use TextMeshPro, its
-  Essential Resources must be imported first (Window → TextMeshPro → Import TMP
-  Essential Resources) or the text renders blank.
+# Narrative / visual-novel projects get a deterministic plan (services/unity_service.py,
+# no LLM) built on GameGold's own runtime. This text is written verbatim into the build
+# pack's GAMEGOLD.md so any Unity MCP client builds the same thing.
+NARRATIVE_SCAFFOLD = """Narrative scaffold (GameGold's built-in story runtime — no ink, no greybox level):
+1. Create and save a new scene.
+2. Add Scripts/DialoguePlayer.cs (included in this pack) as Assets/Scripts/DialoguePlayer.cs.
+   It builds its own UI at runtime (Canvas, background, portrait, textbox, choice buttons;
+   legacy uGUI Text — no TextMeshPro setup needed).
+3. Save the story (the dialogue asset's JSON) as Assets/Resources/GameGold/dialogue.json.
+4. Import background sprites into Assets/Resources/GameGold/Backgrounds/<bg name>.png and
+   portraits into Assets/Resources/GameGold/Portraits/portrait_<speaker lowercase>.png
+   (or <Speaker>.png). Optional sound effects: Assets/Resources/GameGold/Sfx/<sfx>.
+5. Create an empty GameObject named "GameGold Dialogue" and add the DialoguePlayer component.
+6. Enter Play mode: click finishes a line, click again advances; choices apply hidden
+   variable effects; branches pick the route; endings show a Play again button.
 """
-
-_NARRATIVE_INTRO = """\
-You are a senior Unity developer building a PROTOTYPE of a NARRATIVE game: prove the
-story experience with a working dialogue loop, placeholder backgrounds and portraits —
-nothing else. No platformer, no physics, no level geometry.
-
-""" + NARRATIVE_SCAFFOLD
 
 NARRATIVE_GENRES = {"narrative", "visual-novel"}
 
@@ -95,11 +88,6 @@ Rules:
 """ + GROUNDING_RULES
 
 UNITY_PLAN_SYSTEM_PROMPT = _GREYBOX_INTRO + _PLAN_BODY
-
-
-def unity_plan_system_prompt(genre: str) -> str:
-    """Narrative games need a story runtime + dialogue UI, not a greybox level."""
-    return (_NARRATIVE_INTRO if genre in NARRATIVE_GENRES else _GREYBOX_INTRO) + _PLAN_BODY
 
 
 def build_unity_plan_prompt(
