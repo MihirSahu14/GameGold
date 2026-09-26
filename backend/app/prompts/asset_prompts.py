@@ -253,7 +253,8 @@ SVG rules:
 - viewBox="0 0 320 180", width="1280" height="720".
 - Full-bleed: must include a background fill covering the entire viewBox.
 - Flat vector shapes only: <rect>, <polygon>, <circle>, <ellipse>, <path>. No <text>,
-  no <image>, no filters, no heavy gradients.
+  no <image>, no filters. Solid hex fills only — no gradients, no <defs>, no url(#...) references
+  (game engines and rasterizers render those black).
 - 6-10 muted colors with strong light/dark value contrast for readability.
 - Compose the scene described by the prompt. No characters unless explicitly asked.
 - Wrap everything in <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" width="1280" height="720">...</svg>
@@ -268,7 +269,7 @@ SVG rules:
 - Transparent background — do not add a full-canvas background fill.
 - A single character bust (head + shoulders) in flat vector shapes.
 - Simple, readable face showing the requested expression.
-- 5-8 colors maximum. No text.
+- 5-8 colors maximum. No text. Solid hex fills only — no gradients, no <defs>, no url(#...) references.
 - Wrap everything in <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" width="480" height="640">...</svg>
 """,
 }
