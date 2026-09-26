@@ -47,3 +47,30 @@ def test_svg_sprite_prompt_mentions_kind_agnostic_but_service_selects_system_pro
     prompt = build_svg_sprite_prompt("Forest", "a lush forest", "illustrated", kind="background")
     assert "Forest" in prompt
     assert "lush forest" in prompt
+
+
+def test_extract_svg_flattens_gradients_to_first_stop():
+    text = (
+        '<svg viewBox="0 0 16 16"><defs>'
+        '<linearGradient id="sky"><stop offset="0" stop-color="#112233"/><stop offset="1" stop-color="#fff"/></linearGradient>'
+        "<radialGradient id='glow'><stop style='stop-color:#abcdef'/></radialGradient>"
+        '<linearGradient id="empty"></linearGradient>'
+        '<clipPath id="c"><rect/></clipPath>'
+        "</defs>"
+        '<rect fill="url(#sky)" stroke="url(\'#glow\')"/>'
+        '<circle style="fill: url(#empty)" clip-path="url(#c)"/>'
+        '<path fill="url(#missing)"/></svg>'
+    )
+    svg = extract_svg(text)
+    assert "Gradient" not in svg and "url(#sky)" not in svg
+    assert 'fill="#112233"' in svg
+    assert "stroke=\"#abcdef\"" in svg
+    assert "fill: #888888" in svg  # gradient with no stops
+    assert 'fill="#888888"' in svg  # dangling reference
+    assert 'clip-path="url(#c)"' in svg  # non-paint refs untouched
+    assert "<clipPath" in svg
+
+
+def test_extract_svg_drops_defs_left_empty():
+    svg = extract_svg('<svg><defs><linearGradient id="a"><stop stop-color="red"/></linearGradient></defs><rect fill="url(#a)"/></svg>')
+    assert svg == '<svg><rect fill="red"/></svg>'

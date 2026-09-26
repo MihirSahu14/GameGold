@@ -21,6 +21,31 @@ from app.prompts.asset_prompts import (
 from app.services.llm_utils import _list, complete, extract_json
 
 _SVG_TAG_RE = re.compile(r"<svg[^>]*>.*?</svg>", re.IGNORECASE | re.DOTALL)
+_GRADIENT_RE = re.compile(
+    r"<(linearGradient|radialGradient)\b([^>]*?)(?:/>|>(.*?)</\1\s*>)", re.IGNORECASE | re.DOTALL
+)
+_ID_RE = re.compile(r"""\bid\s*=\s*["']([^"']+)["']""")
+_STOP_COLOR_RE = re.compile(r"""stop-color\s*[:=]\s*["']?\s*([^"';\s/>]+)""", re.IGNORECASE)
+_PAINT_URL_RE = re.compile(
+    r"""((?:fill|stroke)\s*[:=]\s*["']?\s*)url\(\s*["']?#([^)"'\s]+)["']?\s*\)""", re.IGNORECASE
+)
+_EMPTY_DEFS_RE = re.compile(r"<defs\b[^>]*>\s*</defs\s*>|<defs\b[^>]*/>", re.IGNORECASE)
+FLAT_FALLBACK_COLOR = "#888888"
+
+
+def flatten_gradients(svg: str) -> str:
+    """Gradient paint renders black in MuPDF and trips Unity's vector importer:
+    swap every fill/stroke url(#id) for that gradient's first stop-color and drop
+    the gradient defs. Non-paint refs (clip-path, mask) are left alone."""
+    colors: dict[str, str] = {}
+    for match in _GRADIENT_RE.finditer(svg):
+        gid = _ID_RE.search(match.group(2))
+        stop = _STOP_COLOR_RE.search(match.group(3) or "")
+        if gid:
+            colors[gid.group(1)] = stop.group(1) if stop else FLAT_FALLBACK_COLOR
+    svg = _GRADIENT_RE.sub("", svg)
+    svg = _PAINT_URL_RE.sub(lambda m: m.group(1) + colors.get(m.group(2), FLAT_FALLBACK_COLOR), svg)
+    return _EMPTY_DEFS_RE.sub("", svg)
 
 
 def extract_svg(text: str) -> str:
@@ -30,7 +55,7 @@ def extract_svg(text: str) -> str:
     Raises ValueError if neither is found."""
     match = _SVG_TAG_RE.search(text)
     if match:
-        return match.group(0)
+        return flatten_gradients(match.group(0))
     try:
         data = extract_json(text)
     except ValueError:
@@ -38,7 +63,7 @@ def extract_svg(text: str) -> str:
     svg = str(data.get("svg", "")).strip()
     if not svg:
         raise ValueError("LLM returned no SVG for sprite fallback")
-    return svg
+    return flatten_gradients(svg)
 
 
 def _make_guide(data: dict) -> UnityGuide:
