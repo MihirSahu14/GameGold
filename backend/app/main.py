@@ -1,7 +1,7 @@
 import logging
 import time
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from slowapi import _rate_limit_exceeded_handler
@@ -11,9 +11,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.core.csrf import CSRFMiddleware
-from app.core.rate_limit import limiter
+from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import connect_db, close_db, get_db
+from app.prompts.health_prompt import HEALTH_SYSTEM_PROMPT, HEALTH_USER_PROMPT
 from app.routers import auth, oauth, projects, gdd, systems, assets, playtest, deployment, unity
+from app.routers.auth import get_current_user
+from app.services.llm_utils import complete
 from scripts.migrate_emails import migrate as migrate_emails
 from scripts.migrate_stages import migrate as migrate_stages
 
@@ -103,3 +106,19 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.get("/health/llm")
+@limiter.limit(LLM_RATE_LIMIT)
+async def health_llm(request: Request, response: Response, _user: dict = Depends(get_current_user)):
+    """One tiny real completion, so a retired/misconfigured model shows up in one click.
+    Auth-gated: every hit costs a (tiny) LLM call."""
+    start = time.perf_counter()
+    try:
+        await complete(HEALTH_SYSTEM_PROMPT, HEALTH_USER_PROMPT, max_tokens=5)
+    except ValueError as exc:
+        # complete() wraps provider errors; the cause's class (NotFoundError, AuthenticationError…) is the signal.
+        raise HTTPException(status_code=503, detail={
+            "ok": False, "model": settings.llm_model, "error": type(exc.__cause__ or exc).__name__,
+        })
+    return {"ok": True, "model": settings.llm_model, "latency_ms": round((time.perf_counter() - start) * 1000)}
