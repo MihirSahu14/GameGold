@@ -51,6 +51,7 @@ namespace GameGold.MCP
             ["component.setField"]   = ComponentTools.SetField,
             ["asset.createScript"]   = AssetTools.CreateScript,
             ["asset.importSprite"]   = AssetTools.ImportSprite,
+            ["asset.createText"]     = AssetTools.CreateText,
             ["playmode.enter"]       = PlayModeTools.Enter,
             ["playmode.exit"]        = PlayModeTools.Exit,
         };

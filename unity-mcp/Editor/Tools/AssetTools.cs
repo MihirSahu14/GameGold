@@ -56,6 +56,31 @@ namespace GameGold.MCP
                 $"{{\"path\":\"{GameGoldMCP.EscapeJson(path)}\"}}");
         }
 
+        private static readonly string[] TextExtensions = { ".json", ".txt", ".md" };
+
+        /// <summary>args: { path, content } — writes a text asset (.json/.txt/.md), e.g. dialogue JSON under Assets/Resources/.</summary>
+        internal static string CreateText(string body)
+        {
+            var args    = SimpleJson.Parse(body);
+            var path    = SafeAssetPath(args.GetString("path"));
+            var content = args.GetString("content", null);
+
+            if (path == null) return GameGoldMCP.Error("'path' must stay under Assets/");
+            if (content == null) return GameGoldMCP.Error("'content' is required");
+            if (!Array.Exists(TextExtensions, ext => path.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                return GameGoldMCP.Error("'path' must be a .json, .txt or .md file");
+            if (Array.Exists(path.Split('/'), seg => seg.Equals("Editor", StringComparison.OrdinalIgnoreCase)))
+                return GameGoldMCP.Error("Text assets may not be created inside an Editor folder");
+
+            var dir = Path.GetDirectoryName(path);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir!);
+            File.WriteAllText(path, content);
+            AssetDatabase.ImportAsset(path);
+
+            return GameGoldMCP.Ok($"Wrote {content.Length} chars to {path}",
+                $"{{\"path\":\"{GameGoldMCP.EscapeJson(path)}\"}}");
+        }
+
         /// <summary>args: { name, base64, path, pixelsPerUnit? } — imports a PNG sprite.</summary>
         internal static string ImportSprite(string body)
         {

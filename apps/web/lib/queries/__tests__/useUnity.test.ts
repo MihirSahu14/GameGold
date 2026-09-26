@@ -25,6 +25,7 @@ const ASSETS = [
   asset({ type: 'script', name: 'PlayerController', code: 'class PlayerController {}' }),
   asset({ type: 'sprite', name: 'Hero', url: 'data:image/png;base64,AAA' }),
   asset({ type: 'sprite', name: 'Coin', url: 'data:image/svg+xml;base64,BBB' }),
+  asset({ type: 'dialogue', name: 'Ripple', tree: { npcName: '', personality: '', nodes: [{ id: 'a', speaker: 'Avery', text: 'Hi', choices: [], ending: 'good' }] } }),
 ]
 
 describe('resolveToolArgs', () => {
@@ -64,6 +65,35 @@ describe('resolveToolArgs', () => {
       args: { name: 'Hero', base64: 'data:image/png;base64,AAA' },
     })
     expect(svgToPngDataUri).not.toHaveBeenCalled()
+  })
+
+  it('injects the dialogue tree JSON into asset.createText with a Resources default path', () => {
+    const r = resolveToolArgs('asset.createText', { dialogue: 'Ripple' }, ASSETS)
+    expect(r).toHaveProperty('args.path', 'Assets/Resources/GameGold/dialogue.json')
+    const args = (r as { args: { content: string; dialogue?: string } }).args
+    expect(JSON.parse(args.content).nodes[0].ending).toBe('good')
+    expect(args.dialogue).toBeUndefined()
+  })
+
+  it('fails createText when the dialogue asset is missing', () => {
+    expect(resolveToolArgs('asset.createText', { dialogue: 'Nope' }, ASSETS)).toHaveProperty('error', expect.stringContaining('Nope'))
+  })
+
+  it('prepareToolArgs fetches the built-in DialoguePlayer when no script asset exists', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce({ data: { className: 'DialoguePlayer', code: 'class DialoguePlayer {}' } })
+    expect(await prepareToolArgs('asset.createScript', { className: 'DialoguePlayer', path: 'Assets/Scripts/DialoguePlayer.cs' }, ASSETS)).toEqual({
+      args: { className: 'DialoguePlayer', path: 'Assets/Scripts/DialoguePlayer.cs', code: 'class DialoguePlayer {}' },
+    })
+    expect(api.get).toHaveBeenCalledWith('/unity/templates/DialoguePlayer')
+  })
+
+  it('prepareToolArgs prefers a stored DialoguePlayer script asset over the built-in one', async () => {
+    vi.mocked(api.get).mockClear()
+    const own = [...ASSETS, asset({ type: 'script', name: 'DialoguePlayer', code: 'mine' })]
+    expect(await prepareToolArgs('asset.createScript', { className: 'DialoguePlayer' }, own)).toEqual({
+      args: { className: 'DialoguePlayer', code: 'mine' },
+    })
+    expect(api.get).not.toHaveBeenCalled()
   })
 
   it('passes other tools through untouched', () => {

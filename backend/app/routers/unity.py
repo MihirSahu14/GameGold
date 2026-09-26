@@ -4,6 +4,7 @@ Unity routes: prototype plan generation + persistence, and the build pack export
 steps against localhost:7432 for the basic built-in bridge.
 """
 import io
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
@@ -17,6 +18,19 @@ from app.services.deployment_service import export_build_pack, safe_filename
 from app.services.unity_service import generate_build_plan
 
 router = APIRouter(prefix="/projects/{project_id}/unity", tags=["unity"])
+templates_router = APIRouter(prefix="/unity/templates", tags=["unity"])
+
+# GameGold-shipped runtime scripts (C# source, not prompts) — read once at import.
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "unity_templates"
+UNITY_TEMPLATES = {p.stem: p.read_text(encoding="utf-8") for p in _TEMPLATE_DIR.glob("*.cs")}
+
+
+@templates_router.get("/{class_name}")
+async def get_template(class_name: str, current_user: dict = Depends(get_current_user)):
+    code = UNITY_TEMPLATES.get(class_name)
+    if code is None:
+        raise HTTPException(status_code=404, detail=f"No built-in script named {class_name}")
+    return {"className": class_name, "code": code}
 
 
 def serialize(doc: dict) -> dict:

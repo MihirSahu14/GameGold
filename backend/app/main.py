@@ -96,6 +96,7 @@ app.include_router(playtest.bugs_router)
 app.include_router(deployment.router)
 app.include_router(deployment.export_router)
 app.include_router(unity.router)
+app.include_router(unity.templates_router)
 
 
 @app.get("/")

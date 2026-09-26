@@ -9,6 +9,11 @@ import type { Asset, UnityBuildPlan } from '@gamegold/types'
 
 export type ToolResult = { success: boolean; message: string; data?: unknown }
 
+// DialoguePlayer (the built-in narrative runtime) loads Resources/GameGold/dialogue.
+export const DIALOGUE_JSON_PATH = 'Assets/Resources/GameGold/dialogue.json'
+// Runtime scripts GameGold ships itself (served by GET /unity/templates/<name>).
+const BUILT_IN_SCRIPTS = ['DialoguePlayer']
+
 // The plan never carries file contents — inject them from the stored assets.
 // Returns the args to send, or an error message to fail the step with.
 export function resolveToolArgs(
@@ -23,6 +28,14 @@ export function resolveToolArgs(
     }
     // the C# side strips the data: prefix; SVGs are rasterized in prepareToolArgs
     return { args: { ...args, base64: sprite.url } }
+  }
+  if (tool === 'asset.createText' && typeof args.dialogue === 'string') {
+    const { dialogue, ...rest } = args
+    const asset = assets.find((a) => a.type === 'dialogue' && a.name === dialogue)
+    if (!asset?.tree) {
+      return { error: `No dialogue asset named "${dialogue}" found — import or generate it in the Assets stage first.` }
+    }
+    return { args: { path: DIALOGUE_JSON_PATH, ...rest, content: JSON.stringify(asset.tree, null, 2) } }
   }
   if (tool === 'asset.createScript') {
     const script = findScriptAsset(args, assets)
@@ -41,6 +54,10 @@ export async function prepareToolArgs(
   args: Record<string, unknown>,
   assets: Asset[],
 ): Promise<{ args: Record<string, unknown> } | { error: string }> {
+  if (tool === 'asset.createScript' && BUILT_IN_SCRIPTS.includes(String(args.className)) && !findScriptAsset(args, assets)?.code) {
+    const res = await api.get<{ code: string }>(`/unity/templates/${String(args.className)}`)
+    return { args: { ...args, code: res.data.code } }
+  }
   const resolved = resolveToolArgs(tool, args, assets)
   if ('error' in resolved) return resolved
   const b64 = resolved.args.base64
