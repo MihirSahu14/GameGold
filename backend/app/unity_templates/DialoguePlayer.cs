@@ -6,7 +6,11 @@
 // Format: { "variables": {..}, "start": "id", "nodes": [{ id, speaker, text, bg, chapter, sfx,
 // expr, choices: [{ text, next, effects: {var: delta} }], branches: [{ when, next }], next, ending }] }
 // Branch "when": "<var> [+ <var>...] <op> <int>" (op: < <= > >= ==) or "else".
+// Optional Resources/GameGold/player_settings.json (written by GameGold's "Sync settings") overrides the
+// Inspector: { look: plain|halftone|duotone, textSpeedCps, wordmarkTitle, ambience, volume,
+// chapterColors: [{ chapter, color: "#rrggbb" }] }. No file = plain look, no sound, Inspector values.
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -23,12 +27,42 @@ public class DialoguePlayer : MonoBehaviour
         public Color color = Color.white;
     }
 
+    public enum Look { Plain, Halftone, Duotone }
+
+    // Shape of player_settings.json (JsonUtility can't read dictionaries, so chapter colours are a list).
+    [Serializable]
+    class Settings
+    {
+        public string look = "plain";
+        public float textSpeedCps = 40f;
+        public bool wordmarkTitle;
+        public bool ambience;
+        public float volume = 0.5f;
+        public List<ChapterHex> chapterColors = new List<ChapterHex>();
+    }
+
+    [Serializable]
+    class ChapterHex
+    {
+        public string chapter;
+        public string color;
+    }
+
     [Tooltip("Resources path of the dialogue JSON TextAsset, without extension")]
     public string dialoguePath = "GameGold/dialogue";
+    [Tooltip("Resources path of GameGold's player settings JSON; overrides the fields below when present")]
+    public string settingsPath = "GameGold/player_settings";
     public float charsPerSecond = 40f;
     [Tooltip("Tint per chapter id. Chapters not listed get a colour from the default palette.")]
     public List<ChapterColor> chapterColors = new List<ChapterColor>();
     public Color neutralTint = new Color(0.85f, 0.85f, 0.85f);
+    [Tooltip("Halftone/Duotone re-print each background once on the CPU, inked in the chapter colour")]
+    public Look look = Look.Plain;
+    [Tooltip("A one-word ALL-CAPS line on the 'title' background shows as a big centred wordmark")]
+    public bool wordmarkTitle;
+    [Tooltip("Procedural ambience per chapter + typewriter blips (starts on the first click)")]
+    public bool ambience;
+    [Range(0f, 1f)] public float volume = 0.5f;
 
     static readonly Color[] Palette =
     {
@@ -48,17 +82,23 @@ public class DialoguePlayer : MonoBehaviour
     bool typing, choosing, ended;
     int hops;
     Color tint;
+    string currentBg;
+    Sprite rawBackground;
+    readonly Dictionary<string, Sprite> printed = new Dictionary<string, Sprite>();
+    float wordmarkAlpha = -1f; // < 0: no wordmark showing
 
     // UI
     Font font;
     Image background, portrait, accent;
-    Text nameText, bodyText, endTitle, endSubtitle;
+    Text nameText, bodyText, endTitle, endSubtitle, wordmark;
+    GameObject textbox;
     RectTransform choiceBox;
     GameObject endPanel;
     AudioSource audioSource;
 
     void Start()
     {
+        LoadSettings();
         font = LoadFont();
         audioSource = gameObject.AddComponent<AudioSource>();
         BuildUI();
@@ -67,11 +107,42 @@ public class DialoguePlayer : MonoBehaviour
 
     void Update()
     {
+        if (wordmarkAlpha >= 0f && wordmarkAlpha < 1f)
+        {
+            wordmarkAlpha = Mathf.Min(1f, wordmarkAlpha + Time.deltaTime / 1.5f);
+            wordmark.color = new Color(1f, 1f, 1f, wordmarkAlpha);
+        }
         if (!typing) return;
         shown += Time.deltaTime * Mathf.Max(1f, charsPerSecond);
         int n = Mathf.Min(fullText.Length, (int)shown);
+        for (int i = bodyText.text.Length; i < n; i++) if (!char.IsWhiteSpace(fullText[i])) Blip(nameText.text);
         bodyText.text = fullText.Substring(0, n);
         if (n >= fullText.Length) typing = false;
+    }
+
+    void LoadSettings()
+    {
+        var asset = Resources.Load<TextAsset>(settingsPath);
+        if (asset == null) return; // no file: keep the Inspector values (plain by default)
+        Settings s;
+        try { s = JsonUtility.FromJson<Settings>(asset.text); }
+        catch (Exception e)
+        {
+            Debug.LogError($"[DialoguePlayer] player_settings.json is invalid: {e.Message}");
+            return;
+        }
+        if (s == null) return;
+        look = s.look == "halftone" ? Look.Halftone : s.look == "duotone" ? Look.Duotone : Look.Plain;
+        charsPerSecond = Mathf.Clamp(s.textSpeedCps, 10f, 120f);
+        wordmarkTitle = s.wordmarkTitle;
+        ambience = s.ambience;
+        volume = Mathf.Clamp01(s.volume);
+        foreach (var c in s.chapterColors ?? new List<ChapterHex>())
+        {
+            if (string.IsNullOrEmpty(c.chapter) || !ColorUtility.TryParseHtmlString(c.color, out var color)) continue;
+            chapterColors.RemoveAll(x => string.Equals(x.chapter, c.chapter, StringComparison.OrdinalIgnoreCase));
+            chapterColors.Add(new ChapterColor { chapter = c.chapter, color = color });
+        }
     }
 
     // ─── Story ────────────────────────────────────────────────────────────────
@@ -145,6 +216,12 @@ public class DialoguePlayer : MonoBehaviour
         fullText = Str(current, "text") ?? "";
         if (fullText.Length == 0) { Continue(); return; } // silent node: route straight on
         hops = 0;
+        if (wordmarkTitle && currentBg == "title" && IsWordmark(fullText))
+        {
+            ShowWordmark(fullText);
+            return;
+        }
+        textbox.SetActive(true);
         var speaker = Str(current, "speaker") ?? "";
         nameText.text = speaker;
         SetPortrait(speaker, Str(current, "expr"));
@@ -179,7 +256,14 @@ public class DialoguePlayer : MonoBehaviour
 
     void OnClick()
     {
+        StartAudio(); // WebGL only allows audio after a user gesture
         if (ended || choosing) return;
+        if (wordmarkAlpha >= 0f && wordmarkAlpha < 1f)
+        {
+            wordmarkAlpha = 1f;
+            wordmark.color = Color.white;
+            return;
+        }
         if (typing)
         {
             typing = false;
@@ -191,6 +275,7 @@ public class DialoguePlayer : MonoBehaviour
 
     void Choose(Dictionary<string, object> choice)
     {
+        StartAudio();
         foreach (var kv in Dict(choice, "effects"))
         {
             vars.TryGetValue(kv.Key, out var v);
@@ -245,19 +330,300 @@ public class DialoguePlayer : MonoBehaviour
         }
         accent.color = tint;
         nameText.color = tint;
-        background.color = background.sprite != null ? Color.Lerp(Color.white, tint, 0.15f) : Color.Lerp(Color.black, tint, 0.2f);
+        SetBed(BedFor(chapter));
+        ApplyBackground(); // halftone/duotone ink follows the chapter colour
     }
 
     void SetBackground(string bg)
     {
-        Sprite sprite = null;
-        if (!string.IsNullOrEmpty(bg))
+        if (string.IsNullOrEmpty(bg)) bg = null;
+        if (bg != "title") HideWordmark(); // the wordmark stays up until the title card leaves
+        currentBg = bg;
+        rawBackground = null;
+        if (bg != null)
         {
-            sprite = Resources.Load<Sprite>("GameGold/Backgrounds/" + bg);
-            if (sprite == null) Debug.LogWarning($"[DialoguePlayer] Missing background Resources/GameGold/Backgrounds/{bg} — skipped");
+            rawBackground = Resources.Load<Sprite>("GameGold/Backgrounds/" + bg);
+            if (rawBackground == null) Debug.LogWarning($"[DialoguePlayer] Missing background Resources/GameGold/Backgrounds/{bg} — skipped");
         }
-        background.sprite = sprite;
-        background.color = sprite != null ? Color.Lerp(Color.white, tint, 0.15f) : Color.Lerp(Color.black, tint, 0.2f);
+        ApplyBackground();
+    }
+
+    void ApplyBackground()
+    {
+        if (rawBackground == null)
+        {
+            background.sprite = null;
+            background.color = Color.Lerp(Color.black, tint, 0.2f);
+        }
+        else if (look == Look.Plain)
+        {
+            background.sprite = rawBackground;
+            background.color = Color.Lerp(Color.white, tint, 0.15f);
+        }
+        else
+        {
+            background.sprite = Printed(currentBg, rawBackground);
+            background.color = Color.white; // the tint is already in the ink
+        }
+    }
+
+    // "RIPPLE", "AVERY": one all-caps word.
+    static bool IsWordmark(string line)
+    {
+        line = line.Trim();
+        if (line.Length < 2) return false;
+        foreach (var c in line) if (!char.IsUpper(c)) return false;
+        return true;
+    }
+
+    void ShowWordmark(string word)
+    {
+        textbox.SetActive(false);
+        portrait.gameObject.SetActive(false);
+        wordmark.text = string.Join("  ", word.Trim().ToCharArray()); // legacy Text has no letter-spacing
+        wordmarkAlpha = 0f;
+        wordmark.color = Color.clear;
+        wordmark.gameObject.SetActive(true);
+    }
+
+    void HideWordmark()
+    {
+        wordmarkAlpha = -1f;
+        if (wordmark != null) wordmark.gameObject.SetActive(false);
+    }
+
+    // ─── Halftone / duotone (CPU, once per background + ink; no shader files, WebGL-safe) ──────
+
+    static readonly Color Paper = new Color32(0xef, 0xe8, 0xdc, 255);
+
+    // Shadow ink = a dark, desaturated version of the chapter colour.
+    Color Ink()
+    {
+        Color.RGBToHSV(tint, out var h, out var s, out _);
+        return Color.HSVToRGB(h, s * 0.7f, 0.2f);
+    }
+
+    Sprite Printed(string bg, Sprite source)
+    {
+        var ink = Ink();
+        var key = $"{bg}|{look}|{ColorUtility.ToHtmlStringRGB(ink)}";
+        if (printed.TryGetValue(key, out var cached)) return cached;
+        var tex = ReadableCopy(source);
+        Print(tex, look == Look.Halftone, ink);
+        var sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+        printed[key] = sprite;
+        return sprite;
+    }
+
+    // Imported sprites usually aren't CPU-readable: copy through a RenderTexture.
+    static Texture2D ReadableCopy(Sprite sprite)
+    {
+        var src = sprite.texture;
+        var r = sprite.textureRect;
+        var rt = RenderTexture.GetTemporary(src.width, src.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+        Graphics.Blit(src, rt);
+        var previous = RenderTexture.active;
+        RenderTexture.active = rt;
+        var tex = new Texture2D((int)r.width, (int)r.height, TextureFormat.RGBA32, false);
+        tex.ReadPixels(new Rect(r.x, r.y, r.width, r.height), 0, 0);
+        tex.Apply();
+        RenderTexture.active = previous;
+        RenderTexture.ReleaseTemporary(rt);
+        return tex;
+    }
+
+    // Duotone: luminance mapped ink -> paper. Halftone: ink dots on paper, bigger where darker, on a 45 degree
+    // grid of ~7px at 1080p. Both blend ~35% of the original back so shapes stay readable, plus grain + vignette.
+    static void Print(Texture2D tex, bool dots, Color ink)
+    {
+        const float photoBlend = 0.35f, grain = 0.06f, vignette = 0.55f;
+        int w = tex.width, h = tex.height;
+        float cell = Mathf.Max(3f, 7f * h / 1080f);
+        var px = tex.GetPixels32();
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int i = y * w + x;
+                Color c = px[i];
+                float lum = 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
+                Color col;
+                if (dots)
+                {
+                    float u = (x + y) * 0.7071f / cell, v = (y - x) * 0.7071f / cell;
+                    float dx = u - Mathf.Floor(u) - 0.5f, dy = v - Mathf.Floor(v) - 0.5f;
+                    float dist = Mathf.Sqrt(dx * dx + dy * dy);
+                    float radius = Mathf.Sqrt(1f - lum) * 0.72f;
+                    float coverage = Mathf.Clamp01((radius - dist) * cell + 0.5f); // ~1px antialiased edge
+                    col = Color.Lerp(Paper, ink, coverage);
+                }
+                else col = Color.Lerp(ink, Paper, lum);
+                var photo = Color.Lerp(Color.Lerp(ink, Paper, lum), c, 0.5f);
+                col = Color.Lerp(col, photo, photoBlend);
+                float noise = (Hash(x, y) - 0.5f) * grain;
+                float vx = (float)x / w - 0.5f, vy = (float)y / h - 0.5f;
+                float shade = 1f - vignette * (vx * vx + vy * vy) * 1.6f;
+                px[i] = new Color(
+                    Mathf.Clamp01((col.r + noise) * shade),
+                    Mathf.Clamp01((col.g + noise) * shade),
+                    Mathf.Clamp01((col.b + noise) * shade),
+                    c.a);
+            }
+        }
+        tex.SetPixels32(px);
+        tex.Apply(false, true); // upload, then drop the CPU copy
+    }
+
+    static float Hash(int x, int y)
+    {
+        uint n = unchecked((uint)(x * 374761393 + y * 668265263));
+        n = unchecked((n ^ (n >> 13)) * 1274126177u);
+        return (n & 0xffff) / 65535f;
+    }
+
+    // ─── Ambience + typewriter (baked with AudioClip.Create: WebGL has no OnAudioFilterRead) ───
+
+    const int Rate = 22050;
+    const float LoopSeconds = 16f;
+    static readonly string[] Beds = { "sea", "room", "pad" };
+    readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>();
+    readonly Dictionary<string, string> chapterBeds = new Dictionary<string, string>();
+    AudioSource bedA, bedB, blipSource;
+    string bed = "sea";
+    bool audioStarted;
+    int blipCount;
+    float lowpass; // filter state for the noise voices (clips are baked one at a time)
+
+    float Master => volume * 0.25f;
+
+    // No chapter -> sea wash; chapters take sea / room tone / pad in order of first appearance.
+    string BedFor(string chapter)
+    {
+        if (string.IsNullOrEmpty(chapter)) return "sea";
+        if (!chapterBeds.TryGetValue(chapter, out var b)) chapterBeds[chapter] = b = Beds[chapterBeds.Count % Beds.Length];
+        return b;
+    }
+
+    void StartAudio()
+    {
+        if (!ambience || audioStarted) return;
+        audioStarted = true;
+        bedA = LoopSource();
+        bedB = LoopSource();
+        blipSource = gameObject.AddComponent<AudioSource>();
+        StartCoroutine(Crossfade(bed));
+    }
+
+    AudioSource LoopSource()
+    {
+        var s = gameObject.AddComponent<AudioSource>();
+        s.loop = true;
+        s.playOnAwake = false;
+        return s;
+    }
+
+    void SetBed(string id)
+    {
+        if (id == bed) return;
+        bed = id;
+        if (audioStarted) StartCoroutine(Crossfade(id));
+    }
+
+    IEnumerator Crossfade(string id)
+    {
+        var incoming = bedB;
+        bedB = bedA;
+        bedA = incoming;
+        bedA.clip = Clip(id);
+        bedA.volume = 0f;
+        bedA.Play();
+        float from = bedB.volume;
+        for (float t = 0f; t < 1f; t += Time.unscaledDeltaTime / 2f)
+        {
+            if (bed != id) yield break; // a newer crossfade took over
+            bedA.volume = t * Master;
+            bedB.volume = (1f - t) * from;
+            yield return null;
+        }
+        bedA.volume = Master;
+        bedB.Stop();
+    }
+
+    // One soft click every 2 characters, pitched per speaker.
+    void Blip(string speaker)
+    {
+        if (!audioStarted || ++blipCount % 2 != 0) return;
+        bool narration = string.IsNullOrEmpty(speaker) || string.Equals(speaker, "narrator", StringComparison.OrdinalIgnoreCase);
+        float pitch = narration ? 0.9f : 0.75f + (speaker.Length * 7 + speaker[0]) % 60 / 100f;
+        blipSource.pitch = pitch * UnityEngine.Random.Range(0.94f, 1.06f);
+        blipSource.PlayOneShot(Clip("blip"), Master * (narration ? 0.6f : 1.6f));
+    }
+
+    AudioClip Clip(string id)
+    {
+        if (clips.TryGetValue(id, out var clip)) return clip;
+        float[] data;
+        switch (id)
+        {
+            case "sea": data = Loop(t => Sea(t) + Drone(t)); break;
+            case "room": data = Loop(t => Room() + 0.02f * Mathf.Sin(2f * Mathf.PI * 60f * t)); break;
+            case "pad": data = Loop(t => Sea(t) * 0.5f + Pad(t)); break;
+            default: data = Shot(0.025f, t => Mathf.Sin(2f * Mathf.PI * 1400f * t) * Mathf.Exp(-t * 260f)); break; // blip
+        }
+        clip = AudioClip.Create(id, data.Length, 1, Rate, false);
+        clip.SetData(data, 0);
+        return clips[id] = clip;
+    }
+
+    static float Noise() => UnityEngine.Random.value * 2f - 1f;
+
+    float Sea(float t) // low-passed noise with a slow ~8 s swell
+    {
+        lowpass += (Noise() - lowpass) * 0.04f;
+        float swell = 0.5f + 0.5f * Mathf.Sin(2f * Mathf.PI * t / 8f);
+        return lowpass * 2.5f * (0.25f + 0.75f * swell * swell);
+    }
+
+    float Room()
+    {
+        lowpass += (Noise() - lowpass) * 0.01f;
+        return lowpass * 3f;
+    }
+
+    static float Drone(float t) =>
+        0.05f * Mathf.Sin(2f * Mathf.PI * 55f * t) + 0.03f * Mathf.Sin(2f * Mathf.PI * 82.5f * t) * (0.6f + 0.4f * Mathf.Sin(2f * Mathf.PI * t / 16f));
+
+    static float Pad(float t) // Cmaj7, very soft
+    {
+        float s = 0f;
+        foreach (var f in new[] { 130.81f, 164.81f, 196f, 246.94f }) s += Mathf.Sin(2f * Mathf.PI * f * t) + 0.3f * Mathf.Sin(4f * Mathf.PI * f * t);
+        return s * 0.012f * (0.7f + 0.3f * Mathf.Sin(2f * Mathf.PI * t / 8f));
+    }
+
+    static float[] Shot(float seconds, Func<float, float> f)
+    {
+        var d = new float[(int)(seconds * Rate)];
+        for (int i = 0; i < d.Length; i++) d[i] = f(i / (float)Rate);
+        return d;
+    }
+
+    // Bakes LoopSeconds seamlessly: renders one extra second and crossfades it into the start.
+    static float[] Loop(Func<float, float> f)
+    {
+        int n = (int)(LoopSeconds * Rate), fadeN = Rate;
+        var d = new float[n];
+        var tail = new float[fadeN];
+        for (int i = 0; i < n + fadeN; i++)
+        {
+            float v = f(i / (float)Rate);
+            if (i < n) d[i] = v; else tail[i - n] = v;
+        }
+        for (int i = 0; i < fadeN; i++)
+        {
+            float k = i / (float)fadeN;
+            d[i] = d[i] * k + tail[i] * (1f - k);
+        }
+        return d;
     }
 
     void SetPortrait(string speaker, string expr)
@@ -339,8 +705,13 @@ public class DialoguePlayer : MonoBehaviour
         portrait.raycastTarget = false;
         portrait.gameObject.SetActive(false);
 
+        wordmark = MakeText(root, "Wordmark", new Vector2(0.05f, 0.35f), new Vector2(0.95f, 0.65f), 120, FontStyle.Bold);
+        wordmark.alignment = TextAnchor.MiddleCenter;
+        wordmark.gameObject.SetActive(false);
+
         var box = MakeImage(root, "Textbox", new Vector2(0.04f, 0.03f), new Vector2(0.96f, 0.3f), new Color(0.04f, 0.05f, 0.08f, 0.88f));
         box.raycastTarget = false; // clicks fall through to the click catcher
+        textbox = box.gameObject;
         accent = MakeImage((RectTransform)box.transform, "Accent", new Vector2(0f, 0.97f), Vector2.one, neutralTint);
         accent.raycastTarget = false;
         nameText = MakeText((RectTransform)box.transform, "Speaker", new Vector2(0.03f, 0.74f), new Vector2(0.97f, 0.94f), 34, FontStyle.Bold);

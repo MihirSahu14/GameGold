@@ -23,3 +23,13 @@ def test_unknown_template_404(client):
 def test_template_requires_auth(client):
     app.dependency_overrides.pop(get_current_user, None)
     assert client.get("/unity/templates/DialoguePlayer").status_code == 401
+
+
+def test_dialogue_player_reads_player_settings(client):
+    code = client.get("/unity/templates/DialoguePlayer").json()["code"]
+    # settings file, CPU halftone/duotone (no shader files), wordmark, baked WebGL-safe audio
+    for needle in ("GameGold/player_settings", "JsonUtility.FromJson<Settings>", "ReadPixels", "RenderTexture.GetTemporary",
+                   "IsWordmark", "AudioClip.Create", "StartAudio"):
+        assert needle in code
+    for banned in ("Shader.Find", "void OnAudioFilterRead", "System.Linq"):
+        assert banned not in code

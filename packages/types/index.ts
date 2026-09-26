@@ -65,6 +65,17 @@ export type PitchInterview = {
   comparables: string[]
 }
 
+// How GameGold's built-in DialoguePlayer looks/sounds (synced to Unity as player_settings.json).
+export type PlayerLook = 'plain' | 'halftone' | 'duotone'
+export type PlayerSettings = {
+  look: PlayerLook
+  chapterColors: Record<string, string> // chapter → #rrggbb
+  textSpeedCps: number // 10–120
+  wordmarkTitle: boolean
+  ambience: boolean
+  volume: number // 0–1
+}
+
 export interface Project {
   _id: string
   userId: string
@@ -79,6 +90,7 @@ export interface Project {
   cutList: string[]
   riskiestAssumption: string
   riskKind: RiskKind | null
+  playerSettings: PlayerSettings
   stageEnteredAt: string | null
   alphaAt: string | null
   provenanceGeneratedAt: string | null

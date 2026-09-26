@@ -11,7 +11,7 @@ vi.mock('@/lib/rasterize', () => ({ svgToPngDataUri: vi.fn() }))
 import { api } from '@/lib/api'
 import { downloadBlob } from '@/lib/utils'
 import { svgToPngDataUri } from '@/lib/rasterize'
-import { resolveToolArgs, prepareToolArgs, useExportBuildPack, syncCall, useUnityConnection } from '@/lib/queries/useUnity'
+import { resolveToolArgs, prepareToolArgs, useExportBuildPack, syncCall, useUnityConnection, playerSettingsFile, PLAYER_SETTINGS_PATH } from '@/lib/queries/useUnity'
 
 function asset(partial: Partial<Asset>): Asset {
   return {
@@ -163,5 +163,16 @@ describe('useUnityConnection', () => {
     const { result } = renderHook(() => useUnityConnection(), { wrapper })
     await waitFor(() => expect(result.current.status).toBe('disconnected'))
     vi.unstubAllGlobals()
+  })
+})
+
+describe('playerSettingsFile', () => {
+  it('turns chapter colours into a JsonUtility-friendly list', () => {
+    const json = JSON.parse(playerSettingsFile({ look: 'halftone', chapterColors: { '1': '#112233', '2': '#445566' }, textSpeedCps: 60, wordmarkTitle: true, ambience: true, volume: 0.4 }))
+    expect(json).toEqual({
+      look: 'halftone', textSpeedCps: 60, wordmarkTitle: true, ambience: true, volume: 0.4,
+      chapterColors: [{ chapter: '1', color: '#112233' }, { chapter: '2', color: '#445566' }],
+    })
+    expect(PLAYER_SETTINGS_PATH).toBe('Assets/Resources/GameGold/player_settings.json')
   })
 })

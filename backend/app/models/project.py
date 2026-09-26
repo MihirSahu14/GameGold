@@ -48,6 +48,22 @@ class ConceptCard(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
+PlayerLook = Literal["plain", "halftone", "duotone"]
+HexColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
+
+
+class PlayerSettings(BaseModel):
+    """How GameGold's built-in DialoguePlayer looks/sounds; synced to Unity as player_settings.json."""
+    look: PlayerLook = "plain"
+    chapter_colors: dict[Annotated[str, Field(max_length=40)], HexColor] = Field(default_factory=dict, max_length=50)
+    text_speed_cps: int = Field(default=40, ge=10, le=120)
+    wordmark_title: bool = False
+    ambience: bool = False
+    volume: float = Field(default=0.5, ge=0, le=1)
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
 class ProjectCreate(BaseModel):
     # No stage: every project starts at "pitch".
     title: str = Field(min_length=1, max_length=100)
@@ -64,6 +80,7 @@ class ProjectUpdate(BaseModel):
     cut_list: Optional[list[Line]] = Field(default=None, max_length=100)
     riskiest_assumption: Optional[str] = Field(default=None, max_length=500)
     risk_kind: Optional[RiskKind] = None
+    player_settings: Optional[PlayerSettings] = None
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
@@ -82,6 +99,7 @@ class ProjectOut(BaseModel):
     cut_list: list[str] = []
     riskiest_assumption: str = ""
     risk_kind: Optional[RiskKind] = None
+    player_settings: PlayerSettings = Field(default_factory=PlayerSettings)
     stage_entered_at: Optional[datetime] = None
     alpha_at: Optional[datetime] = None
     provenance_generated_at: Optional[datetime] = None
@@ -133,6 +151,7 @@ class ProjectInDB(BaseModel):
     cut_list: list[str] = Field(default_factory=list)
     riskiest_assumption: str = ""
     risk_kind: Optional[RiskKind] = None
+    player_settings: PlayerSettings = Field(default_factory=PlayerSettings)
     stage_entered_at: datetime = Field(default_factory=datetime.utcnow)
     alpha_at: Optional[datetime] = None
     provenance_generated_at: Optional[datetime] = None

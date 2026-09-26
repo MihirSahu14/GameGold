@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 import { api } from '../api'
 import { downloadBlob } from '../utils'
 import { svgToPngDataUri } from '../rasterize'
-import type { Asset, UnityBuildPlan } from '@gamegold/types'
+import type { Asset, PlayerSettings, UnityBuildPlan } from '@gamegold/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -212,4 +212,14 @@ export function useSyncToUnity() {
       return result
     },
   })
+}
+
+// ─── Player settings file (read by DialoguePlayer at start) ───────────────────
+
+export const PLAYER_SETTINGS_PATH = 'Assets/Resources/GameGold/player_settings.json'
+
+// JsonUtility can't read dictionaries, so chapter colours go over as a list.
+export function playerSettingsFile(s: PlayerSettings): string {
+  const { chapterColors, ...rest } = s
+  return JSON.stringify({ ...rest, chapterColors: Object.entries(chapterColors).map(([chapter, color]) => ({ chapter, color })) }, null, 2)
 }

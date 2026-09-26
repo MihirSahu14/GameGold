@@ -96,3 +96,33 @@ def test_patch_rejects_unknown_genre(client, mock_db):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"genre": "moba"})
     assert resp.status_code == 422
+
+
+def test_patch_saves_player_settings(client, mock_db):
+    doc = {**TEST_PROJECT, "created_at": datetime(2026, 9, 26), "updated_at": datetime(2026, 9, 26)}
+    settings = {"look": "halftone", "chapterColors": {"1": "#2a3f5c"}, "textSpeedCps": 60,
+                "wordmarkTitle": True, "ambience": True, "volume": 0.3}
+    mock_db.projects.find_one.return_value = {**doc, "player_settings": {
+        "look": "halftone", "chapter_colors": {"1": "#2a3f5c"}, "text_speed_cps": 60,
+        "wordmark_title": True, "ambience": True, "volume": 0.3}}
+    resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"playerSettings": settings})
+    assert resp.status_code == 200
+    saved = mock_db.projects.update_one.call_args[0][1]["$set"]["player_settings"]
+    assert saved["text_speed_cps"] == 60 and saved["chapter_colors"] == {"1": "#2a3f5c"}
+    assert resp.json()["playerSettings"] == settings
+
+
+def test_player_settings_default_to_plain(client, mock_db):
+    doc = {**TEST_PROJECT, "created_at": datetime(2026, 9, 26), "updated_at": datetime(2026, 9, 26)}
+    mock_db.projects.find_one.return_value = doc
+    body = client.patch(f"/projects/{TEST_PROJECT_ID}", json={}).json()
+    assert body["playerSettings"] == {"look": "plain", "chapterColors": {}, "textSpeedCps": 40,
+                                      "wordmarkTitle": False, "ambience": False, "volume": 0.5}
+
+
+def test_player_settings_validation(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    bad = [{"look": "sepia"}, {"textSpeedCps": 5}, {"textSpeedCps": 121}, {"volume": 1.5},
+           {"chapterColors": {"1": "blue"}}, {"chapterColors": {"1": "#12345"}}]
+    for b in bad:
+        assert client.patch(f"/projects/{TEST_PROJECT_ID}", json={"playerSettings": b}).status_code == 422, b

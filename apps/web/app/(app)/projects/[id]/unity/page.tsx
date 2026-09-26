@@ -1,11 +1,14 @@
 'use client'
 
 import { use, useState, useEffect } from 'react'
-import { useProject, useUpdateRisk } from '@/lib/queries/useProjects'
+import { useProject, useUpdateRisk, useUpdatePlayerSettings } from '@/lib/queries/useProjects'
 import { RiskPanel } from '@/components/unity/RiskPanel'
 import { MissingScripts } from '@/components/unity/MissingScripts'
+import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
+import { useToastStore } from '@/store/toastStore'
+import type { PlayerSettings } from '@gamegold/types'
 import { useAssets } from '@/lib/queries/useAssets'
-import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset } from '@/lib/queries/useUnity'
+import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset, playerSettingsFile, PLAYER_SETTINGS_PATH } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { toastError } from '@/lib/api'
@@ -55,6 +58,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const exportPack = useExportBuildPack(id)
   const updateRisk = useUpdateRisk(id)
   const { status: mcpStatus, unityInfo, check: checkMCP, executeTool } = useUnityMCP()
+  const updateSettings = useUpdatePlayerSettings(id)
+  const [syncingSettings, setSyncingSettings] = useState(false)
 
   const STORAGE_KEY = `unity-checklist-${id}`
   const [checked, setChecked] = useState<boolean[]>(() => Array(SETUP_STEPS.length).fill(false))
@@ -76,6 +81,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const scripts  = (assets ?? []).filter(a => a.type === 'script')
   const dialogue = (assets ?? []).filter(a => a.type === 'dialogue')
   const totalAssets = (assets ?? []).length
+  const chapters = [...new Set(dialogue.flatMap(d => (d.tree?.nodes ?? []).map(n => n.chapter ?? '').filter(Boolean)))]
   const doneSteps = checked.filter(Boolean).length
 
   function toggleStep(i: number) {
@@ -95,6 +101,25 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
       setStepResults({})
     } catch (err) {
       toastError(err, 'Could not generate the build plan.')
+    }
+  }
+
+  function handleSaveSettings(s: PlayerSettings) {
+    updateSettings.mutate(s, { onError: (err) => toastError(err, 'Could not save player settings.') })
+  }
+
+  // Save first so GameGold and Unity agree, then write the file DialoguePlayer reads at start.
+  async function handleSyncSettings(s: PlayerSettings) {
+    const toast = useToastStore.getState().pushToast
+    setSyncingSettings(true)
+    try {
+      await updateSettings.mutateAsync(s)
+      const r = await executeTool('asset.createText', { path: PLAYER_SETTINGS_PATH, content: playerSettingsFile(s) })
+      toast(r.success ? 'Player settings synced to Unity.' : `Settings sync failed: ${r.message}`, r.success ? 'info' : 'error')
+    } catch (err) {
+      toastError(err, 'Could not save player settings.')
+    } finally {
+      setSyncingSettings(false)
     }
   }
 
@@ -287,6 +312,18 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
               </button>
             </div>
           </div>
+
+          {project && (
+            <PlayerSettingsPanel
+              key={project._id}
+              settings={project.playerSettings}
+              chapters={chapters}
+              connected={mcpStatus === 'connected'}
+              busy={syncingSettings || updateSettings.isPending}
+              onSave={handleSaveSettings}
+              onSync={handleSyncSettings}
+            />
+          )}
 
           {/* Install instructions (when not connected) */}
           {mcpStatus !== 'connected' && (
