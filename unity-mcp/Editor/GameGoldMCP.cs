@@ -24,6 +24,7 @@ namespace GameGold.MCP
         {
             "https://gamegold.vercel.app",
             "http://localhost:3000",
+            "http://localhost:3001", // local dev when 3000 is taken
         };
 
         private static HttpListener _listener;

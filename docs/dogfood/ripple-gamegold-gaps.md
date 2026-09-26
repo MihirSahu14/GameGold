@@ -26,3 +26,4 @@ Ripple = narrative game (Avery / Skyler, hidden attachment traits). Repo: `Proje
 | 19 | Unity (CLI) | A WebGL build stalled for 10+ min on a Windows Firewall prompt for Emscripten's `node.exe`; `build_status` just says "building" | Build-pack instructions: "first WebGL build on Windows shows a firewall prompt for node.exe — allow it"; GameGold should warn before the first build |
 | 20 | Unity | The performance-testing package drops `Assets/Resources/PerformanceTest*.json` during builds | Add to the build pack's suggested .gitignore |
 | 21 | Audio | GameGold has no audio stage/tool at all; "feel" for a narrative game needs ambience + SFX | Add an Audio asset kind (at least a manifest of ambience/SFX cues + placeholder generation guidance) |
+| 22 | Unity (bridge) | Bridge origin allowlist only had localhost:3000 + vercel; GameGold dev on :3001 was rejected (403) | Added `http://localhost:3001` ✅ |
