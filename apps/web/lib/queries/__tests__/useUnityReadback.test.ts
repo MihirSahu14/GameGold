@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import React from 'react'
 import type { Asset, UnitySnapshotFile, UnitySyncRecord } from '@gamegold/types'
 
 vi.mock('@/lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn() } }))
@@ -8,7 +11,7 @@ vi.mock('@/lib/rasterize', () => ({ svgToPngDataUri: vi.fn() }))
 import { api } from '@/lib/api'
 import {
   diffUnity, sha256Hex, recordWrite, stepSource, overwriteTarget, pullFromUnity, settingsFromFile,
-  playerSettingsFile, runtimeVersion, DIALOGUE_JSON_PATH, PLAYER_SETTINGS_PATH,
+  playerSettingsFile, runtimeVersion, runtimeOutdated, useUpdateRuntime, DIALOGUE_JSON_PATH, PLAYER_SETTINGS_PATH, RUNTIME_PATH,
 } from '@/lib/queries/useUnity'
 
 const G = 'Assets/Resources/GameGold'
@@ -140,5 +143,34 @@ describe('pullFromUnity', () => {
   it('fails loudly when the bridge cannot read the file', async () => {
     const exec = vi.fn().mockResolvedValue({ success: false, message: 'No file' })
     await expect(pullFromUnity('p1', { path: DIALOGUE_JSON_PATH, status: 'changed' }, [], exec)).rejects.toThrow('No file')
+  })
+})
+
+describe('Update runtime (gap 40)', () => {
+  const runtimeRec = (version?: number): UnitySyncRecord => ({ ...rec(RUNTIME_PATH, 'h', 'runtime'), version })
+
+  it.each([
+    { name: 'same version → current', records: [runtimeRec(2)], served: 2, plan: true, want: false },
+    { name: 'older synced version → outdated', records: [runtimeRec(1)], served: 2, plan: true, want: true },
+    { name: 'sent by the plan before versions were tracked → outdated', records: [], served: 2, plan: true, want: true },
+    { name: 'never sent → nothing to update', records: [], served: 2, plan: false, want: false },
+    { name: 'template has no version → never nag', records: [runtimeRec(1)], served: null, plan: true, want: false },
+  ])('$name', ({ records, served, plan, want }) => {
+    expect(runtimeOutdated(records, served, plan)).toBe(want)
+  })
+
+  it('re-sends the built-in DialoguePlayer and records its version', async () => {
+    const code = '// GameGold DialoguePlayer v3\nclass DialoguePlayer {}'
+    vi.mocked(api.get).mockResolvedValue({ data: { className: 'DialoguePlayer', code, version: 3 } })
+    const fetchMock = vi.fn().mockResolvedValue({ json: async () => ({ success: true, message: 'Created' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const qc = new QueryClient()
+    const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client: qc }, children)
+    const { result } = renderHook(() => useUpdateRuntime('p1'), { wrapper })
+    await act(async () => { await result.current.mutateAsync() })
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:7432/tool/asset.createScript')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({ className: 'DialoguePlayer', path: RUNTIME_PATH, code })
+    expect(api.post).toHaveBeenCalledWith('/projects/p1/unity/synced', expect.objectContaining({ path: RUNTIME_PATH, source: 'runtime', version: 3 }))
+    vi.unstubAllGlobals()
   })
 })

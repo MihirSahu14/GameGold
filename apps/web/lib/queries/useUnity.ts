@@ -398,3 +398,37 @@ export function usePullFromUnity(projectId: string) {
     },
   })
 }
+
+// ─── Update runtime (gap 40): re-send GameGold's DialoguePlayer without touching plan steps ──
+
+export const RUNTIME_PATH = 'Assets/Scripts/DialoguePlayer.cs'
+
+export function useRuntimeTemplate() {
+  return useQuery({
+    queryKey: ['unity-template', 'DialoguePlayer'],
+    queryFn: async () => (await api.get<{ code: string; version: number | null }>('/unity/templates/DialoguePlayer')).data,
+    staleTime: 5 * 60_000,
+  })
+}
+
+// true = Unity has an older (or unknown) DialoguePlayer than the one GameGold serves now.
+export function runtimeOutdated(records: UnitySyncRecord[], served: number | null | undefined, planSentRuntime: boolean): boolean {
+  if (served == null) return false
+  const record = records.find((r) => r.path === RUNTIME_PATH)
+  return record ? record.version !== served : planSentRuntime
+}
+
+export function useUpdateRuntime(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { code } = (await api.get<{ code: string }>('/unity/templates/DialoguePlayer')).data
+      const args = { className: 'DialoguePlayer', path: RUNTIME_PATH, code }
+      const result = await executeTool('asset.createScript', args)
+      if (!result.success) throw new Error(result.message)
+      await recordWrite(projectId, 'asset.createScript', args, 'runtime')
+      return result
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['unity-syncs', projectId] }),
+  })
+}

@@ -33,3 +33,9 @@ def test_dialogue_player_reads_player_settings(client):
         assert needle in code
     for banned in ("Shader.Find", "void OnAudioFilterRead", "System.Linq"):
         assert banned not in code
+
+
+def test_template_exposes_version_from_header(client):
+    body = client.get("/unity/templates/DialoguePlayer").json()
+    assert isinstance(body["version"], int) and body["version"] >= 1
+    assert body["code"].startswith(f"// GameGold DialoguePlayer v{body['version']}")

@@ -17,7 +17,9 @@ from app.models.unity import (
 from app.routers.auth import get_current_user
 from app.services.deployment_service import export_build_pack, safe_filename
 from app.prompts.unity_prompt import NARRATIVE_GENRES
-from app.services.unity_service import UNITY_TEMPLATES, generate_build_plan, narrative_plan, pick_dialogue
+from app.services.unity_service import (
+    UNITY_TEMPLATES, generate_build_plan, narrative_plan, pick_dialogue, template_version,
+)
 
 router = APIRouter(prefix="/projects/{project_id}/unity", tags=["unity"])
 templates_router = APIRouter(prefix="/unity/templates", tags=["unity"])
@@ -28,7 +30,7 @@ async def get_template(class_name: str, current_user: dict = Depends(get_current
     code = UNITY_TEMPLATES.get(class_name)
     if code is None:
         raise HTTPException(status_code=404, detail=f"No built-in script named {class_name}")
-    return {"className": class_name, "code": code}
+    return {"className": class_name, "code": code, "version": template_version(code)}
 
 
 def serialize(doc: dict) -> dict:

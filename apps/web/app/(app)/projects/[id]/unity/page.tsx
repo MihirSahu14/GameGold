@@ -6,6 +6,7 @@ import { RiskPanel } from '@/components/unity/RiskPanel'
 import { MissingScripts } from '@/components/unity/MissingScripts'
 import { PlayControls } from '@/components/unity/PlayControls'
 import { UnityChangesPanel } from '@/components/unity/UnityChangesPanel'
+import { RuntimeUpdate } from '@/components/unity/RuntimeUpdate'
 import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
 import { useToastStore } from '@/store/toastStore'
 import type { PlayerSettings, UnityDiffItem } from '@gamegold/types'
@@ -13,7 +14,7 @@ import { useAssets } from '@/lib/queries/useAssets'
 import {
   useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset, playerSettingsFile,
   PLAYER_SETTINGS_PATH, runQueue, useUnitySyncs, usePullFromUnity, useSyncToUnity, snapshotUnity, diffUnity, overwriteTarget,
-  recordWrite, stepSource,
+  recordWrite, stepSource, useRuntimeTemplate, useUpdateRuntime, runtimeOutdated, RUNTIME_PATH,
 } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
@@ -66,7 +67,9 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const { status: mcpStatus, unityInfo, check: checkMCP, executeTool } = useUnityMCP()
   const updateSettings = useUpdatePlayerSettings(id)
   const [syncingSettings, setSyncingSettings] = useState(false)
-  const { refetch: refetchSyncs } = useUnitySyncs(id)
+  const { data: syncs, refetch: refetchSyncs } = useUnitySyncs(id)
+  const { data: runtimeTemplate } = useRuntimeTemplate()
+  const updateRuntime = useUpdateRuntime(id)
   const pullFromUnity = usePullFromUnity(id)
   const syncToUnity = useSyncToUnity(id)
   const [diffItems, setDiffItems] = useState<UnityDiffItem[] | null>(null)
@@ -181,11 +184,23 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     await handleCheckUnity()
   }
 
+  function handleUpdateRuntime() {
+    updateRuntime.mutate(undefined, {
+      onSuccess: () => useToastStore.getState().pushToast('DialoguePlayer updated in Unity.', 'info'),
+      onError: (err) => toastError(err, err instanceof Error ? err.message : 'Could not update the runtime.'),
+    })
+  }
+
   function handleToggleStepDone(stepNumber: number, completed: boolean) {
     markStep.mutate({ stepNumber, completed }, { onError: (err) => toastError(err, 'Could not save step progress.') })
   }
 
   const isBusy = executingStep !== null || runAllProgress !== null
+
+  // Gap 40: only offer "Update runtime" once GameGold's DialoguePlayer has been sent to this project.
+  const runtimeRecord = syncs?.find(r => r.path === RUNTIME_PATH)
+  const planSentRuntime = !!plan?.steps.some(s => s.tool === 'asset.createScript' && s.args.className === 'DialoguePlayer' && s.completed)
+  const showRuntime = mcpStatus === 'connected' && (!!runtimeRecord || planSentRuntime)
 
   // A click while something runs gets a visible note instead of being silently dropped.
   function flagBusy() {
@@ -410,6 +425,16 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
               busy={syncingSettings || updateSettings.isPending}
               onSave={handleSaveSettings}
               onSync={handleSyncSettings}
+            />
+          )}
+
+          {showRuntime && (
+            <RuntimeUpdate
+              outdated={runtimeOutdated(syncs ?? [], runtimeTemplate?.version, planSentRuntime)}
+              servedVersion={runtimeTemplate?.version ?? null}
+              syncedVersion={runtimeRecord?.version ?? null}
+              busy={updateRuntime.isPending}
+              onUpdate={handleUpdateRuntime}
             />
           )}
 

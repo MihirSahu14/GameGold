@@ -18,6 +18,15 @@ UNITY_TEMPLATES = {
     for p in (Path(__file__).resolve().parent.parent / "unity_templates").glob("*.cs")
 }
 
+_VERSION_HEADER = re.compile(r"^// GameGold \w+ v(\d+)")
+
+
+def template_version(code: str) -> int | None:
+    """Version from the template's first line (`// GameGold DialoguePlayer v<N>`) — bump it on every change (gap 40)."""
+    m = _VERSION_HEADER.match(code)
+    return int(m.group(1)) if m else None
+
+
 # component.add types that never need a generated script.
 # ponytail: hand-kept list of common built-ins; a rare built-in shows up as "missing" — add it here.
 UNITY_BUILTIN_COMPONENTS = {
