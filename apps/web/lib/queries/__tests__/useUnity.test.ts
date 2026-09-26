@@ -6,10 +6,12 @@ import type { Asset } from '@gamegold/types'
 
 vi.mock('@/lib/api', () => ({ api: { get: vi.fn() } }))
 vi.mock('@/lib/utils', () => ({ downloadBlob: vi.fn() }))
+vi.mock('@/lib/rasterize', () => ({ svgToPngDataUri: vi.fn() }))
 
 import { api } from '@/lib/api'
 import { downloadBlob } from '@/lib/utils'
-import { resolveToolArgs, useExportBuildPack } from '@/lib/queries/useUnity'
+import { svgToPngDataUri } from '@/lib/rasterize'
+import { resolveToolArgs, prepareToolArgs, useExportBuildPack } from '@/lib/queries/useUnity'
 
 function asset(partial: Partial<Asset>): Asset {
   return {
@@ -42,9 +44,26 @@ describe('resolveToolArgs', () => {
     })
   })
 
-  it('refuses to send an SVG placeholder sprite', () => {
-    const r = resolveToolArgs('asset.importSprite', { name: 'Coin' }, ASSETS)
-    expect(r).toHaveProperty('error', expect.stringContaining('SVG placeholder'))
+  it('passes SVG sprites through for prepareToolArgs to rasterize', () => {
+    expect(resolveToolArgs('asset.importSprite', { name: 'Coin' }, ASSETS)).toEqual({
+      args: { name: 'Coin', base64: 'data:image/svg+xml;base64,BBB' },
+    })
+  })
+
+  it('prepareToolArgs rasterizes SVG sprites to PNG before sending', async () => {
+    vi.mocked(svgToPngDataUri).mockResolvedValue('data:image/png;base64,PNG')
+    expect(await prepareToolArgs('asset.importSprite', { name: 'Coin' }, ASSETS)).toEqual({
+      args: { name: 'Coin', base64: 'data:image/png;base64,PNG' },
+    })
+    expect(svgToPngDataUri).toHaveBeenCalledWith('data:image/svg+xml;base64,BBB')
+  })
+
+  it('prepareToolArgs leaves PNG sprites alone', async () => {
+    vi.mocked(svgToPngDataUri).mockClear()
+    expect(await prepareToolArgs('asset.importSprite', { name: 'Hero' }, ASSETS)).toEqual({
+      args: { name: 'Hero', base64: 'data:image/png;base64,AAA' },
+    })
+    expect(svgToPngDataUri).not.toHaveBeenCalled()
   })
 
   it('passes other tools through untouched', () => {

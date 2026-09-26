@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useCallback } from 'react'
 import { api } from '../api'
 import { downloadBlob } from '../utils'
+import { svgToPngDataUri } from '../rasterize'
 import type { Asset, UnityBuildPlan } from '@gamegold/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -20,10 +21,7 @@ export function resolveToolArgs(
     if (!sprite?.url) {
       return { error: `No sprite asset named "${String(args.name)}" found — generate it in the Assets stage first.` }
     }
-    if (sprite.url.startsWith('data:image/svg')) {
-      return { error: `"${sprite.name}" is an SVG placeholder — replace it with a PNG in the Assets stage.` }
-    }
-    // the C# side strips the data: prefix
+    // the C# side strips the data: prefix; SVGs are rasterized in prepareToolArgs
     return { args: { ...args, base64: sprite.url } }
   }
   if (tool === 'asset.createScript') {
@@ -34,6 +32,22 @@ export function resolveToolArgs(
     return { args: { ...args, code: script.code } }
   }
   return { args }
+}
+
+// resolveToolArgs + the async parts: GameGold's generator makes SVG sprites but the bridge only
+// accepts PNG, so rasterize them in the browser before sending.
+export async function prepareToolArgs(
+  tool: string,
+  args: Record<string, unknown>,
+  assets: Asset[],
+): Promise<{ args: Record<string, unknown> } | { error: string }> {
+  const resolved = resolveToolArgs(tool, args, assets)
+  if ('error' in resolved) return resolved
+  const b64 = resolved.args.base64
+  if (tool === 'asset.importSprite' && typeof b64 === 'string' && b64.startsWith('data:image/svg')) {
+    return { args: { ...resolved.args, base64: await svgToPngDataUri(b64) } }
+  }
+  return resolved
 }
 
 export function findScriptAsset(args: Record<string, unknown>, assets: Asset[]): Asset | undefined {

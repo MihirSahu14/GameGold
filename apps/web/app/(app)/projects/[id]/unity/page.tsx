@@ -4,7 +4,7 @@ import { use, useState, useEffect } from 'react'
 import { useProject, useUpdateRisk } from '@/lib/queries/useProjects'
 import { RiskPanel } from '@/components/unity/RiskPanel'
 import { useAssets } from '@/lib/queries/useAssets'
-import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, resolveToolArgs, findScriptAsset } from '@/lib/queries/useUnity'
+import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { toastError } from '@/lib/api'
@@ -109,7 +109,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     setExecutingStep(stepNumber)
     try {
       // The LLM can't know file contents — sprite data / script code come from stored assets.
-      const resolved = resolveToolArgs(tool, args, assets ?? [])
+      const resolved = await prepareToolArgs(tool, args, assets ?? [])
       if ('error' in resolved) {
         setStepResults(prev => ({ ...prev, [stepNumber]: { success: false, message: resolved.error } }))
         return

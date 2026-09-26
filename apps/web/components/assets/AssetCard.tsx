@@ -5,6 +5,7 @@ import type { Asset } from '@gamegold/types'
 import { UnityGuide } from './UnityGuide'
 import { downloadBlob, downloadHref, cn } from '@/lib/utils'
 import { toastError } from '@/lib/api'
+import { svgToPngBlob } from '@/lib/rasterize'
 import {
   useApproveAsset,
   useGenerateSprite,
@@ -105,28 +106,7 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
   async function handleDownloadPng() {
     if (!asset.url) return
     try {
-      const svgText = atob(asset.url.split(',')[1] ?? '')
-      const dims = svgText.match(/<svg[^>]*\swidth="([\d.]+)"[^>]*\sheight="([\d.]+)"/)
-      const width = dims ? parseFloat(dims[1]) : 256
-      const height = dims ? parseFloat(dims[2]) : 256
-
-      const img = new Image()
-      const loaded = new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve()
-        img.onerror = () => reject(new Error('Could not load the sprite image.'))
-      })
-      img.src = asset.url
-      await loaded
-
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d')
-      if (!ctx) throw new Error('Canvas is not supported in this browser.')
-      ctx.drawImage(img, 0, 0, width, height)
-
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-      if (!blob) throw new Error('Could not rasterize the sprite.')
+      const blob = await svgToPngBlob(asset.url)
       downloadBlob(blob, `${asset.name.replace(/\s+/g, '_')}.png`)
     } catch (err) {
       toastError(err, 'Could not rasterize the sprite to PNG.')
