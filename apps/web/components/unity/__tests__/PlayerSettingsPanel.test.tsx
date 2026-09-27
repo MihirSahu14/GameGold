@@ -5,7 +5,7 @@ import type { PlayerSettings } from '@gamegold/types'
 import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
 
 const DEFAULTS: PlayerSettings = { look: 'plain', chapterColors: {}, textSpeedCps: 40, wordmarkTitle: false, ambience: false, volume: 0.5,
-  twoCharacterStaging: true, characterSides: {},
+  twoCharacterStaging: true, characterSides: {}, choiceRipple: true,
 }
 
 function renderPanel(connected: boolean, onSync = vi.fn(), onSave = vi.fn()) {
@@ -24,8 +24,15 @@ describe('PlayerSettingsPanel', () => {
     fireEvent.click(screen.getByText('SAVE'))
     expect(onSave).toHaveBeenCalledWith({
       look: 'halftone', chapterColors: { '2': '#aa0000' }, textSpeedCps: 80, wordmarkTitle: true, ambience: true, volume: 0.5,
-      twoCharacterStaging: true, characterSides: {},
+      twoCharacterStaging: true, characterSides: {}, choiceRipple: true,
     })
+  })
+
+  it('toggles the choice ripple cue', () => {
+    const { onSave } = renderPanel(true)
+    fireEvent.click(screen.getByLabelText(/choice ripple cue/i))
+    fireEvent.click(screen.getByText('SAVE'))
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ choiceRipple: false }))
   })
 
   it('sends staging toggle and fixed character sides', () => {

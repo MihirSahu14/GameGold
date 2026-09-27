@@ -86,6 +86,10 @@ export function PlayerSettingsPanel({ settings, chapters, speakers = [], connect
           <input type="checkbox" checked={draft.twoCharacterStaging} onChange={(e) => set({ twoCharacterStaging: e.target.checked })} />
           Two-character staging <span className="text-[#456079]">(left/right portraits, speaker in focus)</span>
         </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={draft.choiceRipple} onChange={(e) => set({ choiceRipple: e.target.checked })} />
+          Choice ripple cue <span className="text-[#456079]">(soft ring + water-drop sound after every choice)</span>
+        </label>
       </div>
 
       {draft.twoCharacterStaging && allSpeakers.length > 0 && (

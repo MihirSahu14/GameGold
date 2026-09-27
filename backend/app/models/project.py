@@ -65,6 +65,8 @@ class PlayerSettings(BaseModel):
     character_sides: dict[Annotated[str, Field(min_length=1, max_length=40)], Literal["left", "right"]] = Field(
         default_factory=dict, max_length=20
     )
+    # soft concentric-ring + water-drop cue after every choice, identical regardless of the choice (gap 56).
+    choice_ripple: bool = True
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 

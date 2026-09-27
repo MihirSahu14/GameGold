@@ -1,4 +1,4 @@
-// GameGold DialoguePlayer v2
+// GameGold DialoguePlayer v3
 // GameGold DialoguePlayer — plays a GameGold narrative dialogue JSON in Play mode.
 // Setup: put this on any GameObject, save the dialogue JSON as
 // Assets/Resources/GameGold/dialogue.json, backgrounds in Resources/GameGold/Backgrounds/<bg>,
@@ -9,10 +9,16 @@
 // Branch "when": "<var> [+ <var>...] <op> <int>" (op: < <= > >= ==) or "else".
 // Optional Resources/GameGold/player_settings.json (written by GameGold's "Sync settings") overrides the
 // Inspector: { look: plain|halftone|duotone, textSpeedCps, wordmarkTitle, ambience, volume,
-// chapterColors: [{ chapter, color: "#rrggbb" }], twoCharacterStaging, characterSides: [{ speaker, side: left|right }] }.
+// chapterColors: [{ chapter, color: "#rrggbb" }], twoCharacterStaging, characterSides: [{ speaker, side: left|right }],
+// choiceRipple }.
 // No file = plain look, no sound, Inspector values.
 // Staging (v2): left/right portrait slots per scene (a new bg = new scene); the speaker is lit and forward.
 // Keys (v2): Space/Enter/Right advance, hold Space/Ctrl to skip, 1-4 or Up/Down + Enter for choices, Esc pauses.
+// Nameplate (v3): shown only for spoken dialogue (text starts with a quote mark); a speaker's unquoted line
+// (inner thought) hides the tab and renders in italics — the portrait still stages/lights normally.
+// End screen (v3): never names the ending (no choice is labeled good/bad) — only the final lines, then a
+// quiet "Play again" (Space/Enter). Choice ripple (v3): one identical soft ring + water-drop cue after every
+// choice, tinted by the chapter colour, gated by player_settings.json's choiceRipple.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -56,6 +62,7 @@ public class DialoguePlayer : MonoBehaviour
         public List<ChapterHex> chapterColors = new List<ChapterHex>();
         public bool twoCharacterStaging = true;
         public List<SpeakerSide> characterSides = new List<SpeakerSide>();
+        public bool choiceRipple = true;
     }
 
     [Serializable]
@@ -84,6 +91,8 @@ public class DialoguePlayer : MonoBehaviour
     public bool twoCharacterStaging = true;
     [Tooltip("Fixed stage side per speaker; everyone else takes the free / opposite slot")]
     public List<SpeakerSide> characterSides = new List<SpeakerSide>();
+    [Tooltip("A soft ring + water-drop cue after every choice, identical regardless of which one was picked")]
+    public bool choiceRipple = true;
 
     static readonly Color[] Palette =
     {
@@ -176,6 +185,7 @@ public class DialoguePlayer : MonoBehaviour
         }
         twoCharacterStaging = s.twoCharacterStaging;
         if (s.characterSides != null) characterSides = s.characterSides;
+        choiceRipple = s.choiceRipple;
     }
 
     // ─── Story ────────────────────────────────────────────────────────────────
@@ -260,11 +270,21 @@ public class DialoguePlayer : MonoBehaviour
         hint.gameObject.SetActive(!hintDone); // first line only
         hintDone = true;
         var speaker = Str(current, "speaker") ?? "";
-        nameText.text = speaker;
-        SetPortrait(speaker, Str(current, "expr"));
+        bool spoken = IsNarration(speaker) || IsQuoted(fullText); // narration is never a "thought"; only an unquoted speaker line is
+        nameText.text = !IsNarration(speaker) && spoken ? speaker : ""; // hide the tab for unquoted (inner-thought) lines
+        bodyText.fontStyle = !IsNarration(speaker) && !spoken ? FontStyle.Italic : FontStyle.Normal;
+        SetPortrait(speaker, Str(current, "expr")); // portrait still stages/lights normally either way
         bodyText.text = "";
         shown = 0;
         typing = true;
+    }
+
+    // Spoken dialogue starts with a quote mark; anything else with a speaker is an inner thought (gap 54).
+    static readonly char[] QuoteMarks = { '"', '“', '\'' };
+    static bool IsQuoted(string text)
+    {
+        var trimmed = text.TrimStart();
+        return trimmed.Length > 0 && Array.IndexOf(QuoteMarks, trimmed[0]) >= 0;
     }
 
     // After a line is fully read: choices, branches, next, or the ending.
@@ -318,7 +338,60 @@ public class DialoguePlayer : MonoBehaviour
             vars.TryGetValue(kv.Key, out var v);
             vars[kv.Key] = v + ToInt(kv.Value);
         }
+        if (choiceRipple) PlayRippleCue(); // one identical cue regardless of choice/effects (gap 56) — never a meter
         Go(Str(choice, "next"));
+    }
+
+    // ─── Choice ripple cue: one soft ring + water-drop sound, identical every time ────────────
+
+    Image rippleImage;
+    Coroutine rippleRoutine;
+
+    void PlayRippleCue()
+    {
+        audioSource.PlayOneShot(Clip("ripple"), volume); // respects the volume/mute setting, ambience or not
+        if (rippleRoutine != null) StopCoroutine(rippleRoutine);
+        rippleRoutine = StartCoroutine(RippleCue());
+    }
+
+    IEnumerator RippleCue()
+    {
+        const float duration = 0.8f;
+        rippleImage.rectTransform.anchoredPosition = Vector2.zero; // screen centre, regardless of which button fired it
+        for (float t = 0f; t < duration; t += Time.unscaledDeltaTime)
+        {
+            float k = Mathf.Clamp01(t / duration);
+            rippleImage.rectTransform.localScale = Vector3.one * Mathf.Lerp(0.35f, 1.6f, k);
+            rippleImage.color = new Color(tint.r, tint.g, tint.b, Mathf.Lerp(0.3f, 0f, k));
+            yield return null;
+        }
+        rippleImage.color = Color.clear;
+        rippleRoutine = null;
+    }
+
+    Sprite ringSprite;
+
+    // A soft, symmetric ring (transparent centre and edges): built once on the CPU, no shader.
+    Sprite RingSprite()
+    {
+        if (ringSprite != null) return ringSprite;
+        const int size = 128;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        var px = new Color32[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = (x + 0.5f) / size - 0.5f, dy = (y + 0.5f) / size - 0.5f;
+                float dist = Mathf.Sqrt(dx * dx + dy * dy) * 2f; // 0 centre .. 1 edge
+                float ring = Mathf.Exp(-Mathf.Pow((dist - 0.55f) * 6f, 2f)); // soft band around r=0.55
+                byte a = (byte)Mathf.RoundToInt(Mathf.Clamp01(ring) * 255f);
+                px[y * size + x] = new Color32(255, 255, 255, a);
+            }
+        }
+        tex.SetPixels32(px);
+        tex.Apply(false, true);
+        return ringSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
     }
 
     bool Eval(string when)
@@ -606,6 +679,7 @@ public class DialoguePlayer : MonoBehaviour
             case "sea": data = Loop(t => Sea(t) + Drone(t)); break;
             case "room": data = Loop(t => Room() + 0.02f * Mathf.Sin(2f * Mathf.PI * 60f * t)); break;
             case "pad": data = Loop(t => Sea(t) * 0.5f + Pad(t)); break;
+            case "ripple": data = Shot(0.5f, Drop); break; // water-drop cue after a choice
             default: data = Shot(0.025f, t => Mathf.Sin(2f * Mathf.PI * 1400f * t) * Mathf.Exp(-t * 260f)); break; // blip
         }
         clip = AudioClip.Create(id, data.Length, 1, Rate, false);
@@ -630,6 +704,11 @@ public class DialoguePlayer : MonoBehaviour
 
     static float Drone(float t) =>
         0.05f * Mathf.Sin(2f * Mathf.PI * 55f * t) + 0.03f * Mathf.Sin(2f * Mathf.PI * 82.5f * t) * (0.6f + 0.4f * Mathf.Sin(2f * Mathf.PI * t / 16f));
+
+    // A single soft water-drop "plink": a quick downward pitch sweep plus a light noise tick, pre-rendered once.
+    static float Drop(float t) =>
+        Mathf.Sin(2f * Mathf.PI * (900f - 650f * Mathf.Min(1f, t * 4f)) * t) * Mathf.Exp(-t * 9f)
+        + 0.15f * Noise() * Mathf.Exp(-t * 40f);
 
     static float Pad(float t) // Cmaj7, very soft
     {
@@ -698,7 +777,7 @@ public class DialoguePlayer : MonoBehaviour
         typing = false;
         ended = true;
         endTitle.text = message ?? "THE END";
-        endSubtitle.text = string.IsNullOrEmpty(ending) ? "" : char.ToUpperInvariant(ending[0]) + ending.Substring(1) + " ending";
+        endSubtitle.text = ""; // "ending" (good/bad/neutral) is kept only for analytics — never shown (pillar 1, gap 55)
         endPanel.SetActive(true);
     }
 
@@ -1100,6 +1179,11 @@ public class DialoguePlayer : MonoBehaviour
         layout.childControlHeight = true;
         layout.childControlWidth = true;
         layout.childForceExpandHeight = false;
+
+        rippleImage = MakeImage(root, "Ripple Cue", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Color.clear);
+        rippleImage.raycastTarget = false;
+        rippleImage.sprite = RingSprite();
+        rippleImage.rectTransform.sizeDelta = new Vector2(320f, 320f);
 
         var end = MakeImage(root, "End", Vector2.zero, Vector2.one, new Color(0f, 0f, 0f, 0.85f));
         endPanel = end.gameObject;

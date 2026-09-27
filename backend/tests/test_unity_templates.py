@@ -37,7 +37,7 @@ def test_dialogue_player_reads_player_settings(client):
 
 def test_template_exposes_version_from_header(client):
     body = client.get("/unity/templates/DialoguePlayer").json()
-    assert isinstance(body["version"], int) and body["version"] >= 2  # v2: two-character staging + keyboard
+    assert isinstance(body["version"], int) and body["version"] >= 3  # v3: nameplate/end screen/choice ripple
     assert body["code"].startswith(f"// GameGold DialoguePlayer v{body['version']}")
 
 
@@ -46,3 +46,12 @@ def test_dialogue_player_v2_staging_and_keyboard(client):
     for needle in ("static int AssignSlot(", "twoCharacterStaging", "characterSides", "unscaledDeltaTime",
                    "#if ENABLE_INPUT_SYSTEM", "#elif ENABLE_LEGACY_INPUT_MANAGER", "Keyboard.current"):
         assert needle in code
+
+
+def test_dialogue_player_v3_presentation(client):
+    code = client.get("/unity/templates/DialoguePlayer").json()["code"]
+    # gap 54: nameplate hidden + italic for unquoted (thought) lines; gap 55: end screen never names the ending;
+    # gap 56: identical ripple cue (visual + sound) after every choice, gated by choiceRipple.
+    for needle in ("IsQuoted", "FontStyle.Italic", "choiceRipple", "PlayRippleCue", "RingSprite", "\"ripple\""):
+        assert needle in code
+    assert 'ending[0]' not in code  # the ending name never reaches the end screen anymore
