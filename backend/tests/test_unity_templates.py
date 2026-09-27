@@ -59,5 +59,6 @@ def test_dialogue_player_v3_presentation(client):
 
 def test_dialogue_player_v4_original_backgrounds(client):
     body = client.get("/unity/templates/DialoguePlayer").json()
-    assert body["version"] >= 5  # gap 61: designer art skips the print + tint; v5: art cards hide the textbox
+    assert body["version"] >= 6  # gap 61: designer art skips the print + tint; v5: art cards; v6: cover fit
     assert "originalBackgrounds.Exists(" in body["code"] and "artCard: true" in body["code"]
+    assert "AspectMode.EnvelopeParent" in body["code"]

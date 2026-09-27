@@ -1,4 +1,4 @@
-// GameGold DialoguePlayer v5
+// GameGold DialoguePlayer v6
 // GameGold DialoguePlayer — plays a GameGold narrative dialogue JSON in Play mode.
 // Setup: put this on any GameObject, save the dialogue JSON as
 // Assets/Resources/GameGold/dialogue.json, backgrounds in Resources/GameGold/Backgrounds/<bg>,
@@ -21,6 +21,7 @@
 // choice, tinted by the chapter colour, gated by player_settings.json's choiceRipple.
 // Original art (v4): backgrounds listed in originalBackgrounds are shown exactly as drawn — no print, no tint.
 // Art cards (v5): a one-word ALL-CAPS line on an original-art background hides the textbox — the art is the card.
+// Cover fit (v6): backgrounds keep their aspect ratio and fill the screen (edges trimmed), never squashed.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -125,6 +126,7 @@ public class DialoguePlayer : MonoBehaviour
     // UI
     Font font;
     Image background, accent;
+    AspectRatioFitter backgroundFit;
     Text nameText, bodyText, endTitle, endSubtitle, wordmark, hint, volumeText;
     GameObject textbox;
     RectTransform choiceBox;
@@ -473,6 +475,8 @@ public class DialoguePlayer : MonoBehaviour
 
     void ApplyBackground()
     {
+        if (rawBackground != null)
+            backgroundFit.aspectRatio = rawBackground.rect.width / Mathf.Max(1f, rawBackground.rect.height);
         if (rawBackground == null)
         {
             background.sprite = null;
@@ -1170,6 +1174,9 @@ public class DialoguePlayer : MonoBehaviour
         var root = (RectTransform)canvasGo.transform;
 
         background = MakeImage(root, "Background", Vector2.zero, Vector2.one, Color.black);
+        backgroundFit = background.gameObject.AddComponent<AspectRatioFitter>();
+        backgroundFit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent; // cover: fill the screen, keep the shape
+        backgroundFit.aspectRatio = 16f / 9f;
         var clickCatcher = MakeImage(root, "Click To Advance", Vector2.zero, Vector2.one, Color.clear);
         clickCatcher.gameObject.AddComponent<Button>().onClick.AddListener(OnClick);
 
