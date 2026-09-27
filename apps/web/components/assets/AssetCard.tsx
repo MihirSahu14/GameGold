@@ -3,8 +3,12 @@
 import { useState } from 'react'
 import type { Asset } from '@gamegold/types'
 import { UnityGuide } from './UnityGuide'
-import { downloadBlob, downloadHref } from '@/lib/utils'
+import { DialogueJsonEditor } from './DialogueJson'
+import { downloadBlob, downloadHref, cn } from '@/lib/utils'
 import { toastError } from '@/lib/api'
+import { svgToPngBlob } from '@/lib/rasterize'
+import { useToastStore } from '@/store/toastStore'
+import { useUnityConnection, useSyncToUnity, syncCall } from '@/lib/queries/useUnity'
 import {
   useApproveAsset,
   useGenerateSprite,
@@ -47,6 +51,9 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
   const regenerateSprite = useGenerateSprite(projectId)
   const regenerateScript = useGenerateScript(projectId)
   const regenerateDialogue = useGenerateDialogue(projectId)
+  const unity = useUnityConnection()
+  const syncToUnity = useSyncToUnity(projectId)
+  const canSync = syncCall(asset) !== null
   const isRegenerating =
     regenerateSprite.isPending || regenerateScript.isPending || regenerateDialogue.isPending
 
@@ -81,6 +88,14 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
     }
   }
 
+  function handleSync() {
+    const toast = useToastStore.getState().pushToast
+    syncToUnity.mutate(asset, {
+      onSuccess: () => toast(`Synced "${asset.name}" to Unity.`, 'info'),
+      onError: (err) => toast(`Sync of "${asset.name}" failed: ${err.message}`, 'error'),
+    })
+  }
+
   async function handleCopy(text: string) {
     await navigator.clipboard.writeText(text)
     setCopied(true)
@@ -96,6 +111,19 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
       // Placeholder sprites are SVG data URIs — don't mislabel them as .png.
       const ext = asset.url.startsWith('data:image/svg') ? 'svg' : 'png'
       downloadHref(asset.url, `${asset.name.replace(/\s+/g, '_')}.${ext}`)
+    }
+  }
+
+  const isSvgSprite = asset.type === 'sprite' && !!asset.url?.startsWith('data:image/svg')
+
+  // Unity can't use an SVG data URI directly — rasterize it to a PNG client-side.
+  async function handleDownloadPng() {
+    if (!asset.url) return
+    try {
+      const blob = await svgToPngBlob(asset.url)
+      downloadBlob(blob, `${asset.name.replace(/\s+/g, '_')}.png`)
+    } catch (err) {
+      toastError(err, 'Could not rasterize the sprite to PNG.')
     }
   }
 
@@ -158,7 +186,10 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
           <img
             src={asset.url}
             alt={asset.name}
-            className="w-full aspect-square object-contain bg-zinc-950 rounded-lg border border-zinc-800"
+            className={cn(
+              'w-full object-contain bg-zinc-950 rounded-lg border border-zinc-800',
+              asset.kind === 'background' ? 'aspect-video' : 'aspect-square',
+            )}
             style={asset.style === 'pixel' ? { imageRendering: 'pixelated' } : undefined}
           />
         )}
@@ -183,8 +214,9 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
             <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
               {asset.tree.nodes.slice(0, 6).map((node) => (
                 <div key={node.id} className="text-xs">
-                  <span className={node.speaker === 'npc' ? 'text-purple-400' : 'text-blue-400'}>
-                    {node.speaker === 'npc' ? asset.tree?.npcName : 'Player'}:
+                  {/* AI NPC trees use npc/player; narrative trees use real speaker names */}
+                  <span className={node.speaker === 'player' ? 'text-blue-400' : 'text-purple-400'}>
+                    {node.speaker === 'npc' ? asset.tree?.npcName : node.speaker === 'player' ? 'Player' : node.speaker || '…'}:
                   </span>{' '}
                   <span className="text-zinc-400">{node.text}</span>
                   {node.choices.length > 0 && (
@@ -214,8 +246,26 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
           onClick={handleDownload}
           className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors"
         >
-          Download {asset.type === 'script' ? '.cs' : asset.type === 'dialogue' ? '.json' : '.png'}
+          Download {asset.type === 'script' ? '.cs' : asset.type === 'dialogue' ? '.json' : isSvgSprite ? '.svg' : '.png'}
         </button>
+        {isSvgSprite && (
+          <button
+            onClick={handleDownloadPng}
+            className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors"
+          >
+            Download PNG
+          </button>
+        )}
+        {canSync && (
+          <button
+            onClick={handleSync}
+            disabled={unity.status !== 'connected' || syncToUnity.isPending}
+            title={unity.status === 'connected' ? 'Write this to Assets/Resources/GameGold in the open Unity project' : 'Not connected — open Unity with the GameGold bridge running (see the Unity page)'}
+            className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {syncToUnity.isPending ? 'Syncing…' : 'Sync to Unity'}
+          </button>
+        )}
         <button
           onClick={() => setShowRegenerate((v) => !v)}
           disabled={isRegenerating}
@@ -244,6 +294,8 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
           </button>
         </div>
       )}
+
+      {asset.type === 'dialogue' && <DialogueJsonEditor projectId={projectId} asset={asset} />}
 
       {/* Unity guide */}
       <UnityGuide

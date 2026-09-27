@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { Project, ProjectCreate, ConceptCard, PitchInterview } from '@gamegold/types'
+import type { Project, ProjectCreate, ConceptCard, PitchInterview, RiskKind, GameGenre, PlayerSettings } from '@gamegold/types'
 
 // ─── Fetch all projects ───────────────────────────────────────────────────────
 export function useProjects() {
@@ -62,6 +62,46 @@ export function useUpdateCutList(projectId: string) {
   return useMutation({
     mutationFn: async (cutList: string[]) => {
       const res = await api.patch<Project>(`/projects/${projectId}`, { cutList })
+      return res.data
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['projects', projectId], data)
+    },
+  })
+}
+
+// ─── Riskiest assumption (Prototype entry) ───────────────────────────────────
+export function useUpdateGenre(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (genre: GameGenre) => {
+      const res = await api.patch<Project>(`/projects/${projectId}`, { genre })
+      return res.data
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['projects', projectId], data)
+    },
+  })
+}
+
+export function useUpdatePlayerSettings(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (playerSettings: PlayerSettings) => {
+      const res = await api.patch<Project>(`/projects/${projectId}`, { playerSettings })
+      return res.data
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['projects', projectId], data)
+    },
+  })
+}
+
+export function useUpdateRisk(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (risk: { riskiestAssumption: string; riskKind: RiskKind | null }) => {
+      const res = await api.patch<Project>(`/projects/${projectId}`, risk)
       return res.data
     },
     onSuccess: (data) => {

@@ -42,3 +42,15 @@ describe('usePitchInterview', () => {
     expect(out).toEqual(interview)
   })
 })
+
+describe('useUpdateRisk', () => {
+  it('PATCHes the riskiest assumption onto the project', async () => {
+    const { useUpdateRisk } = await import('@/lib/queries/useProjects')
+    mockApi.patch.mockResolvedValueOnce({ data: { _id: 'p1' } })
+    const { result } = renderHook(() => useUpdateRisk('p1'), { wrapper: makeWrapper() })
+    await act(async () => {
+      await result.current.mutateAsync({ riskiestAssumption: 'feel', riskKind: 'feel' })
+    })
+    expect(mockApi.patch).toHaveBeenCalledWith('/projects/p1', { riskiestAssumption: 'feel', riskKind: 'feel' })
+  })
+})

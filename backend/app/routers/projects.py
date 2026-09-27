@@ -181,9 +181,10 @@ async def interview_pitch(
 ):
     db = get_db()
     project = await load_owned_project(db, project_id, current_user["_id"])
+    gate = await gate_for(db, project)
     try:
         async with project_llm_slot(project_id):
-            data = await pitch_interview(project.get("concept_card") or {})
+            data = await pitch_interview(project.get("concept_card") or {}, gate.missing)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     return PitchInterviewOut(**data)
@@ -255,5 +256,5 @@ async def delete_project(project_id: str, current_user: dict = Depends(get_curre
     check_project_ownership(project, current_user["_id"])
     await db.projects.delete_one({"_id": oid})
     # Cascade: delete everything scoped to this project
-    for coll in (db.gdds, db.systems, db.assets, db.playtests, db.bugs, db.deployments, db.unity_plans):
+    for coll in (db.gdds, db.systems, db.assets, db.playtests, db.bugs, db.deployments, db.unity_plans, db.unity_syncs):
         await coll.delete_many({"project_id": project_id})

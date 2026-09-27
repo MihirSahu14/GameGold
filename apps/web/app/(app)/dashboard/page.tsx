@@ -6,6 +6,7 @@ import { useProjects, useCreateProject } from '@/lib/queries/useProjects'
 import { useAuthStore } from '@/store/authStore'
 import type { GameGenre, GamePlatform } from '@gamegold/types'
 import { STAGE_LABELS, firstRoute } from '@/lib/stages'
+import { GENRES } from '@/lib/genres'
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
@@ -301,18 +302,6 @@ export default function DashboardPage() {
   )
 }
 
-const GENRES = [
-  { value: 'platformer', label: 'Platformer' },
-  { value: 'rpg',        label: 'RPG' },
-  { value: 'puzzle',     label: 'Puzzle' },
-  { value: 'shooter',    label: 'Shooter' },
-  { value: 'strategy',   label: 'Strategy' },
-  { value: 'horror',     label: 'Horror' },
-  { value: 'simulation', label: 'Simulation' },
-  { value: 'adventure',  label: 'Adventure' },
-  { value: 'fighting',   label: 'Fighting' },
-  { value: 'other',      label: 'Other' },
-]
 
 const PLATFORMS = [
   { value: 'pc',             label: 'PC' },

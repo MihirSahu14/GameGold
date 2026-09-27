@@ -43,6 +43,35 @@ def test_interview_returns_capped_questions_options_comparables(client, mock_db,
     assert "Tense; Readable" in user
 
 
+def test_interview_prompt_names_missing_gate_items(monkeypatch):
+    from app.prompts.gdd_prompt import build_pitch_interview_prompt
+
+    prompt = build_pitch_interview_prompt(CARD, ["Name exactly 3 pillars", "Pick a genre"])
+    assert "The pitch is still missing: Name exactly 3 pillars; Pick a genre" in prompt
+    assert "make at least one question target these" in prompt
+
+
+def test_interview_prompt_omits_missing_note_when_gate_is_met():
+    from app.prompts.gdd_prompt import build_pitch_interview_prompt
+
+    prompt = build_pitch_interview_prompt(CARD, [])
+    assert "still missing" not in prompt
+
+
+def test_interview_route_passes_gate_missing_items_into_the_prompt(client, mock_db, monkeypatch):
+    # Thin card -> pitch gate fails on pillars/hook/wont_do/genre.
+    mock_db.projects.find_one.return_value = {**TEST_PROJECT, "concept_card": {}}
+    payload = {"questions": ["q"], "options": [], "comparables": []}
+    llm = MagicMock(return_value=make_llm_response(json.dumps(payload)))
+    monkeypatch.setattr("litellm.completion", llm)
+
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/pitch/interview")
+    assert resp.status_code == 200
+    user_prompt = llm.call_args.kwargs["messages"][1]["content"]
+    assert "still missing" in user_prompt
+    assert "Write your hook" in user_prompt
+
+
 def test_interview_502_on_garbage_output(client, mock_db, monkeypatch):
     mock_db.projects.find_one.return_value = {**TEST_PROJECT, "concept_card": CARD}
     monkeypatch.setattr("litellm.completion", MagicMock(return_value=make_llm_response("nope")))

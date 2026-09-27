@@ -1,9 +1,23 @@
 'use client'
 
 import { use, useState, useEffect } from 'react'
-import { useProject } from '@/lib/queries/useProjects'
+import { useProject, useUpdateRisk, useUpdatePlayerSettings } from '@/lib/queries/useProjects'
+import { RiskPanel } from '@/components/unity/RiskPanel'
+import { MissingScripts } from '@/components/unity/MissingScripts'
+import { PlayControls } from '@/components/unity/PlayControls'
+import { UnityChangesPanel } from '@/components/unity/UnityChangesPanel'
+import { RuntimeUpdate } from '@/components/unity/RuntimeUpdate'
+import { ChangeSomethingPanel } from '@/components/unity/ChangeSomethingPanel'
+import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
+import { useToastStore } from '@/store/toastStore'
+import type { PlayerSettings, UnityChangePlan, UnityDiffItem } from '@gamegold/types'
 import { useAssets } from '@/lib/queries/useAssets'
-import { useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, resolveToolArgs, findScriptAsset } from '@/lib/queries/useUnity'
+import {
+  useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset, playerSettingsFile,
+  PLAYER_SETTINGS_PATH, runQueue, useUnitySyncs, usePullFromUnity, useSyncToUnity, snapshotUnity, diffUnity, overwriteTarget,
+  recordWrite, stepSource, useRuntimeTemplate, useUpdateRuntime, runtimeOutdated, RUNTIME_PATH, useProposeChange,
+} from '@/lib/queries/useUnity'
+import type { ToolResult } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import { toastError } from '@/lib/api'
@@ -16,8 +30,10 @@ const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' 
 const SETUP_STEPS = [
   'Download the build pack below (GAMEGOLD.md brief + plan.json + your assets)',
   'Unzip it into your Unity project under Assets/GameGold/',
-  'Connect a Unity MCP server: Unity 6+ → run `unity mcp`; Unity 2021.3+ → install CoplayDev/unity-mcp',
+  'Install the official Unity CLI: `winget install Unity.CLI` (Windows), then open the project in the Editor',
+  'In the project folder run `unity pipeline install`, then `unity mcp configure claude` (alternative: CoplayDev/unity-mcp)',
   'Open Claude Code in the Unity project folder and ask it to build the prototype in Assets/GameGold/GAMEGOLD.md',
+  'Gotchas: focus the Editor after adding packages; `unity eval` AssetDatabase.Refresh() before `unity recompile`; check the Console, not exit codes; eval has a ~5s limit',
   'Review every change in the Editor — greybox and labeled placeholders only, one mechanic',
   'Enter Play mode and play the core loop yourself before inviting testers',
 ]
@@ -49,12 +65,29 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const generatePlan = useGeneratePlan(id)
   const markStep = useMarkStep(id)
   const exportPack = useExportBuildPack(id)
+  const updateRisk = useUpdateRisk(id)
   const { status: mcpStatus, unityInfo, check: checkMCP, executeTool } = useUnityMCP()
+  const updateSettings = useUpdatePlayerSettings(id)
+  const [syncingSettings, setSyncingSettings] = useState(false)
+  const { data: syncs, refetch: refetchSyncs } = useUnitySyncs(id)
+  const { data: runtimeTemplate } = useRuntimeTemplate()
+  const updateRuntime = useUpdateRuntime(id)
+  const proposeChange = useProposeChange(id)
+  const [changePlan, setChangePlan] = useState<UnityChangePlan | null>(null)
+  const [changeResults, setChangeResults] = useState<Record<number, ToolResult>>({})
+  const [changeRunning, setChangeRunning] = useState(false)
+  const pullFromUnity = usePullFromUnity(id)
+  const syncToUnity = useSyncToUnity(id)
+  const [diffItems, setDiffItems] = useState<UnityDiffItem[] | null>(null)
+  const [checkingUnity, setCheckingUnity] = useState(false)
+  const [busyPath, setBusyPath] = useState<string | null>(null)
 
   const STORAGE_KEY = `unity-checklist-${id}`
   const [checked, setChecked] = useState<boolean[]>(() => Array(SETUP_STEPS.length).fill(false))
   const [activeTab, setActiveTab] = useState<Tab>('manual')
   const [executingStep, setExecutingStep] = useState<number | null>(null)
+  const [runAllProgress, setRunAllProgress] = useState<{ done: number; total: number } | null>(null)
+  const [busyNote, setBusyNote] = useState(false)
   const [stepResults, setStepResults] = useState<Record<number, { success: boolean; message: string }>>({})
 
   // Read localStorage after mount; reading it during render mismatches the server HTML.
@@ -71,6 +104,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const scripts  = (assets ?? []).filter(a => a.type === 'script')
   const dialogue = (assets ?? []).filter(a => a.type === 'dialogue')
   const totalAssets = (assets ?? []).length
+  const chapters = [...new Set(dialogue.flatMap(d => (d.tree?.nodes ?? []).map(n => n.chapter ?? '').filter(Boolean)))]
+  const speakers = [...new Set(dialogue.flatMap(d => (d.tree?.nodes ?? []).map(n => n.speaker ?? '').filter(s => s && s.toLowerCase() !== 'narrator')))]
   const doneSteps = checked.filter(Boolean).length
 
   function toggleStep(i: number) {
@@ -93,8 +128,125 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     }
   }
 
+  function handleSaveSettings(s: PlayerSettings) {
+    updateSettings.mutate(s, { onError: (err) => toastError(err, 'Could not save player settings.') })
+  }
+
+  // Save first so GameGold and Unity agree, then write the file DialoguePlayer reads at start.
+  async function handleSyncSettings(s: PlayerSettings) {
+    const toast = useToastStore.getState().pushToast
+    setSyncingSettings(true)
+    try {
+      await updateSettings.mutateAsync(s)
+      const args = { path: PLAYER_SETTINGS_PATH, content: playerSettingsFile(s) }
+      const r = await executeTool('asset.createText', args)
+      if (r.success) await recordWrite(id, 'asset.createText', args, 'settings').catch(() => {})
+      toast(r.success ? 'Player settings synced to Unity.' : `Settings sync failed: ${r.message}`, r.success ? 'info' : 'error')
+    } catch (err) {
+      toastError(err, 'Could not save player settings.')
+    } finally {
+      setSyncingSettings(false)
+    }
+  }
+
+  // ─── Read-back: Unity's GameGold files vs what GameGold last wrote there ───
+  async function handleCheckUnity() {
+    setCheckingUnity(true)
+    try {
+      const [snapshot, syncs] = await Promise.all([snapshotUnity(), refetchSyncs()])
+      if (syncs.error) throw syncs.error
+      setDiffItems(diffUnity(snapshot.files, syncs.data ?? []))
+    } catch (err) {
+      toastError(err, 'Could not read the Unity project.')
+    } finally {
+      setCheckingUnity(false)
+    }
+  }
+
+  async function handlePull(item: UnityDiffItem) {
+    setBusyPath(item.path)
+    try {
+      await pullFromUnity.mutateAsync({ item, assets: assets ?? [] })
+      useToastStore.getState().pushToast(`Pulled ${item.path.split('/').pop()} into GameGold.`, 'info')
+    } catch (err) {
+      toastError(err, err instanceof Error ? err.message : 'Pull failed.')
+    } finally {
+      setBusyPath(null)
+    }
+    await handleCheckUnity()
+  }
+
+  async function handleOverwrite(item: UnityDiffItem) {
+    const target = overwriteTarget(item.path, assets ?? [], item.record)
+    if (!target || !project) return
+    setBusyPath(item.path)
+    try {
+      if (target === 'settings') await handleSyncSettings(project.playerSettings)
+      else await syncToUnity.mutateAsync(target)
+    } catch (err) {
+      toastError(err, err instanceof Error ? err.message : 'Overwrite failed.')
+    } finally {
+      setBusyPath(null)
+    }
+    await handleCheckUnity()
+  }
+
+  function handleUpdateRuntime() {
+    updateRuntime.mutate(undefined, {
+      onSuccess: () => useToastStore.getState().pushToast('DialoguePlayer updated in Unity.', 'info'),
+      onError: (err) => toastError(err, err instanceof Error ? err.message : 'Could not update the runtime.'),
+    })
+  }
+
+  // ─── "Change something" (§3): proposed steps only — never saved as the build plan ───
+  function handlePlanChange(request: string) {
+    proposeChange.mutate(request, {
+      onSuccess: (p) => { setChangePlan(p); setChangeResults({}) },
+      onError: (err) => toastError(err, err instanceof Error ? err.message : 'Could not plan that change.'),
+    })
+  }
+
+  // Gap 44: a plan made while Unity is playing is refused a Run — those edits would be lost on Stop.
+  async function handleStopPlaymodeForChange() {
+    const r = await executeTool('playmode.exit', {})
+    if (r.success) setChangePlan(prev => prev ? { ...prev, isPlaying: false } : prev)
+    useToastStore.getState().pushToast(r.message, r.success ? 'info' : 'error')
+  }
+
+  async function handleRunChange() {
+    if (!changePlan || changePlan.isPlaying) return
+    if (isBusy) return flagBusy()
+    setChangeRunning(true)
+    setChangeResults({})
+    // Gap 45: a settings patch (text speed/look/tint/wordmark/ambience/volume) goes through the same
+    // PATCH + Sync settings path as the Player Settings panel, before the scene steps run.
+    if (changePlan.settingsPatch && project) {
+      await handleSyncSettings({ ...project.playerSettings, ...changePlan.settingsPatch })
+    }
+    const ok = await runQueue(changePlan.steps, async (step) => {
+      const r = await executeTool(step.tool, step.args as Record<string, unknown>)
+      setChangeResults(prev => ({ ...prev, [step.stepNumber]: r }))
+      return r.success
+    })
+    setChangeRunning(false)
+    useToastStore.getState().pushToast(ok ? 'Change applied in Unity.' : 'Stopped at a failed step — see its message.', ok ? 'info' : 'error')
+  }
+
   function handleToggleStepDone(stepNumber: number, completed: boolean) {
     markStep.mutate({ stepNumber, completed }, { onError: (err) => toastError(err, 'Could not save step progress.') })
+  }
+
+  const isBusy = executingStep !== null || runAllProgress !== null || changeRunning
+
+  // Gap 40: only offer "Update runtime" once GameGold's DialoguePlayer has been sent to this project.
+  const runtimeRecord = syncs?.find(r => r.path === RUNTIME_PATH)
+  const planSentRuntime = !!plan?.steps.some(s => s.tool === 'asset.createScript' && s.args.className === 'DialoguePlayer' && s.completed)
+  const showRuntime = mcpStatus === 'connected' && (!!runtimeRecord || planSentRuntime)
+
+  // A click while something runs gets a visible note instead of being silently dropped.
+  function flagBusy() {
+    setBusyNote(true)
+    setTimeout(() => setBusyNote(false), 2500)
   }
 
   async function handleExecuteStep(stepNumber: number, tool: string, args: Record<string, unknown>) {
@@ -102,24 +254,44 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
       alert('Connect to Unity first.')
       return
     }
+    if (isBusy) return flagBusy() // one step at a time — a slow step must finish (and be marked) first
+    await runStep(stepNumber, tool, args)
+  }
+
+  // Returns whether the step succeeded (and was marked done).
+  async function runStep(stepNumber: number, tool: string, args: Record<string, unknown>): Promise<boolean> {
     setExecutingStep(stepNumber)
     try {
       // The LLM can't know file contents — sprite data / script code come from stored assets.
-      const resolved = resolveToolArgs(tool, args, assets ?? [])
+      const resolved = await prepareToolArgs(tool, args, assets ?? [])
       if ('error' in resolved) {
         setStepResults(prev => ({ ...prev, [stepNumber]: { success: false, message: resolved.error } }))
-        return
+        return false
       }
       const result = await executeTool(tool, resolved.args)
       setStepResults(prev => ({ ...prev, [stepNumber]: result }))
-      if (result.success) {
-        await markStep.mutateAsync({ stepNumber, completed: true })
-      }
+      if (!result.success) return false
+      await recordWrite(id, tool, resolved.args, stepSource(tool, args, assets ?? [])).catch(() => {})
+      await markStep.mutateAsync({ stepNumber, completed: true })
+      return true
     } catch (err) {
       toastError(err, 'Could not save step progress.')
+      return false
     } finally {
       setExecutingStep(null)
     }
+  }
+
+  async function handleRunAll() {
+    if (!plan) return
+    if (isBusy) return flagBusy()
+    const ok = await runQueue(
+      plan.steps,
+      (s) => runStep(s.stepNumber, s.tool, s.args as Record<string, unknown>),
+      (done, total) => setRunAllProgress({ done, total }),
+    )
+    setRunAllProgress(null)
+    useToastStore.getState().pushToast(ok ? 'All steps ran.' : 'Run all stopped at a failed step — see its message.', ok ? 'info' : 'error')
   }
 
   return (
@@ -135,11 +307,21 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
           Build It In Unity
         </h1>
         <p style={{ color: '#6b7787', fontSize: '13px', margin: 0, lineHeight: 1.7 }}>
-          Download the build pack and build the prototype with Claude Code plus a Unity MCP server. The basic built-in bridge is a fallback if you can&apos;t run one.
+          Download the build pack and build the prototype with Claude Code plus the official Unity CLI (CoplayDev/unity-mcp works too). The basic built-in bridge is a fallback if you can&apos;t run either.
         </p>
       </div>
 
       <StalenessBanner message={stalenessMessage(summary, 'unity')} />
+
+      {project?.stage === 'prototype' && (
+        <RiskPanel
+          key={project._id}
+          assumption={project.riskiestAssumption ?? ''}
+          kind={project.riskKind ?? null}
+          saving={updateRisk.isPending}
+          onSave={(risk) => updateRisk.mutate(risk, { onError: (err) => toastError(err, 'Could not save the riskiest assumption.') })}
+        />
+      )}
 
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid #1b2533', marginBottom: '28px' }}>
@@ -262,6 +444,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                   <div style={{ fontSize: '12px', color: '#6b7787' }}>Open Unity Editor with the GameGold MCP package installed, then connect.</div>
                 )}
               </div>
+              <div className="flex flex-wrap items-center gap-3">
+              {mcpStatus === 'connected' && <PlayControls run={executeTool} />}
               <button
                 onClick={checkMCP}
                 disabled={mcpStatus === 'checking'}
@@ -269,8 +453,58 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
               >
                 {mcpStatus === 'checking' ? 'CHECKING...' : mcpStatus === 'connected' ? '✓ CONNECTED' : '🔌 CONNECT TO UNITY'}
               </button>
+              </div>
             </div>
           </div>
+
+          {project && (
+            <PlayerSettingsPanel
+              key={project._id}
+              settings={project.playerSettings}
+              chapters={chapters}
+              speakers={speakers}
+              connected={mcpStatus === 'connected'}
+              busy={syncingSettings || updateSettings.isPending}
+              onSave={handleSaveSettings}
+              onSync={handleSyncSettings}
+            />
+          )}
+
+          {showRuntime && (
+            <RuntimeUpdate
+              outdated={runtimeOutdated(syncs ?? [], runtimeTemplate?.version, planSentRuntime)}
+              servedVersion={runtimeTemplate?.version ?? null}
+              syncedVersion={runtimeRecord?.version ?? null}
+              busy={updateRuntime.isPending}
+              onUpdate={handleUpdateRuntime}
+            />
+          )}
+
+          {mcpStatus === 'connected' && (
+            <ChangeSomethingPanel
+              plan={changePlan}
+              planning={proposeChange.isPending}
+              running={changeRunning}
+              results={changeResults}
+              currentSettings={project?.playerSettings}
+              isPlaying={changePlan?.isPlaying}
+              onPlan={handlePlanChange}
+              onRun={() => void handleRunChange()}
+              onStopPlaymode={() => void handleStopPlaymodeForChange()}
+            />
+          )}
+
+          {mcpStatus === 'connected' && (
+            <UnityChangesPanel
+              items={diffItems}
+              checking={checkingUnity}
+              busyPath={busyPath}
+              canOverwrite={(item) => overwriteTarget(item.path, assets ?? [], item.record) !== null}
+              onCheck={() => void handleCheckUnity()}
+              onPull={(item) => void handlePull(item)}
+              onOverwrite={(item) => void handleOverwrite(item)}
+            />
+          )}
 
           {/* Install instructions (when not connected) */}
           {mcpStatus !== 'connected' && (
@@ -339,6 +573,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                     </button>
                   </div>
 
+                  <MissingScripts projectId={id} names={plan.missingScripts ?? []} />
+
                   {/* Progress */}
                   <div style={{ marginBottom: '16px' }}>
                     {(() => {
@@ -356,6 +592,17 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                         </>
                       )
                     })()}
+                  </div>
+
+                  <div className="mb-4 flex items-center gap-3">
+                    <button
+                      onClick={handleRunAll}
+                      disabled={plan.steps.every(s => s.completed)}
+                      className="border border-[#4ea8ff]/40 bg-[#4ea8ff]/10 px-4 py-2 text-[11px] tracking-[1px] text-[#4ea8ff] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {runAllProgress ? `RUNNING ${Math.min(runAllProgress.done + 1, runAllProgress.total)}/${runAllProgress.total}…` : '▶▶ RUN ALL'}
+                    </button>
+                    {busyNote && <span role="status" className="text-[11px] text-[#eab308]">A step is running — wait for it to finish.</span>}
                   </div>
 
                   {/* Steps */}
@@ -414,7 +661,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                           {/* Execute button */}
                           <button
                             onClick={() => handleExecuteStep(step.stepNumber, step.tool, step.args as Record<string, unknown>)}
-                            disabled={isRunning || step.completed}
+                            disabled={step.completed}
+                            aria-disabled={isBusy}
                             style={{
                               flexShrink: 0,
                               background: step.completed ? 'transparent' : color + '22',
@@ -422,7 +670,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                               border: `1px solid ${step.completed ? '#1b2533' : color + '44'}`,
                               padding: '6px 12px',
                               fontSize: '11px',
-                              cursor: step.completed || isRunning ? 'not-allowed' : 'pointer',
+                              cursor: step.completed || isBusy ? 'not-allowed' : 'pointer',
+                              opacity: isBusy && !isRunning ? 0.5 : 1,
                               letterSpacing: '0.5px',
                               ...mono,
                             }}

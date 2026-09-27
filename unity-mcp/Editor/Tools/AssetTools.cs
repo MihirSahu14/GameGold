@@ -56,6 +56,31 @@ namespace GameGold.MCP
                 $"{{\"path\":\"{GameGoldMCP.EscapeJson(path)}\"}}");
         }
 
+        private static readonly string[] TextExtensions = { ".json", ".txt", ".md" };
+
+        /// <summary>args: { path, content } — writes a text asset (.json/.txt/.md), e.g. dialogue JSON under Assets/Resources/.</summary>
+        internal static string CreateText(string body)
+        {
+            var args    = SimpleJson.Parse(body);
+            var path    = SafeAssetPath(args.GetString("path"));
+            var content = args.GetString("content", null);
+
+            if (path == null) return GameGoldMCP.Error("'path' must stay under Assets/");
+            if (content == null) return GameGoldMCP.Error("'content' is required");
+            if (!Array.Exists(TextExtensions, ext => path.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                return GameGoldMCP.Error("'path' must be a .json, .txt or .md file");
+            if (Array.Exists(path.Split('/'), seg => seg.Equals("Editor", StringComparison.OrdinalIgnoreCase)))
+                return GameGoldMCP.Error("Text assets may not be created inside an Editor folder");
+
+            var dir = Path.GetDirectoryName(path);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir!);
+            File.WriteAllText(path, content);
+            AssetDatabase.ImportAsset(path);
+
+            return GameGoldMCP.Ok($"Wrote {content.Length} chars to {path}",
+                $"{{\"path\":\"{GameGoldMCP.EscapeJson(path)}\"}}");
+        }
+
         /// <summary>args: { name, base64, path, pixelsPerUnit? } — imports a PNG sprite.</summary>
         internal static string ImportSprite(string body)
         {
@@ -92,6 +117,9 @@ namespace GameGold.MCP
             if (importer != null)
             {
                 importer.textureType    = TextureImporterType.Sprite;
+                // Single = one sprite covering the whole texture. A Multiple-mode .meta left over from an earlier,
+                // smaller image keeps its old sprite rect, so an overwrite would show a cropped/zoomed corner.
+                importer.spriteImportMode = SpriteImportMode.Single;
                 importer.spritePixelsPerUnit = ppu;
                 importer.filterMode     = ppu <= 32 ? FilterMode.Point : FilterMode.Bilinear;
                 importer.SaveAndReimport();
@@ -100,6 +128,22 @@ namespace GameGold.MCP
             AssetDatabase.Refresh();
             return GameGoldMCP.Ok($"Imported sprite '{name}' at {path}",
                 $"{{\"path\":\"{GameGoldMCP.EscapeJson(path)}\"}}");
+        }
+
+        private const long MaxReadBytes = 8 * 1024 * 1024;
+
+        /// <summary>args: { path } — base64 of a file under Assets/Resources/GameGold/ (max 8 MB), for "Pull into GameGold".</summary>
+        internal static string ReadFile(string body)
+        {
+            var path = SafeAssetPath(SimpleJson.Parse(body).GetString("path"));
+            if (path == null || !path.StartsWith(SceneTools.GameGoldFolder + "/"))
+                return GameGoldMCP.Error($"'path' must be under {SceneTools.GameGoldFolder}/");
+            if (!File.Exists(path)) return GameGoldMCP.Error($"No file at {path}");
+            if (new FileInfo(path).Length > MaxReadBytes) return GameGoldMCP.Error($"{path} is larger than 8 MB");
+
+            var b64 = Convert.ToBase64String(File.ReadAllBytes(path));
+            return GameGoldMCP.Ok($"Read {path}",
+                $"{{\"path\":\"{GameGoldMCP.EscapeJson(path)}\",\"base64\":\"{b64}\"}}");
         }
     }
 }

@@ -11,13 +11,20 @@ from app.models.playtest import (
     PlaytestSessionCreate,
     PlaytestSessionInDB,
     SessionSynthesisOut,
+    PersonaOut,
     BugCreate,
     BugUpdate,
     BugOut,
     BugInDB,
 )
+from app.prompts.playtest_prompt import personas_for_genre, PERSONA_META
 from app.routers.auth import get_current_user
-from app.services.playtest_service import run_playtest, synthesize_sessions
+from app.services.playtest_service import (
+    run_playtest,
+    synthesize_sessions,
+    build_dialogue_context,
+    build_concept_summary,
+)
 from app.services.llm_utils import strip_html
 
 router = APIRouter(prefix="/projects/{project_id}/playtest", tags=["playtest"])
@@ -52,6 +59,17 @@ async def list_reports(
     return [PlaytestReportOut(**serialize(d)) for d in docs]
 
 
+@router.get("/personas", response_model=list[PersonaOut], response_model_by_alias=True)
+async def list_personas(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    project = await verify_project_access(project_id, current_user["_id"], db)
+    ids = personas_for_genre(project.get("genre", "other"))
+    return [PersonaOut(id=pid, label=pid.replace("_", " ").title(), **PERSONA_META[pid]) for pid in ids]
+
+
 @router.post(
     "/run",
     response_model=PlaytestReportOut,
@@ -69,7 +87,9 @@ async def run_simulation(
     db = get_db()
     project = await verify_project_access(project_id, current_user["_id"], db)
 
-    # Build context: GDD summary + systems graph summary
+    # Build context: GDD summary, else a compact walk of the project's dialogue
+    # asset(s) (gap 48 — narrative games like Ripple have no GDD, their content
+    # lives in a DialogueTree), plus the concept card either way.
     gdd = await db.gdds.find_one({"project_id": project_id})
     gdd_summary = ""
     if gdd and gdd.get("sections"):
@@ -78,9 +98,22 @@ async def run_simulation(
             for key in ("overview", "mechanics", "progression", "levels")
         ]
         gdd_summary = "\n".join(p for p in parts if p)[:5000]
-    if not gdd_summary:
+
+    design_context = gdd_summary
+    if not design_context:
+        dialogue_docs = await db.assets.find({"project_id": project_id, "type": "dialogue"}).to_list(50)
+        trees = [d["tree"] for d in dialogue_docs if d.get("tree")]
+        design_context = build_dialogue_context(trees)
+
+    concept_summary = build_concept_summary(
+        project.get("concept_card") or {}, project.get("riskiest_assumption", "")
+    )
+
+    if not design_context and not concept_summary:
         # Nothing to play through — the LLM would invent the whole game.
-        raise HTTPException(status_code=409, detail="Generate a GDD before running a playtest")
+        raise HTTPException(status_code=409, detail="Add a design doc or import your story first")
+
+    is_narrative = project.get("genre") in ("narrative", "visual-novel")
 
     system = await db.systems.find_one({"project_id": project_id})
     systems_summary = ""
@@ -101,7 +134,9 @@ async def run_simulation(
 
     try:
         async with project_llm_slot(project_id):
-            report = await run_playtest(project_id, body.persona, gdd_summary, systems_summary)
+            report = await run_playtest(
+                project_id, body.persona, design_context, systems_summary, concept_summary, is_narrative
+            )
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

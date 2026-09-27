@@ -4,7 +4,7 @@ import { useState } from 'react'
 import type { PlaytestSessionCreate, TesterRing } from '@gamegold/types'
 
 export const RING_LABELS: Record<TesterRing, string> = {
-  self: 'Just me',
+  self: "Just me / team (doesn't count toward the gate)",
   friends: 'Friends & family',
   discord: 'Discord / community',
   steam_playtest: 'Steam Playtest',

@@ -9,6 +9,8 @@ namespace GameGold.MCP
         /// <summary>args: { name, tag?, layer?, position?: {x,y,z} }</summary>
         internal static string Create(string body)
         {
+            if (EditorApplication.isPlaying) return GameGoldMCP.Error(GameGoldMCP.PlayModeBlockedMessage);
+
             var args = SimpleJson.Parse(body);
             var name = args.GetString("name");
             if (string.IsNullOrEmpty(name)) return GameGoldMCP.Error("'name' is required");
@@ -41,12 +43,14 @@ namespace GameGold.MCP
             EditorUtility.SetDirty(go);
 
             return GameGoldMCP.Ok($"Created GameObject '{name}'",
-                $"{{\"name\":\"{GameGoldMCP.EscapeJson(go.name)}\",\"instanceId\":{go.GetInstanceID()}}}");
+                $"{{\"name\":\"{GameGoldMCP.EscapeJson(go.name)}\"}}");
         }
 
         /// <summary>args: { name }</summary>
         internal static string Delete(string body)
         {
+            if (EditorApplication.isPlaying) return GameGoldMCP.Error(GameGoldMCP.PlayModeBlockedMessage);
+
             var args = SimpleJson.Parse(body);
             var name = args.GetString("name");
             var go = GameObject.Find(name);

@@ -14,6 +14,9 @@ export type ProjectStage = 'pitch' | 'prototype' | 'slice' | 'production' | 'shi
 
 export type PrototypeDecision = 'continue' | 'pivot' | 'kill'
 
+/** What the prototype must de-risk; picks the prototype type (no LLM). */
+export type RiskKind = 'feel' | 'loop' | 'story' | 'tech'
+
 /** Manual gate checkboxes (keys stay snake_case — they are dict keys server-side). */
 export type GateCheck = 'comprehension_resolved' | 'alpha_feature_lock' | 'beta_content_complete'
 
@@ -27,6 +30,8 @@ export type GameGenre =
   | 'simulation'
   | 'adventure'
   | 'fighting'
+  | 'narrative'
+  | 'visual-novel'
   | 'other'
 
 export type GamePlatform = 'pc' | 'mobile' | 'web' | 'console' | 'cross-platform'
@@ -60,6 +65,22 @@ export type PitchInterview = {
   comparables: string[]
 }
 
+// How GameGold's built-in DialoguePlayer looks/sounds (synced to Unity as player_settings.json).
+export type PlayerLook = 'plain' | 'halftone' | 'duotone'
+export type StageSide = 'left' | 'right'
+export type PlayerSettings = {
+  look: PlayerLook
+  chapterColors: Record<string, string> // chapter → #rrggbb
+  textSpeedCps: number // 10–120
+  wordmarkTitle: boolean
+  ambience: boolean
+  volume: number // 0–1
+  twoCharacterStaging: boolean // left/right portrait slots with speaker focus; off = one portrait
+  characterSides: Record<string, StageSide> // speaker → fixed side
+  choiceRipple: boolean // soft ripple ring + water-drop cue after every choice, identical regardless of the choice
+  originalBackgrounds: string[] // bg names shown exactly as drawn (no print, no tint)
+}
+
 export interface Project {
   _id: string
   userId: string
@@ -72,6 +93,9 @@ export interface Project {
   prototypeDecision: PrototypeDecision | null
   gates: Partial<Record<GateCheck, boolean>>
   cutList: string[]
+  riskiestAssumption: string
+  riskKind: RiskKind | null
+  playerSettings: PlayerSettings
   stageEnteredAt: string | null
   alphaAt: string | null
   provenanceGeneratedAt: string | null
@@ -176,6 +200,7 @@ export interface BalanceAnalysis {
 
 export type AssetType = 'sprite' | 'script' | 'dialogue'
 export type ArtStyle = 'pixel' | 'illustrated'
+export type AssetKind = 'sprite' | 'background' | 'portrait'
 
 export type ScriptType =
   | 'PlayerController2D'
@@ -196,19 +221,36 @@ export interface UnityGuide {
 export interface DialogueChoice {
   text: string
   next: string | null
+  /** Hidden variable deltas, e.g. { anxiety: -2 } */
+  effects?: Record<string, number>
 }
+
+/** `when`: "<var> [+ <var>...] <op> <int>" (op: < <= > >= ==) or "else" (last only) */
+export type DialogueBranch = { when: string; next: string }
+
+export type DialogueEnding = 'good' | 'neutral' | 'bad'
 
 export interface DialogueNode {
   id: string
   speaker: string
   text: string
   choices: DialogueChoice[]
+  next?: string | null
+  bg?: string | null
+  chapter?: string | null
+  sfx?: string | null
+  expr?: string | null
+  ending?: DialogueEnding | null
+  branches?: DialogueBranch[]
 }
 
 export interface DialogueTree {
   npcName: string
   personality: string
   nodes: DialogueNode[]
+  variables?: Record<string, number>
+  /** Defaults to the first node */
+  start?: string | null
 }
 
 export interface AssetProposal {
@@ -216,6 +258,19 @@ export interface AssetProposal {
   name: string
   description: string
   reason: string
+}
+
+/** One line of a sprite manifest (POST /assets/sprites/batch, max 12). */
+export type BatchSpriteItem = {
+  name: string
+  description: string
+  kind: AssetKind
+  style: ArtStyle
+}
+
+export type BatchSpriteResult = {
+  assets: Asset[]
+  errors: { name: string; detail: string }[]
 }
 
 export interface Asset {
@@ -234,6 +289,7 @@ export interface Asset {
   // Sprite fields
   url?: string
   style?: ArtStyle
+  kind?: AssetKind
   imagePrompt?: string
   // Script fields
   code?: string
@@ -244,14 +300,31 @@ export interface Asset {
 
 // ─── Playtesting ─────────────────────────────────────────────────────────────
 
-export type PlaytestPersona = 'casual' | 'hardcore' | 'speedrunner' | 'completionist'
+export type PlaytestPersona =
+  | 'casual'
+  | 'hardcore'
+  | 'speedrunner'
+  | 'completionist'
+  // Narrative personas (genre narrative/visual-novel) — see gap 47.
+  | 'skimmer'
+  | 'careful_reader'
+  | 'choice_agonizer'
+  | 'replayer'
 
 export type TesterRing = 'self' | 'friends' | 'discord' | 'steam_playtest' | 'ea'
+
+export interface PersonaInfo {
+  id: PlaytestPersona
+  label: string
+  icon: string
+  blurb: string
+}
 
 export interface BalanceSuggestion {
   issue: string
   fix: string
   unityPath: string
+  nodeId?: string
 }
 
 export interface PlaytestReport {
@@ -350,6 +423,56 @@ export type UnityBuildPlan = {
   steps: UnityBuildStep[]
   summary: string
   generatedAt: string
+  /** component.add types that are neither Unity built-ins nor stored script assets */
+  missingScripts?: string[]
+}
+
+// ─── Read-back from Unity (edit through GameGold) ───────────────────────────
+
+/** What GameGold last wrote to a Unity path (sha256 of the exact bytes sent). */
+export type UnitySyncRecord = {
+  path: string
+  sha256: string
+  source: string // asset id | 'settings' | 'runtime'
+  version?: number | null // built-in runtime template version
+  syncedAt: string
+}
+
+export type UnitySnapshotFile = { path: string; length: number; sha256: string }
+
+export type UnitySnapshotObject = {
+  name: string
+  components: string[]
+  dialoguePlayer?: Record<string, string>
+  children: UnitySnapshotObject[]
+}
+
+/** scene.snapshot from the bridge. playerSettings is the raw file text (null = no file). */
+export type UnitySnapshot = {
+  scene: string
+  isPlaying: boolean
+  objects: UnitySnapshotObject[]
+  playerSettings: string | null
+  files: UnitySnapshotFile[]
+}
+
+export type UnityDiffStatus = 'changed' | 'missing' | 'unsynced' | 'in-sync'
+
+export type UnityDiffItem = {
+  path: string
+  status: UnityDiffStatus
+  record?: UnitySyncRecord
+  file?: UnitySnapshotFile
+}
+
+/** "Change something": proposed bridge steps (never persisted as the plan). */
+export type UnityChangePlan = {
+  summary: string
+  steps: UnityBuildStep[]
+  /** Player Settings keys to apply first (text speed/look/tint/wordmark/ambience/volume) — gap 45. */
+  settingsPatch?: Partial<PlayerSettings> | null
+  /** Whether Unity was in Play mode when this was planned — gap 44. */
+  isPlaying?: boolean
 }
 
 // ─── API Responses ───────────────────────────────────────────────────────────

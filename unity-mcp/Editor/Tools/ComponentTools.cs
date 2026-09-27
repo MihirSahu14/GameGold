@@ -13,6 +13,8 @@ namespace GameGold.MCP
         /// <summary>args: { gameObjectName, componentType }</summary>
         internal static string Add(string body)
         {
+            if (EditorApplication.isPlaying) return GameGoldMCP.Error(GameGoldMCP.PlayModeBlockedMessage);
+
             var args = SimpleJson.Parse(body);
             var goName = args.GetString("gameObjectName");
             var compTypeName = args.GetString("componentType");
@@ -40,6 +42,8 @@ namespace GameGold.MCP
         /// <summary>args: { gameObjectName, componentType, field, value }</summary>
         internal static string SetField(string body)
         {
+            if (EditorApplication.isPlaying) return GameGoldMCP.Error(GameGoldMCP.PlayModeBlockedMessage);
+
             var args = SimpleJson.Parse(body);
             var goName      = args.GetString("gameObjectName");
             var compTypeName = args.GetString("componentType");

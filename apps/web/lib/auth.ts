@@ -1,4 +1,4 @@
-import { api, setCsrfToken } from './api'
+import { api, setCsrfToken, refreshSession } from './api'
 import type { User } from '@gamegold/types'
 
 export async function fetchCsrfToken(): Promise<void> {
@@ -41,4 +41,34 @@ export async function logoutUser(): Promise<void> {
 export async function getMe(): Promise<User> {
   const res = await api.get<User>('/auth/me')
   return res.data
+}
+
+const httpStatus = (err: unknown) => (err as { response?: { status?: number } } | undefined)?.response?.status
+
+// Who is logged in: the user, or null only when the server really says no (401 and the refresh
+// fails). Network errors / 5xx (e.g. a backend restart) retry with backoff instead of logging out.
+export async function resolveSession(
+  onRetrying: (retrying: boolean) => void,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<User | null> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      let user: User
+      try {
+        user = await getMe()
+      } catch (err) {
+        if (httpStatus(err) !== 401) throw err
+        // Access token expired (15 min) but the refresh cookie may still be good.
+        await refreshSession()
+        user = await getMe()
+      }
+      if (attempt > 0) onRetrying(false)
+      return user
+    } catch (err) {
+      const status = httpStatus(err)
+      if (status !== undefined && status < 500) return null
+      onRetrying(true)
+      await wait(Math.min(1000 * 2 ** attempt, 15000))
+    }
+  }
 }

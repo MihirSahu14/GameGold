@@ -14,6 +14,7 @@ vi.mock('@/lib/api', () => ({
     patch: vi.fn(),
     delete: vi.fn(),
   },
+  toastError: vi.fn(),
 }))
 
 import { api } from '@/lib/api'
@@ -56,6 +57,8 @@ let AssetCardModule: typeof import('@/components/assets/AssetCard')
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  // Unity bridge offline unless a test says otherwise
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
   AssetCardModule = await import('@/components/assets/AssetCard')
 })
 
@@ -152,6 +155,55 @@ describe('AssetCard regenerate', () => {
   })
 })
 
+describe('AssetCard PNG download for SVG sprites', () => {
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64"/></svg>'
+  const SPRITE_ASSET: Asset = {
+    ...SCRIPT_ASSET,
+    _id: 'asset3',
+    type: 'sprite',
+    code: undefined,
+    scriptType: undefined,
+    url: `data:image/svg+xml;base64,${btoa(SVG)}`,
+    style: 'pixel',
+  }
+
+  it('shows a Download PNG button only for SVG sprites', () => {
+    renderCard(SPRITE_ASSET)
+    expect(screen.getByText('Download PNG')).toBeInTheDocument()
+  })
+
+  it('rasterizes the SVG to a canvas sized from its width/height and downloads a PNG', async () => {
+    const toBlob = vi.fn((cb: (b: Blob | null) => void) => cb(new Blob(['png'], { type: 'image/png' })))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(toBlob)
+    const originalImage = global.Image
+    // jsdom doesn't actually decode images — fire onload synchronously.
+    class FakeImage {
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      set src(_v: string) {
+        this.onload?.()
+      }
+    }
+    // @ts-expect-error test stub
+    global.Image = FakeImage
+
+    renderCard(SPRITE_ASSET)
+    fireEvent.click(screen.getByText('Download PNG'))
+
+    await waitFor(() => expect(toBlob).toHaveBeenCalled())
+
+    global.Image = originalImage
+  })
+
+  it('does not show the button for non-SVG (raster) sprite URLs', () => {
+    renderCard({ ...SPRITE_ASSET, url: 'data:image/png;base64,abc' })
+    expect(screen.queryByText('Download PNG')).not.toBeInTheDocument()
+  })
+})
+
 describe('AssetCard provenance flags', () => {
   const PLACEHOLDER = { ...SCRIPT_ASSET, placeholder: true, replaced: false, disclosed: false }
 
@@ -176,5 +228,42 @@ describe('AssetCard provenance flags', () => {
   it('hides the toggles for non-placeholder assets', () => {
     renderCard({ ...SCRIPT_ASSET, placeholder: false, replaced: false, disclosed: false })
     expect(screen.queryByTitle('Mark as replaced')).toBeNull()
+  })
+})
+
+describe('AssetCard Sync to Unity', () => {
+  const DIALOGUE: Asset = {
+    ...SCRIPT_ASSET, _id: 'd1', type: 'dialogue', code: undefined, scriptType: undefined, name: 'Ripple',
+    tree: { npcName: '', personality: '', nodes: [{ id: 'a', speaker: 'Avery', text: 'Hi', choices: [], ending: 'good' }] },
+  }
+
+  it('is disabled with a tooltip when Unity is not connected', async () => {
+    renderCard(DIALOGUE)
+    const btn = screen.getByRole('button', { name: /sync to unity/i })
+    await waitFor(() => expect(btn).toHaveAttribute('title', expect.stringMatching(/connect/i)))
+    expect(btn).toBeDisabled()
+  })
+
+  it('writes the story JSON via asset.createText and toasts success', async () => {
+    const fetchMock = vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => (url.endsWith('/status') ? { version: '6000.5' } : { success: true, message: 'Wrote dialogue.json' }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { useToastStore } = await import('@/store/toastStore')
+    renderCard(DIALOGUE)
+    const btn = screen.getByRole('button', { name: /sync to unity/i })
+    await waitFor(() => expect(btn).toBeEnabled())
+    fireEvent.click(btn)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('http://localhost:7432/tool/asset.createText', expect.anything()))
+    const body = JSON.parse((fetchMock.mock.calls.find((c) => String(c[0]).includes('/tool/'))![1] as unknown as { body: string }).body)
+    expect(body.path).toBe('Assets/Resources/GameGold/dialogue.json')
+    expect(JSON.parse(body.content).nodes[0].text).toBe('Hi')
+    await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.kind === 'info' && /ripple/i.test(t.message))).toBe(true))
+  })
+
+  it('is not shown for plain sprites DialoguePlayer never loads', () => {
+    renderCard(SCRIPT_ASSET)
+    expect(screen.queryByRole('button', { name: /sync to unity/i })).toBeNull()
   })
 })

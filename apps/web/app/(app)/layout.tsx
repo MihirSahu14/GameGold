@@ -7,7 +7,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { Toaster } from '@/components/layout/Toaster'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuthStore()
+  const { user, isLoading, offline } = useAuthStore()
   const router = useRouter()
 
   useEffect(() => {
@@ -22,7 +22,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         className="min-h-screen flex items-center justify-center"
         style={{ background: '#07090d', fontFamily: 'var(--font-space-mono), monospace' }}
       >
-        <div style={{ color: '#4ea8ff', fontSize: '12px', letterSpacing: '2px' }}>LOADING...</div>
+        <div role="status" style={{ color: offline ? '#eab308' : '#4ea8ff', fontSize: '12px', letterSpacing: '2px' }}>
+          {offline ? 'Can’t reach the server — retrying…' : 'LOADING...'}
+        </div>
       </div>
     )
   }

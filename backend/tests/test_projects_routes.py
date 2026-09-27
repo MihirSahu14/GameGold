@@ -60,3 +60,75 @@ def test_patch_cannot_change_stage(client, mock_db):
     resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"stage": "ship"})
     assert resp.status_code == 200
     mock_db.projects.update_one.assert_not_called()
+
+
+def test_patch_saves_riskiest_assumption(client, mock_db):
+    doc = {**TEST_PROJECT, "created_at": datetime(2026, 9, 25), "updated_at": datetime(2026, 9, 25)}
+    mock_db.projects.find_one.return_value = {**doc, "riskiest_assumption": "Will it feel sad?", "risk_kind": "feel"}
+    resp = client.patch(
+        f"/projects/{TEST_PROJECT_ID}",
+        json={"riskiestAssumption": "Will it feel sad?", "riskKind": "feel"},
+    )
+    assert resp.status_code == 200
+    saved = mock_db.projects.update_one.call_args[0][1]["$set"]
+    assert saved["riskiest_assumption"] == "Will it feel sad?"
+    assert saved["risk_kind"] == "feel"
+    assert resp.json()["riskKind"] == "feel"
+
+
+def test_patch_rejects_unknown_risk_kind_and_long_assumption(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    assert client.patch(f"/projects/{TEST_PROJECT_ID}", json={"riskKind": "vibes"}).status_code == 422
+    assert client.patch(
+        f"/projects/{TEST_PROJECT_ID}", json={"riskiestAssumption": "x" * 501}
+    ).status_code == 422
+
+
+def test_patch_changes_genre(client, mock_db):
+    doc = {**TEST_PROJECT, "created_at": datetime(2026, 9, 25), "updated_at": datetime(2026, 9, 25)}
+    mock_db.projects.find_one.return_value = {**doc, "genre": "narrative"}
+    resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"genre": "narrative"})
+    assert resp.status_code == 200
+    assert mock_db.projects.update_one.call_args[0][1]["$set"]["genre"] == "narrative"
+
+
+def test_patch_rejects_unknown_genre(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"genre": "moba"})
+    assert resp.status_code == 422
+
+
+def test_patch_saves_player_settings(client, mock_db):
+    doc = {**TEST_PROJECT, "created_at": datetime(2026, 9, 26), "updated_at": datetime(2026, 9, 26)}
+    settings = {"look": "halftone", "chapterColors": {"1": "#2a3f5c"}, "textSpeedCps": 60,
+                "wordmarkTitle": True, "ambience": True, "volume": 0.3,
+                "twoCharacterStaging": False, "characterSides": {"Avery": "left", "Skyler": "right"}, "choiceRipple": False, "originalBackgrounds": ["title"]}
+    mock_db.projects.find_one.return_value = {**doc, "player_settings": {
+        "look": "halftone", "chapter_colors": {"1": "#2a3f5c"}, "text_speed_cps": 60,
+        "wordmark_title": True, "ambience": True, "volume": 0.3,
+        "two_character_staging": False, "character_sides": {"Avery": "left", "Skyler": "right"}, "choice_ripple": False, "original_backgrounds": ["title"]}}
+    resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"playerSettings": settings})
+    assert resp.status_code == 200
+    saved = mock_db.projects.update_one.call_args[0][1]["$set"]["player_settings"]
+    assert saved["text_speed_cps"] == 60 and saved["chapter_colors"] == {"1": "#2a3f5c"}
+    assert saved["two_character_staging"] is False and saved["character_sides"] == {"Avery": "left", "Skyler": "right"}
+    assert saved["choice_ripple"] is False
+    assert resp.json()["playerSettings"] == settings
+
+
+def test_player_settings_default_to_plain(client, mock_db):
+    doc = {**TEST_PROJECT, "created_at": datetime(2026, 9, 26), "updated_at": datetime(2026, 9, 26)}
+    mock_db.projects.find_one.return_value = doc
+    body = client.patch(f"/projects/{TEST_PROJECT_ID}", json={}).json()
+    assert body["playerSettings"] == {"look": "plain", "chapterColors": {}, "textSpeedCps": 40,
+                                      "wordmarkTitle": False, "ambience": False, "volume": 0.5,
+                                      "twoCharacterStaging": True, "characterSides": {}, "choiceRipple": True, "originalBackgrounds": []}
+
+
+def test_player_settings_validation(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    bad = [{"look": "sepia"}, {"textSpeedCps": 5}, {"textSpeedCps": 121}, {"volume": 1.5},
+           {"chapterColors": {"1": "blue"}}, {"chapterColors": {"1": "#12345"}},
+           {"characterSides": {"Avery": "middle"}}, {"characterSides": {"": "left"}}, {"characterSides": {"x" * 41: "left"}}]
+    for b in bad:
+        assert client.patch(f"/projects/{TEST_PROJECT_ID}", json={"playerSettings": b}).status_code == 422, b

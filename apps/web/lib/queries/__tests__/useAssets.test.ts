@@ -164,6 +164,41 @@ describe('generate hooks with regenerateOf', () => {
   })
 })
 
+describe('useGenerateSprite', () => {
+  it('POSTs the kind field along with the sprite payload', async () => {
+    const { useGenerateSprite } = await import('@/lib/queries/useAssets')
+    const SPRITE_ASSET: Asset = {
+      ...SCRIPT_ASSET,
+      _id: 'asset3',
+      type: 'sprite',
+      code: undefined,
+      scriptType: undefined,
+      url: 'data:image/svg+xml;base64,abc',
+      style: 'illustrated',
+      kind: 'background',
+    }
+    mockApi.post.mockResolvedValueOnce({ data: SPRITE_ASSET })
+    const { wrapper } = makeSetup()
+
+    const { result } = renderHook(() => useGenerateSprite(PROJECT_ID), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({
+        name: 'Forest',
+        description: 'a lush forest',
+        style: 'illustrated',
+        kind: 'background',
+      })
+    })
+
+    expect(mockApi.post).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/assets/sprites`, {
+      name: 'Forest',
+      description: 'a lush forest',
+      style: 'illustrated',
+      kind: 'background',
+    })
+  })
+})
+
 describe('useDeleteAsset', () => {
   it('invalidates gates after deleting an asset', async () => {
     const { useDeleteAsset } = await import('@/lib/queries/useAssets')
@@ -179,5 +214,17 @@ describe('useDeleteAsset', () => {
 
     expect(qc.getQueryData(['assets', PROJECT_ID])).toEqual([])
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects', PROJECT_ID, 'gates'] })
+  })
+})
+
+describe('useGenerateSpriteBatch', () => {
+  it('POSTs the manifest items to the batch endpoint', async () => {
+    const { useGenerateSpriteBatch } = await import('@/lib/queries/useAssets')
+    mockApi.post.mockResolvedValueOnce({ data: { assets: [], errors: [] } })
+    const { wrapper } = makeSetup()
+    const { result } = renderHook(() => useGenerateSpriteBatch(PROJECT_ID), { wrapper })
+    const items = [{ name: 'Cafe', kind: 'background' as const, description: 'cafe', style: 'pixel' as const }]
+    await act(async () => { await result.current.mutateAsync(items) })
+    expect(mockApi.post).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/assets/sprites/batch`, { items })
   })
 })

@@ -5,7 +5,8 @@ from datetime import datetime
 
 GameGenre = Literal[
     "platformer", "rpg", "puzzle", "shooter", "strategy",
-    "horror", "simulation", "adventure", "fighting", "other"
+    "horror", "simulation", "adventure", "fighting",
+    "narrative", "visual-novel", "other"
 ]
 GamePlatform = Literal["pc", "mobile", "web", "console", "cross-platform"]
 GameTone = Literal["dark", "lighthearted", "epic", "comedic", "horror", "atmospheric", "realistic"]
@@ -26,6 +27,7 @@ def map_legacy_stage(stage: object) -> object:
     return "pitch" if stage in LEGACY_PITCH_STAGES else "prototype"
 PrototypeDecision = Literal["continue", "pivot", "kill"]
 EstimatedScope = Literal["jam", "indie", "mid", "large"]
+RiskKind = Literal["feel", "loop", "story", "tech"]
 
 Line = Annotated[str, Field(max_length=200)]
 
@@ -46,6 +48,31 @@ class ConceptCard(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
+PlayerLook = Literal["plain", "halftone", "duotone"]
+HexColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
+
+
+class PlayerSettings(BaseModel):
+    """How GameGold's built-in DialoguePlayer looks/sounds; synced to Unity as player_settings.json."""
+    look: PlayerLook = "plain"
+    chapter_colors: dict[Annotated[str, Field(max_length=40)], HexColor] = Field(default_factory=dict, max_length=50)
+    text_speed_cps: int = Field(default=40, ge=10, le=120)
+    wordmark_title: bool = False
+    ambience: bool = False
+    volume: float = Field(default=0.5, ge=0, le=1)
+    two_character_staging: bool = True
+    # speaker name -> fixed stage side; unlisted speakers take a free slot.
+    character_sides: dict[Annotated[str, Field(min_length=1, max_length=40)], Literal["left", "right"]] = Field(
+        default_factory=dict, max_length=20
+    )
+    # soft concentric-ring + water-drop cue after every choice, identical regardless of the choice (gap 56).
+    choice_ripple: bool = True
+    # backgrounds shown exactly as drawn — no halftone/duotone print, no chapter tint (designer art, gap 61).
+    original_backgrounds: list[Annotated[str, Field(min_length=1, max_length=60)]] = Field(default_factory=list, max_length=50)
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
 class ProjectCreate(BaseModel):
     # No stage: every project starts at "pitch".
     title: str = Field(min_length=1, max_length=100)
@@ -57,8 +84,12 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     # No stage: it only moves through POST /advance and /decision (gated server-side).
     title: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    genre: Optional[GameGenre] = None
     concept_card: Optional[ConceptCard] = None
     cut_list: Optional[list[Line]] = Field(default=None, max_length=100)
+    riskiest_assumption: Optional[str] = Field(default=None, max_length=500)
+    risk_kind: Optional[RiskKind] = None
+    player_settings: Optional[PlayerSettings] = None
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
@@ -75,6 +106,9 @@ class ProjectOut(BaseModel):
     prototype_decision: Optional[PrototypeDecision] = None
     gates: dict[str, bool] = {}
     cut_list: list[str] = []
+    riskiest_assumption: str = ""
+    risk_kind: Optional[RiskKind] = None
+    player_settings: PlayerSettings = Field(default_factory=PlayerSettings)
     stage_entered_at: Optional[datetime] = None
     alpha_at: Optional[datetime] = None
     provenance_generated_at: Optional[datetime] = None
@@ -124,6 +158,9 @@ class ProjectInDB(BaseModel):
     prototype_decision: Optional[PrototypeDecision] = None
     gates: dict[str, bool] = Field(default_factory=dict)
     cut_list: list[str] = Field(default_factory=list)
+    riskiest_assumption: str = ""
+    risk_kind: Optional[RiskKind] = None
+    player_settings: PlayerSettings = Field(default_factory=PlayerSettings)
     stage_entered_at: datetime = Field(default_factory=datetime.utcnow)
     alpha_at: Optional[datetime] = None
     provenance_generated_at: Optional[datetime] = None

@@ -4,6 +4,7 @@ import { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useProject } from '@/lib/queries/useProjects'
 import {
+  usePlaytestPersonas,
   usePlaytestReports,
   useRunPlaytest,
   useDeleteReport,
@@ -25,13 +26,6 @@ import type {
 import { cn } from '@/lib/utils'
 import { toastError } from '@/lib/api'
 
-const PERSONAS: { value: PlaytestPersona; icon: string; label: string; blurb: string }[] = [
-  { value: 'casual', icon: '🛋️', label: 'Casual', blurb: 'Short sessions, skips tutorials, hates difficulty walls' },
-  { value: 'hardcore', icon: '⚔️', label: 'Hardcore', blurb: 'Min-maxes stats, hunts exploits, breaks the economy' },
-  { value: 'speedrunner', icon: '⏱️', label: 'Speedrunner', blurb: 'Skips everything, abuses movement, finds sequence breaks' },
-  { value: 'completionist', icon: '🗺️', label: 'Completionist', blurb: 'Does everything, tests every interaction, finds dead ends' },
-]
-
 type Tab = 'sessions' | 'predicted' | 'bugs'
 
 const TABS: { key: Tab; label: string }[] = [
@@ -51,6 +45,7 @@ export default function PlaytestingPage({
   const { tab } = use(searchParams)
   const router = useRouter()
   const { data: project } = useProject(id)
+  const { data: personas } = usePlaytestPersonas(id)
   const { data: entries, isLoading } = usePlaytestReports(id)
   const runPlaytest = useRunPlaytest(id)
   const deleteReport = useDeleteReport(id)
@@ -67,15 +62,27 @@ export default function PlaytestingPage({
     setActiveTab(tab === 'bugs' || tab === 'predicted' ? tab : 'sessions')
   }, [tab])
   /* eslint-enable react-hooks/set-state-in-effect */
-  const [persona, setPersona] = useState<PlaytestPersona>('casual')
+  const [persona, setPersona] = useState<PlaytestPersona | null>(null)
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null)
   const [synthesis, setSynthesis] = useState<string | null>(null)
+
+  // Persona list (and which one is picked) comes from the backend — it's
+  // genre-aware (gap 47: narrative games get story personas, not "exploits
+  // the economy"). Default to the first once the list loads.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (personas && personas.length > 0 && (!persona || !personas.some((p) => p.id === persona))) {
+      setPersona(personas[0].id)
+    }
+  }, [personas, persona])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const sessions = (entries ?? []).filter((e): e is PlaytestSession => e.kind === 'session')
   const reports = (entries ?? []).filter((e): e is PlaytestReport => e.kind !== 'session')
   const selectedReport = reports.find((r) => r._id === selectedReportId) ?? reports[0] ?? null
 
   async function handleRun() {
+    if (!persona) return
     try {
       const report = await runPlaytest.mutateAsync(persona)
       setSelectedReportId(report._id)
@@ -203,13 +210,13 @@ export default function PlaytestingPage({
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
               <p className="text-zinc-300 text-sm font-semibold mb-3">Pick a persona — AI predicts what they would hit</p>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
-                {PERSONAS.map((p) => (
+                {(personas ?? []).map((p) => (
                   <button
-                    key={p.value}
-                    onClick={() => setPersona(p.value)}
+                    key={p.id}
+                    onClick={() => setPersona(p.id)}
                     className={cn(
                       'flex flex-col items-start gap-1 p-3 rounded-lg border text-left transition-colors',
-                      persona === p.value ? 'bg-zinc-800 border-yellow-400/50' : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700',
+                      persona === p.id ? 'bg-zinc-800 border-yellow-400/50' : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700',
                     )}
                   >
                     <span className="text-lg">{p.icon}</span>
@@ -220,7 +227,7 @@ export default function PlaytestingPage({
               </div>
               <button
                 onClick={handleRun}
-                disabled={runPlaytest.isPending}
+                disabled={runPlaytest.isPending || !persona}
                 className="bg-yellow-400 text-zinc-950 font-semibold px-5 py-2 rounded-lg text-sm hover:bg-yellow-300 transition-colors disabled:opacity-40"
               >
                 {runPlaytest.isPending ? '🧠 Predicting…' : '▶ Predict issues'}
@@ -241,7 +248,7 @@ export default function PlaytestingPage({
                         : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300',
                     )}
                   >
-                    {PERSONAS.find((p) => p.value === r.persona)?.icon}
+                    {personas?.find((p) => p.id === r.persona)?.icon}
                     {new Date(r.createdAt).toLocaleDateString()}
                     <span
                       onClick={(e) => {

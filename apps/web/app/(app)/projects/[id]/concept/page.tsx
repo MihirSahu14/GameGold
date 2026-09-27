@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import { useProject, useUpdateConceptCard, usePitchInterview } from '@/lib/queries/useProjects'
+import { useProject, useUpdateConceptCard, usePitchInterview, useUpdateGenre } from '@/lib/queries/useProjects'
+import { GENRES } from '@/lib/genres'
 import { toastError } from '@/lib/api'
 import { PillarsEditor } from '@/components/pitch/PillarsEditor'
 import { PitchInterviewPanel } from '@/components/pitch/PitchInterviewPanel'
-import type { ConceptCard, GameTone, PitchInterview } from '@gamegold/types'
+import type { ConceptCard, GameGenre, GameTone, PitchInterview } from '@gamegold/types'
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
 const pixel: React.CSSProperties = { fontFamily: 'var(--font-pixel), monospace' }
@@ -45,6 +46,7 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
   const { data: project, isLoading, isError, refetch } = useProject(id)
   const updateConcept = useUpdateConceptCard(id)
   const interviewPitch = usePitchInterview(id)
+  const updateGenre = useUpdateGenre(id)
 
   const [tagline, setTagline] = useState('')
   const [tone, setTone] = useState<GameTone>('atmospheric')
@@ -155,9 +157,14 @@ export default function ConceptPage({ params }: { params: Promise<{ id: string }
             <div style={{ ...pixel, fontSize: '13px', color: '#eaf2ff' }}>{project.title}</div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <span style={{ fontSize: '11px', color: '#8b97a7', background: '#141c27', padding: '3px 10px', letterSpacing: '1px', textTransform: 'capitalize' }}>
-              {project.genre}
-            </span>
+            <select
+              aria-label="Genre"
+              value={project.genre}
+              onChange={(e) => updateGenre.mutate(e.target.value as GameGenre, { onError: (err) => toastError(err, 'Could not change the genre.') })}
+              className="cursor-pointer border border-[#1b2533] bg-[#141c27] px-2 py-0.5 text-[11px] tracking-[1px] text-[#8b97a7] hover:border-[#4ea8ff]"
+            >
+              {GENRES.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+            </select>
             <span style={{ fontSize: '11px', color: '#8b97a7', background: '#141c27', padding: '3px 10px', letterSpacing: '1px', textTransform: 'capitalize' }}>
               {project.platform}
             </span>

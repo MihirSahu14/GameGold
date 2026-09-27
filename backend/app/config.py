@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     cookie_samesite: str = "lax"
 
     # AI — swap model string to switch providers (Groq dev, Claude prod)
-    llm_model: str = "groq/llama-3.3-70b-versatile"
+    llm_model: str = "anthropic/claude-haiku-4-5"
     llm_api_key: str
 
     # Image generation (Phase 3) — optional; sprite gen returns a clear error without it

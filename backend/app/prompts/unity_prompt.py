@@ -4,11 +4,33 @@ Input = the designer's pillars + prototype goal (core loop) + generated assets.
 """
 from app.prompts.grounding import GROUNDING_RULES
 
-UNITY_PLAN_SYSTEM_PROMPT = """\
+_GREYBOX_INTRO = """\
 You are a senior Unity developer building a PROTOTYPE that proves one core mechanic:
-greybox geometry, labeled placeholder art, one mechanic — nothing else. Given the
-designer's pillars, prototype goal (the core loop) and generated assets, produce a
-step-by-step Unity build plan.
+greybox geometry, labeled placeholder art, one mechanic — nothing else.
+"""
+
+# Narrative / visual-novel projects get a deterministic plan (services/unity_service.py,
+# no LLM) built on GameGold's own runtime. This text is written verbatim into the build
+# pack's GAMEGOLD.md so any Unity MCP client builds the same thing.
+NARRATIVE_SCAFFOLD = """Narrative scaffold (GameGold's built-in story runtime — no ink, no greybox level):
+1. Create and save a new scene.
+2. Add Scripts/DialoguePlayer.cs (included in this pack) as Assets/Scripts/DialoguePlayer.cs.
+   It builds its own UI at runtime (Canvas, background, portrait, textbox, choice buttons;
+   legacy uGUI Text — no TextMeshPro setup needed).
+3. Save the story (the dialogue asset's JSON) as Assets/Resources/GameGold/dialogue.json.
+4. Import background sprites into Assets/Resources/GameGold/Backgrounds/<bg name>.png and
+   portraits into Assets/Resources/GameGold/Portraits/portrait_<speaker lowercase>.png
+   (or <Speaker>.png). Optional sound effects: Assets/Resources/GameGold/Sfx/<sfx>.
+5. Create an empty GameObject named "GameGold Dialogue" and add the DialoguePlayer component.
+6. Enter Play mode: click finishes a line, click again advances; choices apply hidden
+   variable effects; branches pick the route; endings show a Play again button.
+"""
+
+NARRATIVE_GENRES = {"narrative", "visual-novel"}
+
+_PLAN_BODY = """\
+Given the designer's pillars, prototype goal (the core loop) and generated assets,
+produce a step-by-step Unity build plan.
 
 You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
 {
@@ -43,8 +65,8 @@ Rules:
   grounded steps beat padding.
 - Start with scene.new, then build ONLY what the prototype goal needs — no menus,
   no save systems, no polish, no second mechanic.
-- Anything without a sprite asset is a primitive (cube, quad, capsule) named
-  "PLACEHOLDER_<thing>".
+- Anything without a sprite asset is a placeholder named "PLACEHOLDER_<thing>"
+  (a primitive, or a plain UI Image for narrative games).
 - description: plain-English intent in Unity terms — component names and field
   values, e.g. "Add Rigidbody2D to Player, gravity scale 0". Never mention tool
   names in a description: it must read as an instruction for a human or any
@@ -64,6 +86,8 @@ Rules:
 - category must exactly match one of: scene, gameobject, component, asset, playmode.
 - args must be valid for the chosen tool. Do not invent tool names.
 """ + GROUNDING_RULES
+
+UNITY_PLAN_SYSTEM_PROMPT = _GREYBOX_INTRO + _PLAN_BODY
 
 
 def build_unity_plan_prompt(

@@ -10,11 +10,19 @@ from app.models.assets import (
     AssetUpdate,
     AssetOut,
     AssetInDB,
+    BatchItemError,
+    BatchSpriteItem,
+    BatchSpriteOut,
+    BatchSpriteRequest,
+    DialogueTree,
+    ImportDialogueRequest,
+    UnityGuide,
     GenerateSpriteRequest,
     GenerateScriptRequest,
     GenerateDialogueRequest,
     SuggestAssetsResponse,
     UpdateGuideRequest,
+    UploadSpriteRequest,
 )
 from app.prompts.asset_prompts import build_regen_block
 from app.routers.auth import get_current_user
@@ -25,6 +33,7 @@ from app.services.asset_service import (
     generate_svg_sprite,
     suggest_assets,
 )
+from app.services.dialogue_validate import validate_tree
 from app.services.replicate_service import generate_sprite_image, SpriteGenerationError
 from app.services.llm_utils import strip_html
 
@@ -157,14 +166,7 @@ async def create_sprite(
     game_context = await build_game_context(db, project_id, "visual")
     try:
         async with project_llm_slot(project_id):
-            image_prompt, guide = await generate_sprite_assets(
-                body.name, body.description, body.style, game_context, regen
-            )
-            try:
-                url = await generate_sprite_image(image_prompt, body.style)
-            except SpriteGenerationError:
-                # No Replicate key — fall back to LLM-generated pixel art SVG
-                url = await generate_svg_sprite(body.name, image_prompt, body.style)
+            image_prompt, guide, url = await _generate_sprite(body, game_context, regen)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -178,22 +180,112 @@ async def create_sprite(
                 "unity_guide": guide.model_dump(),
                 "url": url,
                 "style": body.style,
+                "kind": body.kind,
                 "image_prompt": image_prompt,
             },
         )
     else:
-        asset = AssetInDB(
-            project_id=project_id,
-            type="sprite",
-            name=body.name,
-            description=body.description,
-            unity_guide=guide.model_dump(),
-            url=url,
-            style=body.style,
-            image_prompt=image_prompt,
-        )
-        out = await insert_and_return(db, asset)
+        out = await _insert_sprite(db, project_id, body, image_prompt, guide, url)
     return out
+
+
+async def _generate_sprite(
+    body: GenerateSpriteRequest | BatchSpriteItem, game_context: str, regen: str = ""
+) -> tuple[str, UnityGuide, str]:
+    """(image_prompt, guide, url). Caller holds the project's LLM slot."""
+    image_prompt, guide = await generate_sprite_assets(
+        body.name, body.description, body.style, game_context, regen, body.kind
+    )
+    try:
+        url = await generate_sprite_image(image_prompt, body.style)
+    except SpriteGenerationError:
+        # No Replicate key — fall back to LLM-generated SVG
+        url = await generate_svg_sprite(body.name, image_prompt, body.style, body.kind)
+    return image_prompt, guide, url
+
+
+async def _insert_sprite(
+    db, project_id: str, body: GenerateSpriteRequest | BatchSpriteItem,
+    image_prompt: str, guide: UnityGuide, url: str,
+) -> AssetOut:
+    return await insert_and_return(db, AssetInDB(
+        project_id=project_id,
+        type="sprite",
+        name=body.name,
+        description=body.description,
+        unity_guide=guide.model_dump(),
+        url=url,
+        style=body.style,
+        kind=body.kind,
+        image_prompt=image_prompt,
+    ))
+
+
+@router.post("/sprites/batch", response_model=BatchSpriteOut, response_model_by_alias=True)
+@limiter.limit(LLM_RATE_LIMIT)
+async def create_sprites_batch(
+    request: Request,
+    response: Response,
+    project_id: str,
+    body: BatchSpriteRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Generate up to 12 sprites sequentially; one failure doesn't abort the rest."""
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    game_context = await build_game_context(db, project_id, "visual")
+    out = BatchSpriteOut()
+    # ponytail: holds the project slot for the whole batch (minutes) — other AI
+    # calls on this project get 429 meanwhile; move to a job queue if that bites.
+    async with project_llm_slot(project_id):
+        for item in body.items:
+            try:
+                image_prompt, guide, url = await _generate_sprite(item, game_context)
+            except ValueError as exc:
+                out.errors.append(BatchItemError(name=item.name, detail=str(exc)))
+                continue
+            out.assets.append(await _insert_sprite(db, project_id, item, image_prompt, guide, url))
+    return out
+
+
+UPLOADED_SPRITE_GUIDE = [
+    "This image was pulled from your Unity project (Assets/Resources/GameGold/), so it is already imported there",
+    "In the Project window select it and check the Inspector: Texture Type = Sprite (2D and UI)",
+    "Use Sync to Unity on this card to write GameGold's copy back if the two ever differ",
+]
+
+FILE_SPRITE_GUIDE = [
+    "Open the Unity page in GameGold and connect the bridge (Window → GameGold → Start Server)",
+    "Click Sync to Unity on this card — it lands in Assets/Resources/GameGold/<Backgrounds|Portraits> by kind",
+    "In the Project window select it and check the Inspector: Texture Type = Sprite (2D and UI), then Apply",
+]
+
+
+@router.post(
+    "/sprites/upload",
+    response_model=AssetOut,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_sprite(
+    project_id: str,
+    body: UploadSpriteRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Store a designer-made PNG (pulled from Unity or uploaded) as a sprite — not a placeholder, no LLM."""
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    guide = FILE_SPRITE_GUIDE if body.source == "file" else UPLOADED_SPRITE_GUIDE
+    return await insert_and_return(db, AssetInDB(
+        project_id=project_id,
+        type="sprite",
+        name=body.name,
+        description="Uploaded image" if body.source == "file" else "Pulled from Unity",
+        unity_guide=UnityGuide(steps=guide, completed=[False] * len(guide)).model_dump(),
+        url=body.data_uri,
+        kind=body.kind,
+        placeholder=False,
+    ))
 
 
 @router.post(
@@ -306,6 +398,69 @@ async def create_dialogue(
         )
         out = await insert_and_return(db, asset)
     return out
+
+
+# ─── Designer-written dialogue (narrative format, no LLM) ────────────────────
+
+# Static guide — the narrative build plan does these steps for you.
+IMPORTED_DIALOGUE_GUIDE = [
+    "Unity page → Basic (built-in bridge) → Generate build plan: it writes this JSON to Assets/Resources/GameGold/dialogue.json",
+    "The plan also creates Assets/Scripts/DialoguePlayer.cs and adds it to a GameObject named 'GameGold Dialogue'",
+    "Backgrounds go in Assets/Resources/GameGold/Backgrounds/<bg>.png, portraits in Assets/Resources/GameGold/Portraits/portrait_<speaker>.png (the plan imports your background/portrait sprites there)",
+    "Press Play (Edit → Play) — click to finish a line, click again to advance",
+]
+
+
+def _checked_tree(tree: DialogueTree) -> dict:
+    errors, _ = validate_tree(tree)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+    return tree.model_dump()
+
+
+@router.post(
+    "/dialogue/import",
+    response_model=AssetOut,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_dialogue(
+    project_id: str,
+    body: ImportDialogueRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Create a dialogue asset from pasted JSON — the designer wrote it, so not a placeholder."""
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    tree = _checked_tree(body.tree)
+    return await insert_and_return(db, AssetInDB(
+        project_id=project_id,
+        type="dialogue",
+        name=body.name,
+        description=body.tree.personality,
+        unity_guide=UnityGuide(
+            steps=IMPORTED_DIALOGUE_GUIDE, completed=[False] * len(IMPORTED_DIALOGUE_GUIDE)
+        ).model_dump(),
+        tree=tree,
+        placeholder=False,
+    ))
+
+
+@router.put("/{asset_id}/tree", response_model=AssetOut, response_model_by_alias=True)
+async def update_dialogue_tree(
+    project_id: str,
+    asset_id: str,
+    body: DialogueTree,
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    doc = await db.assets.find_one({"_id": to_object_id(asset_id), "project_id": project_id})
+    if not doc or doc.get("type") != "dialogue":
+        raise HTTPException(status_code=404, detail="Dialogue asset not found")
+    await db.assets.update_one({"_id": doc["_id"]}, {"$set": {"tree": _checked_tree(body)}})
+    doc = await db.assets.find_one({"_id": doc["_id"]})
+    return AssetOut(**serialize_asset(doc))
 
 
 # ─── Approve / provenance flags ──────────────────────────────────────────────
