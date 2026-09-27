@@ -55,3 +55,9 @@ def test_dialogue_player_v3_presentation(client):
     for needle in ("IsQuoted", "FontStyle.Italic", "choiceRipple", "PlayRippleCue", "RingSprite", "\"ripple\""):
         assert needle in code
     assert 'ending[0]' not in code  # the ending name never reaches the end screen anymore
+
+
+def test_dialogue_player_v4_original_backgrounds(client):
+    body = client.get("/unity/templates/DialoguePlayer").json()
+    assert body["version"] >= 4  # gap 61: designer art skips the print + tint
+    assert "originalBackgrounds.Exists(" in body["code"]

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { AssetKind } from '@gamegold/types'
 import { useUploadSprite } from '@/lib/queries/useAssets'
-import { imageFileToPngDataUri } from '@/lib/rasterize'
+import { imageFileToPngDataUri, type BackgroundFit } from '@/lib/rasterize'
 import { toastError } from '@/lib/api'
 import { KindToggle } from './KindToggle'
 
@@ -14,6 +14,7 @@ export function UploadSpritePanel({ projectId }: UploadSpritePanelProps) {
   const [file, setFile] = useState<File | null>(null)
   const [name, setName] = useState('')
   const [kind, setKind] = useState<AssetKind>('background')
+  const [fit, setFit] = useState<BackgroundFit>('crop')
   const [busy, setBusy] = useState(false)
   const [inputKey, setInputKey] = useState(0) // remount clears the file input after an upload
   const upload = useUploadSprite(projectId)
@@ -22,7 +23,7 @@ export function UploadSpritePanel({ projectId }: UploadSpritePanelProps) {
     if (!file || !name.trim()) return
     setBusy(true)
     try {
-      const dataUri = await imageFileToPngDataUri(file, kind === 'background')
+      const dataUri = await imageFileToPngDataUri(file, kind === 'background' ? fit : undefined)
       await upload.mutateAsync({ name: name.trim(), kind, dataUri })
       setFile(null)
       setName('')
@@ -67,7 +68,19 @@ export function UploadSpritePanel({ projectId }: UploadSpritePanelProps) {
           {busy ? 'Uploading…' : 'Upload'}
         </button>
       </div>
-      {kind === 'background' && <p className="mt-1 text-zinc-500">Backgrounds are centre-cropped to 16:9.</p>}
+      {kind === 'background' && (
+        <label className="mt-2 flex items-center gap-2">
+          Make it 16:9 by
+          <select
+            value={fit}
+            onChange={(e) => setFit(e.target.value as BackgroundFit)}
+            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-200"
+          >
+            <option value="crop">cropping the centre</option>
+            <option value="pad">fitting the whole image (blurred sides)</option>
+          </select>
+        </label>
+      )}
     </details>
   )
 }

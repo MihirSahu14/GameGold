@@ -332,7 +332,7 @@ export function overwriteTarget(path: string, assets: Asset[], record: UnitySync
 
 // Inverse of playerSettingsFile.
 export function settingsFromFile(file: Record<string, unknown>): PlayerSettings {
-  const { chapterColors, characterSides, twoCharacterStaging, choiceRipple, ...rest } = file as Omit<PlayerSettings, 'chapterColors' | 'characterSides'> & {
+  const { chapterColors, characterSides, twoCharacterStaging, choiceRipple, originalBackgrounds, ...rest } = file as Omit<PlayerSettings, 'chapterColors' | 'characterSides'> & {
     chapterColors?: { chapter: string; color: string }[]
     characterSides?: { speaker: string; side: StageSide }[]
   }
@@ -340,6 +340,7 @@ export function settingsFromFile(file: Record<string, unknown>): PlayerSettings 
     ...rest,
     twoCharacterStaging: twoCharacterStaging ?? true, // v1 files predate staging
     choiceRipple: choiceRipple ?? true, // v1/v2 files predate the ripple cue
+    originalBackgrounds: originalBackgrounds ?? [], // v1–v3 files predate original-art backgrounds
     chapterColors: Object.fromEntries((chapterColors ?? []).map((c) => [c.chapter, c.color])),
     characterSides: Object.fromEntries((characterSides ?? []).map((c) => [c.speaker, c.side])),
   }
@@ -483,6 +484,7 @@ const SETTINGS_FIELD_LABELS: Record<keyof PlayerSettings, string> = {
   twoCharacterStaging: 'two-character staging',
   characterSides: 'character sides',
   choiceRipple: 'choice ripple cue',
+  originalBackgrounds: 'original-art backgrounds',
 }
 
 // One line per changed key, e.g. "text speed 40 → 30" or "chapter tint intro #2a3f5c → #ff5277".

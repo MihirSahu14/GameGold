@@ -1,4 +1,4 @@
-// GameGold DialoguePlayer v3
+// GameGold DialoguePlayer v4
 // GameGold DialoguePlayer — plays a GameGold narrative dialogue JSON in Play mode.
 // Setup: put this on any GameObject, save the dialogue JSON as
 // Assets/Resources/GameGold/dialogue.json, backgrounds in Resources/GameGold/Backgrounds/<bg>,
@@ -10,7 +10,7 @@
 // Optional Resources/GameGold/player_settings.json (written by GameGold's "Sync settings") overrides the
 // Inspector: { look: plain|halftone|duotone, textSpeedCps, wordmarkTitle, ambience, volume,
 // chapterColors: [{ chapter, color: "#rrggbb" }], twoCharacterStaging, characterSides: [{ speaker, side: left|right }],
-// choiceRipple }.
+// choiceRipple, originalBackgrounds: ["bg", ...] }.
 // No file = plain look, no sound, Inspector values.
 // Staging (v2): left/right portrait slots per scene (a new bg = new scene); the speaker is lit and forward.
 // Keys (v2): Space/Enter/Right advance, hold Space/Ctrl to skip, 1-4 or Up/Down + Enter for choices, Esc pauses.
@@ -19,6 +19,7 @@
 // End screen (v3): never names the ending (no choice is labeled good/bad) — only the final lines, then a
 // quiet "Play again" (Space/Enter). Choice ripple (v3): one identical soft ring + water-drop cue after every
 // choice, tinted by the chapter colour, gated by player_settings.json's choiceRipple.
+// Original art (v4): backgrounds listed in originalBackgrounds are shown exactly as drawn — no print, no tint.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -63,6 +64,7 @@ public class DialoguePlayer : MonoBehaviour
         public bool twoCharacterStaging = true;
         public List<SpeakerSide> characterSides = new List<SpeakerSide>();
         public bool choiceRipple = true;
+        public List<string> originalBackgrounds = new List<string>();
     }
 
     [Serializable]
@@ -93,6 +95,8 @@ public class DialoguePlayer : MonoBehaviour
     public List<SpeakerSide> characterSides = new List<SpeakerSide>();
     [Tooltip("A soft ring + water-drop cue after every choice, identical regardless of which one was picked")]
     public bool choiceRipple = true;
+    [Tooltip("Backgrounds shown exactly as drawn (designer art): no halftone/duotone print, no chapter tint")]
+    public List<string> originalBackgrounds = new List<string>();
 
     static readonly Color[] Palette =
     {
@@ -186,6 +190,7 @@ public class DialoguePlayer : MonoBehaviour
         twoCharacterStaging = s.twoCharacterStaging;
         if (s.characterSides != null) characterSides = s.characterSides;
         choiceRipple = s.choiceRipple;
+        if (s.originalBackgrounds != null) originalBackgrounds = s.originalBackgrounds;
     }
 
     // ─── Story ────────────────────────────────────────────────────────────────
@@ -465,6 +470,11 @@ public class DialoguePlayer : MonoBehaviour
         {
             background.sprite = null;
             background.color = Color.Lerp(Color.black, tint, 0.2f);
+        }
+        else if (originalBackgrounds.Exists(b => string.Equals(b, currentBg, StringComparison.OrdinalIgnoreCase)))
+        {
+            background.sprite = rawBackground;
+            background.color = Color.white;
         }
         else if (look == Look.Plain)
         {

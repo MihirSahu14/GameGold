@@ -24,6 +24,7 @@ type PlayerSettingsPanelProps = {
 export function PlayerSettingsPanel({ settings, chapters, speakers = [], connected, busy, onSave, onSync }: PlayerSettingsPanelProps) {
   const [draft, setDraft] = useState(settings)
   const set = (patch: Partial<PlayerSettings>) => setDraft((d) => ({ ...d, ...patch }))
+  const [originalText, setOriginalText] = useState(settings.originalBackgrounds.join(', '))
   const allChapters = [...new Set([...chapters, ...Object.keys(draft.chapterColors)])]
   const allSpeakers = [...new Set([...speakers, ...Object.keys(draft.characterSides)])]
   const setSide = (speaker: string, side: StageSide | '') => {
@@ -91,6 +92,20 @@ export function PlayerSettingsPanel({ settings, chapters, speakers = [], connect
           Choice ripple cue <span className="text-[#456079]">(soft ring + water-drop sound after every choice)</span>
         </label>
       </div>
+
+      <label className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="w-24 text-[#8b97a7]">Original art</span>
+        <input
+          value={originalText}
+          onChange={(e) => {
+            setOriginalText(e.target.value)
+            set({ originalBackgrounds: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })
+          }}
+          placeholder="title, …"
+          className="w-64 border border-[#1b2533] bg-[#07090d] px-2 py-1"
+        />
+        <span className="text-[#456079]">(backgrounds shown exactly as drawn — no print, no tint)</span>
+      </label>
 
       {draft.twoCharacterStaging && allSpeakers.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-3">

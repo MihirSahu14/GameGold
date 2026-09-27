@@ -20,7 +20,7 @@ from app.services.llm_utils import _list, complete, extract_json
 # DialoguePlayer.cs inspector field names covered by Player Settings (player_settings.json overrides
 # them at Start()) — a component.setField targeting one of these on DialoguePlayer is stripped (gap 45).
 _SETTINGS_OWNED_DIALOGUEPLAYER_FIELDS = frozenset(
-    {"look", "charsPerSecond", "wordmarkTitle", "ambience", "volume", "chapterColors", "twoCharacterStaging", "characterSides", "choiceRipple"}
+    {"look", "charsPerSecond", "wordmarkTitle", "ambience", "volume", "chapterColors", "twoCharacterStaging", "characterSides", "choiceRipple", "originalBackgrounds"}
 )
 
 # GameGold-shipped runtime scripts (C# source, not prompts) — read once at import.

@@ -78,6 +78,7 @@ export type PlayerSettings = {
   twoCharacterStaging: boolean // left/right portrait slots with speaker focus; off = one portrait
   characterSides: Record<string, StageSide> // speaker → fixed side
   choiceRipple: boolean // soft ripple ring + water-drop cue after every choice, identical regardless of the choice
+  originalBackgrounds: string[] // bg names shown exactly as drawn (no print, no tint)
 }
 
 export interface Project {

@@ -102,11 +102,11 @@ def test_patch_saves_player_settings(client, mock_db):
     doc = {**TEST_PROJECT, "created_at": datetime(2026, 9, 26), "updated_at": datetime(2026, 9, 26)}
     settings = {"look": "halftone", "chapterColors": {"1": "#2a3f5c"}, "textSpeedCps": 60,
                 "wordmarkTitle": True, "ambience": True, "volume": 0.3,
-                "twoCharacterStaging": False, "characterSides": {"Avery": "left", "Skyler": "right"}, "choiceRipple": False}
+                "twoCharacterStaging": False, "characterSides": {"Avery": "left", "Skyler": "right"}, "choiceRipple": False, "originalBackgrounds": ["title"]}
     mock_db.projects.find_one.return_value = {**doc, "player_settings": {
         "look": "halftone", "chapter_colors": {"1": "#2a3f5c"}, "text_speed_cps": 60,
         "wordmark_title": True, "ambience": True, "volume": 0.3,
-        "two_character_staging": False, "character_sides": {"Avery": "left", "Skyler": "right"}, "choice_ripple": False}}
+        "two_character_staging": False, "character_sides": {"Avery": "left", "Skyler": "right"}, "choice_ripple": False, "original_backgrounds": ["title"]}}
     resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"playerSettings": settings})
     assert resp.status_code == 200
     saved = mock_db.projects.update_one.call_args[0][1]["$set"]["player_settings"]
@@ -122,7 +122,7 @@ def test_player_settings_default_to_plain(client, mock_db):
     body = client.patch(f"/projects/{TEST_PROJECT_ID}", json={}).json()
     assert body["playerSettings"] == {"look": "plain", "chapterColors": {}, "textSpeedCps": 40,
                                       "wordmarkTitle": False, "ambience": False, "volume": 0.5,
-                                      "twoCharacterStaging": True, "characterSides": {}, "choiceRipple": True}
+                                      "twoCharacterStaging": True, "characterSides": {}, "choiceRipple": True, "originalBackgrounds": []}
 
 
 def test_player_settings_validation(client, mock_db):

@@ -35,24 +35,36 @@ export async function svgToPngDataUri(dataUri: string): Promise<string> {
   })
 }
 
-/** Any browser-readable image file → PNG data URI. Backgrounds are centre-cropped to 16:9
- *  (the Unity player stretches them to the screen); everything is capped at 1920 px wide. */
-export async function imageFileToPngDataUri(file: File, cropTo16x9: boolean): Promise<string> {
+export type BackgroundFit = 'crop' | 'pad'
+
+/** Any browser-readable image file → PNG data URI, capped at 1920 px wide. `fit` makes it 16:9 (the Unity
+ *  player stretches backgrounds to the screen): 'crop' centre-crops; 'pad' keeps the whole image and fills
+ *  the sides with a blurred copy of itself (for art with a logo near the edge). No fit = as-is. */
+export async function imageFileToPngDataUri(file: File, fit?: BackgroundFit): Promise<string> {
   const bitmap = await createImageBitmap(file).catch(() => {
     throw new Error('That file is not an image this browser can read.')
   })
-  let sx = 0, sy = 0, sw = bitmap.width, sh = bitmap.height
-  if (cropTo16x9) {
-    if (sw / sh > 16 / 9) { sw = Math.round(sh * 16 / 9); sx = Math.round((bitmap.width - sw) / 2) }
-    else { sh = Math.round(sw * 9 / 16); sy = Math.round((bitmap.height - sh) / 2) }
-  }
-  const scale = Math.min(1, 1920 / sw)
+  const { width: w, height: h } = bitmap
+  const wide = w / h > 16 / 9
+  let [cw, ch] = [w, h] // canvas size before the 1920 cap
+  if (fit === 'crop') [cw, ch] = wide ? [Math.round(h * 16 / 9), h] : [w, Math.round(w * 9 / 16)]
+  if (fit === 'pad') [cw, ch] = wide ? [w, Math.round(w * 9 / 16)] : [Math.round(h * 16 / 9), h]
+  const scale = Math.min(1, 1920 / cw)
   const canvas = document.createElement('canvas')
-  canvas.width = Math.round(sw * scale)
-  canvas.height = Math.round(sh * scale)
+  canvas.width = Math.round(cw * scale)
+  canvas.height = Math.round(ch * scale)
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas is not supported in this browser.')
-  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
+  // "cover" the canvas (crop, or the blurred pad backdrop) ...
+  const cover = Math.max(canvas.width / w, canvas.height / h)
+  if (fit === 'pad') ctx.filter = 'blur(24px) brightness(0.7)'
+  ctx.drawImage(bitmap, (canvas.width - w * cover) / 2, (canvas.height - h * cover) / 2, w * cover, h * cover)
+  if (fit === 'pad') {
+    // ... then the whole image "contained" on top.
+    ctx.filter = 'none'
+    const contain = Math.min(canvas.width / w, canvas.height / h)
+    ctx.drawImage(bitmap, (canvas.width - w * contain) / 2, (canvas.height - h * contain) / 2, w * contain, h * contain)
+  }
   bitmap.close()
   return canvas.toDataURL('image/png')
 }
