@@ -93,3 +93,14 @@ def test_upload_sprite_rejects_non_png(client, mock_db):
                            json={"name": "x", "kind": "sprite", "dataUri": uri})
         assert resp.status_code == 422, uri
     mock_db.assets.insert_one.assert_not_called()
+
+
+def test_upload_sprite_from_file_gets_sync_guide(client, mock_db):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    _echo_insert(mock_db)
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/assets/sprites/upload",
+                       json={"name": "title", "kind": "background", "dataUri": PNG_URI, "source": "file"})
+    assert resp.status_code == 201, resp.text
+    out = resp.json()
+    assert out["description"] == "Uploaded image"
+    assert any("Sync to Unity" in s for s in out["unityGuide"]["steps"])

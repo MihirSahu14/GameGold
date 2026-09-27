@@ -17,6 +17,7 @@ import { StyleToggle } from '@/components/assets/StyleToggle'
 import { KindToggle } from '@/components/assets/KindToggle'
 import { DialogueImportPanel } from '@/components/assets/DialogueJson'
 import { BatchSpritePanel } from '@/components/assets/BatchSpritePanel'
+import { UploadSpritePanel } from '@/components/assets/UploadSpritePanel'
 import { ProposalsPanel, proposalKey } from '@/components/assets/ProposalsPanel'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
 import type { ArtStyle, AssetKind, AssetProposal, AssetType, ScriptType } from '@gamegold/types'
@@ -288,6 +289,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
           </div>
         )}
         {activeTab === 'sprite' && <BatchSpritePanel projectId={id} style={spriteStyle} />}
+        {activeTab === 'sprite' && <UploadSpritePanel projectId={id} />}
         {activeTab === 'dialogue' && <DialogueImportPanel projectId={id} />}
 
         {activeTab === 'script' && (

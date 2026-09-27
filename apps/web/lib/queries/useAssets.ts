@@ -201,3 +201,18 @@ export function dialogueErrors(err: unknown): string[] {
     typeof d === 'string' ? d : `${(d.loc ?? []).filter((p) => p !== 'body' && p !== 'tree').join('.')}: ${d.msg ?? 'invalid'}`,
   )
 }
+
+// ─── Upload a designer-made image (no LLM) ───────────────────────────────────
+export function useUploadSprite(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { name: string; kind: AssetKind; dataUri: string }) => {
+      const res = await api.post<Asset>(`/projects/${projectId}/assets/sprites/upload`, { ...payload, source: 'file' })
+      return res.data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['assets', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
+    },
+  })
+}

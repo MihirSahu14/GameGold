@@ -254,6 +254,12 @@ UPLOADED_SPRITE_GUIDE = [
     "Use Sync to Unity on this card to write GameGold's copy back if the two ever differ",
 ]
 
+FILE_SPRITE_GUIDE = [
+    "Open the Unity page in GameGold and connect the bridge (Window → GameGold → Start Server)",
+    "Click Sync to Unity on this card — it lands in Assets/Resources/GameGold/<Backgrounds|Portraits> by kind",
+    "In the Project window select it and check the Inspector: Texture Type = Sprite (2D and UI), then Apply",
+]
+
 
 @router.post(
     "/sprites/upload",
@@ -266,17 +272,16 @@ async def upload_sprite(
     body: UploadSpriteRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Store a designer-made PNG (e.g. pulled from Unity) as a sprite — not a placeholder, no LLM."""
+    """Store a designer-made PNG (pulled from Unity or uploaded) as a sprite — not a placeholder, no LLM."""
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
+    guide = FILE_SPRITE_GUIDE if body.source == "file" else UPLOADED_SPRITE_GUIDE
     return await insert_and_return(db, AssetInDB(
         project_id=project_id,
         type="sprite",
         name=body.name,
-        description="Pulled from Unity",
-        unity_guide=UnityGuide(
-            steps=UPLOADED_SPRITE_GUIDE, completed=[False] * len(UPLOADED_SPRITE_GUIDE)
-        ).model_dump(),
+        description="Uploaded image" if body.source == "file" else "Pulled from Unity",
+        unity_guide=UnityGuide(steps=guide, completed=[False] * len(guide)).model_dump(),
         url=body.data_uri,
         kind=body.kind,
         placeholder=False,

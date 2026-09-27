@@ -113,6 +113,7 @@ class UploadSpriteRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     kind: AssetKind = "sprite"
     data_uri: str = Field(max_length=12_000_000)  # ~8 MB of PNG once base64-encoded
+    source: Literal["unity", "file"] = "unity"  # pulled back from Unity, or uploaded from disk
 
     @field_validator("data_uri")
     @classmethod
