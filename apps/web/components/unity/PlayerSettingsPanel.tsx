@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { PlayerLook, PlayerSettings } from '@gamegold/types'
+import type { PlayerLook, PlayerSettings, StageSide } from '@gamegold/types'
 import { cn } from '@/lib/utils'
 
 const LOOKS: { value: PlayerLook; label: string }[] = [
@@ -13,6 +13,7 @@ const LOOKS: { value: PlayerLook; label: string }[] = [
 type PlayerSettingsPanelProps = {
   settings: PlayerSettings
   chapters: string[] // chapter ids used in the story, for the tint pickers
+  speakers?: string[] // speakers in the story's dialogue, for the stage-side pickers
   connected: boolean
   busy: boolean
   onSave: (s: PlayerSettings) => void
@@ -20,10 +21,15 @@ type PlayerSettingsPanelProps = {
 }
 
 // Look & feel of GameGold's built-in DialoguePlayer (read from Resources/GameGold/player_settings.json).
-export function PlayerSettingsPanel({ settings, chapters, connected, busy, onSave, onSync }: PlayerSettingsPanelProps) {
+export function PlayerSettingsPanel({ settings, chapters, speakers = [], connected, busy, onSave, onSync }: PlayerSettingsPanelProps) {
   const [draft, setDraft] = useState(settings)
   const set = (patch: Partial<PlayerSettings>) => setDraft((d) => ({ ...d, ...patch }))
   const allChapters = [...new Set([...chapters, ...Object.keys(draft.chapterColors)])]
+  const allSpeakers = [...new Set([...speakers, ...Object.keys(draft.characterSides)])]
+  const setSide = (speaker: string, side: StageSide | '') => {
+    const { [speaker]: _, ...others } = draft.characterSides
+    set({ characterSides: side ? { ...others, [speaker]: side } : others })
+  }
 
   return (
     <section className="mb-6 border border-[#1b2533] bg-[#0b1018] p-5 text-xs text-[#c8d4e2]">
@@ -76,7 +82,32 @@ export function PlayerSettingsPanel({ settings, chapters, connected, busy, onSav
           <input type="checkbox" checked={draft.ambience} onChange={(e) => set({ ambience: e.target.checked })} />
           Ambience + typewriter sound
         </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={draft.twoCharacterStaging} onChange={(e) => set({ twoCharacterStaging: e.target.checked })} />
+          Two-character staging <span className="text-[#456079]">(left/right portraits, speaker in focus)</span>
+        </label>
       </div>
+
+      {draft.twoCharacterStaging && allSpeakers.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <span className="w-24 text-[#8b97a7]">Stage side</span>
+          {allSpeakers.map((s) => (
+            <label key={s} className="flex items-center gap-1">
+              <span className="text-[#8b97a7]">{s}</span>
+              <select
+                aria-label={`${s} stage side`}
+                value={draft.characterSides[s] ?? ''}
+                onChange={(e) => setSide(s, e.target.value as StageSide | '')}
+                className="border border-[#1b2533] bg-[#07090d] px-1 py-0.5"
+              >
+                <option value="">Auto</option>
+                <option value="left">L</option>
+                <option value="right">R</option>
+              </select>
+            </label>
+          ))}
+        </div>
+      )}
 
       {allChapters.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-3">

@@ -105,6 +105,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const dialogue = (assets ?? []).filter(a => a.type === 'dialogue')
   const totalAssets = (assets ?? []).length
   const chapters = [...new Set(dialogue.flatMap(d => (d.tree?.nodes ?? []).map(n => n.chapter ?? '').filter(Boolean)))]
+  const speakers = [...new Set(dialogue.flatMap(d => (d.tree?.nodes ?? []).map(n => n.speaker ?? '').filter(s => s && s.toLowerCase() !== 'narrator')))]
   const doneSteps = checked.filter(Boolean).length
 
   function toggleStep(i: number) {
@@ -461,6 +462,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
               key={project._id}
               settings={project.playerSettings}
               chapters={chapters}
+              speakers={speakers}
               connected={mcpStatus === 'connected'}
               busy={syncingSettings || updateSettings.isPending}
               onSave={handleSaveSettings}

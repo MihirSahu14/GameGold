@@ -1,4 +1,4 @@
-// GameGold DialoguePlayer v1
+// GameGold DialoguePlayer v2
 // GameGold DialoguePlayer — plays a GameGold narrative dialogue JSON in Play mode.
 // Setup: put this on any GameObject, save the dialogue JSON as
 // Assets/Resources/GameGold/dialogue.json, backgrounds in Resources/GameGold/Backgrounds/<bg>,
@@ -9,7 +9,10 @@
 // Branch "when": "<var> [+ <var>...] <op> <int>" (op: < <= > >= ==) or "else".
 // Optional Resources/GameGold/player_settings.json (written by GameGold's "Sync settings") overrides the
 // Inspector: { look: plain|halftone|duotone, textSpeedCps, wordmarkTitle, ambience, volume,
-// chapterColors: [{ chapter, color: "#rrggbb" }] }. No file = plain look, no sound, Inspector values.
+// chapterColors: [{ chapter, color: "#rrggbb" }], twoCharacterStaging, characterSides: [{ speaker, side: left|right }] }.
+// No file = plain look, no sound, Inspector values.
+// Staging (v2): left/right portrait slots per scene (a new bg = new scene); the speaker is lit and forward.
+// Keys (v2): Space/Enter/Right advance, hold Space/Ctrl to skip, 1-4 or Up/Down + Enter for choices, Esc pauses.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -18,6 +21,10 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
+#endif
 
 public class DialoguePlayer : MonoBehaviour
 {
@@ -30,6 +37,13 @@ public class DialoguePlayer : MonoBehaviour
 
     public enum Look { Plain, Halftone, Duotone }
 
+    [Serializable]
+    public class SpeakerSide
+    {
+        public string speaker;
+        [Tooltip("left or right")] public string side = "left";
+    }
+
     // Shape of player_settings.json (JsonUtility can't read dictionaries, so chapter colours are a list).
     [Serializable]
     class Settings
@@ -40,6 +54,8 @@ public class DialoguePlayer : MonoBehaviour
         public bool ambience;
         public float volume = 0.5f;
         public List<ChapterHex> chapterColors = new List<ChapterHex>();
+        public bool twoCharacterStaging = true;
+        public List<SpeakerSide> characterSides = new List<SpeakerSide>();
     }
 
     [Serializable]
@@ -64,6 +80,10 @@ public class DialoguePlayer : MonoBehaviour
     [Tooltip("Procedural ambience per chapter + typewriter blips (starts on the first click)")]
     public bool ambience;
     [Range(0f, 1f)] public float volume = 0.5f;
+    [Tooltip("Left/right portrait slots with the speaker in focus; off = one portrait for the current speaker")]
+    public bool twoCharacterStaging = true;
+    [Tooltip("Fixed stage side per speaker; everyone else takes the free / opposite slot")]
+    public List<SpeakerSide> characterSides = new List<SpeakerSide>();
 
     static readonly Color[] Palette =
     {
@@ -90,12 +110,20 @@ public class DialoguePlayer : MonoBehaviour
 
     // UI
     Font font;
-    Image background, portrait, accent;
-    Text nameText, bodyText, endTitle, endSubtitle, wordmark;
+    Image background, accent;
+    Text nameText, bodyText, endTitle, endSubtitle, wordmark, hint, volumeText;
     GameObject textbox;
     RectTransform choiceBox;
-    GameObject endPanel;
+    GameObject endPanel, pausePanel;
     AudioSource audioSource;
+    readonly List<Image> choiceImages = new List<Image>();
+    readonly List<Dictionary<string, object>> shownChoices = new List<Dictionary<string, object>>();
+    Image[] pauseImages;
+    int choiceFocus, pauseFocus;
+    bool paused, hintDone;
+    float prevTimeScale = 1f, holdTime, skipTimer;
+    static readonly Color ButtonColor = new Color(0.08f, 0.1f, 0.15f, 0.95f);
+    static readonly Color FocusColor = new Color(0.17f, 0.3f, 0.5f, 0.98f);
 
     void Start()
     {
@@ -108,6 +136,8 @@ public class DialoguePlayer : MonoBehaviour
 
     void Update()
     {
+        AnimateStage();
+        HandleKeys();
         if (wordmarkAlpha >= 0f && wordmarkAlpha < 1f)
         {
             wordmarkAlpha = Mathf.Min(1f, wordmarkAlpha + Time.deltaTime / 1.5f);
@@ -144,6 +174,8 @@ public class DialoguePlayer : MonoBehaviour
             chapterColors.RemoveAll(x => string.Equals(x.chapter, c.chapter, StringComparison.OrdinalIgnoreCase));
             chapterColors.Add(new ChapterColor { chapter = c.chapter, color = color });
         }
+        twoCharacterStaging = s.twoCharacterStaging;
+        if (s.characterSides != null) characterSides = s.characterSides;
     }
 
     // ─── Story ────────────────────────────────────────────────────────────────
@@ -189,6 +221,8 @@ public class DialoguePlayer : MonoBehaviour
         foreach (var kv in initialVars) vars[kv.Key] = kv.Value;
         endPanel.SetActive(false);
         ended = false;
+        holdTime = 0f;
+        ResetStage();
         SetChapter(null);
         SetBackground(null);
         Go(startId);
@@ -223,6 +257,8 @@ public class DialoguePlayer : MonoBehaviour
             return;
         }
         textbox.SetActive(true);
+        hint.gameObject.SetActive(!hintDone); // first line only
+        hintDone = true;
         var speaker = Str(current, "speaker") ?? "";
         nameText.text = speaker;
         SetPortrait(speaker, Str(current, "expr"));
@@ -339,6 +375,7 @@ public class DialoguePlayer : MonoBehaviour
     {
         if (string.IsNullOrEmpty(bg)) bg = null;
         if (bg != "title") HideWordmark(); // the wordmark stays up until the title card leaves
+        if (bg != currentBg) ResetStage(); // new background = new scene
         currentBg = bg;
         rawBackground = null;
         if (bg != null)
@@ -380,7 +417,7 @@ public class DialoguePlayer : MonoBehaviour
     void ShowWordmark(string word)
     {
         textbox.SetActive(false);
-        portrait.gameObject.SetActive(false);
+        stage.gameObject.SetActive(false);
         wordmark.text = string.Join("  ", word.Trim().ToCharArray()); // legacy Text has no letter-spacing
         wordmarkAlpha = 0f;
         wordmark.color = Color.clear;
@@ -627,40 +664,31 @@ public class DialoguePlayer : MonoBehaviour
         return d;
     }
 
-    void SetPortrait(string speaker, string expr)
-    {
-        Sprite sprite = null;
-        if (speaker.Length > 0 && !string.Equals(speaker, "narrator", StringComparison.OrdinalIgnoreCase))
-        {
-            var lower = speaker.ToLowerInvariant();
-            var names = new List<string>();
-            if (!string.IsNullOrEmpty(expr)) names.Add($"portrait_{lower}_{expr}");
-            names.Add("portrait_" + lower);
-            names.Add(speaker);
-            foreach (var n in names)
-            {
-                sprite = Resources.Load<Sprite>("GameGold/Portraits/" + n);
-                if (sprite != null) break;
-            }
-        }
-        portrait.sprite = sprite;
-        portrait.gameObject.SetActive(sprite != null);
-    }
-
     void ShowChoices(List<object> choices)
     {
         choosing = true;
         foreach (var o in choices)
         {
             if (!(o is Dictionary<string, object> choice)) continue;
-            var button = MakeButton(choiceBox, Str(choice, "text") ?? "…", 30);
+            int index = shownChoices.Count;
+            var label = (index < 4 ? $"{index + 1}.  " : "") + (Str(choice, "text") ?? "…");
+            var button = MakeButton(choiceBox, label, 30);
             button.onClick.AddListener(() => Choose(choice));
+            var hover = button.gameObject.AddComponent<EventTrigger>(); // hovering moves the keyboard focus
+            var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+            enter.callback.AddListener(_ => FocusChoice(index));
+            hover.triggers.Add(enter);
+            shownChoices.Add(choice);
+            choiceImages.Add(button.image);
         }
+        FocusChoice(0);
     }
 
     void ClearChoices()
     {
         choosing = false;
+        shownChoices.Clear();
+        choiceImages.Clear();
         for (int i = choiceBox.childCount - 1; i >= 0; i--) Destroy(choiceBox.GetChild(i).gameObject);
     }
 
@@ -674,6 +702,339 @@ public class DialoguePlayer : MonoBehaviour
         endPanel.SetActive(true);
     }
 
+    // ─── Stage: left/right portrait slots, speaker in focus ──────────────────
+
+    class Slot
+    {
+        public RectTransform rect;
+        public Image color, gray; // gray sits on top; its alpha = how desaturated
+        public AspectRatioFitter fit;
+        public float f, fFrom, fTo, a, aFrom, aTo, t = 1f; // f: 1 speaking, 0.5 narration, 0 listening; a: alpha
+    }
+
+    const float EaseSeconds = 0.2f;
+    RectTransform stage;
+    readonly Slot[] slots = new Slot[2];
+    readonly string[] occupants = new string[2];
+    readonly int[] lastSpoke = new int[2];
+    readonly Dictionary<Sprite, Sprite> grays = new Dictionary<Sprite, Sprite>();
+
+    static bool IsNarration(string speaker) =>
+        string.IsNullOrEmpty(speaker) || string.Equals(speaker, "narrator", StringComparison.OrdinalIgnoreCase);
+
+    // Which slot (0 left, 1 right) `speaker` stands in; updates slots/lastSpoke in place. Someone already on
+    // stage stays put. A fixed side always wins (a non-fixed character standing there steps across if the other
+    // slot is free). Anyone else takes a free slot (left first, i.e. opposite whoever is on stage), else replaces
+    // the non-fixed occupant, else the least-recently-speaking one.
+    public static int AssignSlot(string[] slots, int[] lastSpoke, string speaker, IDictionary<string, string> fixedSides)
+    {
+        int Side(string who) =>
+            who != null && fixedSides != null && fixedSides.TryGetValue(who, out var s)
+                ? (string.Equals(s, "right", StringComparison.OrdinalIgnoreCase) ? 1 : string.Equals(s, "left", StringComparison.OrdinalIgnoreCase) ? 0 : -1)
+                : -1;
+        bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+        int slot = Same(slots[0], speaker) ? 0 : Same(slots[1], speaker) ? 1 : -1;
+        if (slot < 0)
+        {
+            int side = Side(speaker);
+            if (side >= 0)
+            {
+                var displaced = slots[side];
+                if (displaced != null && Side(displaced) < 0 && slots[1 - side] == null)
+                {
+                    slots[1 - side] = displaced;
+                    lastSpoke[1 - side] = lastSpoke[side];
+                }
+                slot = side;
+            }
+            else if (slots[0] == null || slots[1] == null) slot = slots[0] == null ? 0 : 1;
+            else
+            {
+                bool fixed0 = Side(slots[0]) >= 0, fixed1 = Side(slots[1]) >= 0;
+                slot = fixed0 != fixed1 ? (fixed0 ? 1 : 0) : (lastSpoke[0] <= lastSpoke[1] ? 0 : 1);
+            }
+            slots[slot] = speaker;
+        }
+        lastSpoke[slot] = Mathf.Max(lastSpoke[0], lastSpoke[1]) + 1;
+        return slot;
+    }
+
+    Sprite LoadPortrait(string speaker, string expr)
+    {
+        if (IsNarration(speaker)) return null;
+        var lower = speaker.ToLowerInvariant();
+        var names = new List<string>();
+        if (!string.IsNullOrEmpty(expr)) names.Add($"portrait_{lower}_{expr}");
+        names.Add("portrait_" + lower);
+        names.Add(speaker);
+        foreach (var n in names)
+        {
+            var sprite = Resources.Load<Sprite>("GameGold/Portraits/" + n);
+            if (sprite != null) return sprite;
+        }
+        return null;
+    }
+
+    void SetPortrait(string speaker, string expr)
+    {
+        stage.gameObject.SetActive(true);
+        var sprite = LoadPortrait(speaker, expr);
+        if (!twoCharacterStaging)
+        {
+            if (!string.Equals(occupants[0], speaker, StringComparison.OrdinalIgnoreCase)) slots[0].a = 0f; // new face fades in
+            occupants[0] = sprite != null ? speaker : null;
+            SetSlotSprite(0, sprite);
+            Retarget(0, 1f, sprite != null ? 1f : 0f);
+            return;
+        }
+        if (sprite == null) // narration, or a speaker with no portrait: the stage stays, everyone listens
+        {
+            for (int i = 0; i < 2; i++) Retarget(i, 0.5f, occupants[i] != null ? 1f : 0f);
+            return;
+        }
+        var before = (string[])occupants.Clone();
+        var beforeSprites = new[] { slots[0].color.sprite, slots[1].color.sprite };
+        var sides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in characterSides) if (s != null && !string.IsNullOrEmpty(s.speaker)) sides[s.speaker] = s.side;
+        int slot = AssignSlot(occupants, lastSpoke, speaker, sides);
+        for (int i = 0; i < 2; i++)
+        {
+            if (string.Equals(occupants[i], before[i], StringComparison.OrdinalIgnoreCase)) continue;
+            slots[i].a = 0f; // someone new here: fade in
+            SetSlotSprite(i, i == slot ? sprite : beforeSprites[1 - i]); // the only other change is a step across
+        }
+        SetSlotSprite(slot, sprite); // the expression may have changed
+        Retarget(slot, 1f, 1f);
+        Retarget(1 - slot, 0f, occupants[1 - slot] != null ? 1f : 0f);
+        slots[slot].rect.SetAsLastSibling(); // speaker drawn in front
+    }
+
+    void ResetStage()
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            occupants[i] = null;
+            lastSpoke[i] = 0;
+            if (slots[i] == null) continue;
+            SetSlotSprite(i, null);
+            slots[i].a = slots[i].aTo = 0f;
+        }
+    }
+
+    void SetSlotSprite(int i, Sprite sprite)
+    {
+        var s = slots[i];
+        s.color.sprite = sprite;
+        s.gray.sprite = Gray(sprite);
+        if (sprite != null) s.fit.aspectRatio = sprite.rect.width / Mathf.Max(1f, sprite.rect.height);
+        s.rect.gameObject.SetActive(sprite != null);
+    }
+
+    void Retarget(int i, float f, float a)
+    {
+        var s = slots[i];
+        s.fFrom = s.f;
+        s.aFrom = s.a;
+        s.fTo = f;
+        s.aTo = a;
+        s.t = 0f;
+    }
+
+    void AnimateStage()
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            var s = slots[i];
+            if (s == null) continue;
+            s.t = Mathf.Min(1f, s.t + Time.unscaledDeltaTime / EaseSeconds);
+            float e = Mathf.SmoothStep(0f, 1f, s.t);
+            s.f = Mathf.Lerp(s.fFrom, s.fTo, e);
+            s.a = Mathf.Lerp(s.aFrom, s.aTo, e);
+            float bright = 0.45f + 0.55f * s.f, forward = Mathf.Max(0f, s.f * 2f - 1f); // narration (0.5): ~70%, not forward
+            s.color.color = new Color(bright, bright, bright, s.a);
+            s.gray.color = new Color(bright, bright, bright, s.a * 0.85f * (1f - s.f));
+            s.rect.localScale = Vector3.one * (0.92f + 0.08f * s.f);
+            s.rect.anchoredPosition = new Vector2((i == 0 ? 24f : -24f) * forward, 12f * forward);
+        }
+    }
+
+    // Desaturated copy for the "listening" look (CPU, once per sprite).
+    Sprite Gray(Sprite source)
+    {
+        if (source == null) return null;
+        if (grays.TryGetValue(source, out var cached)) return cached;
+        var tex = ReadableCopy(source);
+        var px = tex.GetPixels32();
+        for (int i = 0; i < px.Length; i++)
+        {
+            var c = px[i];
+            byte l = (byte)(0.299f * c.r + 0.587f * c.g + 0.114f * c.b);
+            px[i] = new Color32(l, l, l, c.a);
+        }
+        tex.SetPixels32(px);
+        tex.Apply(false, true);
+        return grays[source] = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+    }
+
+    Slot MakeSlot(string name, float centerX)
+    {
+        var go = new GameObject(name, typeof(RectTransform), typeof(AspectRatioFitter));
+        var rect = (RectTransform)go.transform;
+        rect.SetParent(stage, false);
+        rect.anchorMin = new Vector2(centerX, 0.3f); // stands on the textbox, 63% of screen height
+        rect.anchorMax = new Vector2(centerX, 0.93f);
+        rect.pivot = new Vector2(0.5f, 0f);
+        rect.offsetMin = rect.offsetMax = Vector2.zero;
+        var fit = go.GetComponent<AspectRatioFitter>();
+        fit.aspectMode = AspectRatioFitter.AspectMode.HeightControlsWidth;
+        var slot = new Slot { rect = rect, fit = fit, color = MakeImage(rect, "Portrait", Vector2.zero, Vector2.one, Color.clear) };
+        slot.gray = MakeImage(rect, "Listening", Vector2.zero, Vector2.one, Color.clear);
+        slot.color.raycastTarget = slot.gray.raycastTarget = false;
+        go.SetActive(false);
+        return slot;
+    }
+
+    // ─── Keyboard (new Input System or legacy Input Manager, whichever the project uses) ───
+
+    enum Btn { Space, Enter, Right, Left, Up, Down, W, S, Esc, Ctrl, D1, D2, D3, D4 }
+
+#if ENABLE_INPUT_SYSTEM
+    static bool Key(Btn b, bool held)
+    {
+        var kb = Keyboard.current;
+        if (kb == null) return false;
+        bool K(KeyControl k) => held ? k.isPressed : k.wasPressedThisFrame;
+        switch (b)
+        {
+            case Btn.Space: return K(kb.spaceKey);
+            case Btn.Enter: return K(kb.enterKey) || K(kb.numpadEnterKey);
+            case Btn.Right: return K(kb.rightArrowKey);
+            case Btn.Left: return K(kb.leftArrowKey);
+            case Btn.Up: return K(kb.upArrowKey);
+            case Btn.Down: return K(kb.downArrowKey);
+            case Btn.W: return K(kb.wKey);
+            case Btn.S: return K(kb.sKey);
+            case Btn.Esc: return K(kb.escapeKey);
+            case Btn.Ctrl: return K(kb.leftCtrlKey) || K(kb.rightCtrlKey);
+            case Btn.D1: return K(kb.digit1Key) || K(kb.numpad1Key);
+            case Btn.D2: return K(kb.digit2Key) || K(kb.numpad2Key);
+            case Btn.D3: return K(kb.digit3Key) || K(kb.numpad3Key);
+            default: return K(kb.digit4Key) || K(kb.numpad4Key);
+        }
+    }
+#elif ENABLE_LEGACY_INPUT_MANAGER
+    static bool Key(Btn b, bool held)
+    {
+        bool K(KeyCode k) => held ? Input.GetKey(k) : Input.GetKeyDown(k);
+        switch (b)
+        {
+            case Btn.Space: return K(KeyCode.Space);
+            case Btn.Enter: return K(KeyCode.Return) || K(KeyCode.KeypadEnter);
+            case Btn.Right: return K(KeyCode.RightArrow);
+            case Btn.Left: return K(KeyCode.LeftArrow);
+            case Btn.Up: return K(KeyCode.UpArrow);
+            case Btn.Down: return K(KeyCode.DownArrow);
+            case Btn.W: return K(KeyCode.W);
+            case Btn.S: return K(KeyCode.S);
+            case Btn.Esc: return K(KeyCode.Escape);
+            case Btn.Ctrl: return K(KeyCode.LeftControl) || K(KeyCode.RightControl);
+            case Btn.D1: return K(KeyCode.Alpha1) || K(KeyCode.Keypad1);
+            case Btn.D2: return K(KeyCode.Alpha2) || K(KeyCode.Keypad2);
+            case Btn.D3: return K(KeyCode.Alpha3) || K(KeyCode.Keypad3);
+            default: return K(KeyCode.Alpha4) || K(KeyCode.Keypad4);
+        }
+    }
+#else
+    static bool Key(Btn b, bool held) => false;
+#endif
+
+    static bool Pressed(Btn b) => Key(b, false);
+    static bool Confirm => Pressed(Btn.Space) || Pressed(Btn.Enter);
+    static int Move => Pressed(Btn.Up) || Pressed(Btn.W) ? -1 : Pressed(Btn.Down) || Pressed(Btn.S) ? 1 : 0;
+
+    void HandleKeys()
+    {
+        // A clicked Button stays "selected" and the UI module would re-click it on Space/Enter: never keep one.
+        var es = EventSystem.current;
+        if (es != null && es.currentSelectedGameObject != null) es.SetSelectedGameObject(null);
+
+        if (Pressed(Btn.Esc)) { SetPaused(!paused); return; }
+        if (paused)
+        {
+            pauseFocus = (pauseFocus + Move + pauseImages.Length) % pauseImages.Length;
+            if (pauseFocus == 2 && (Pressed(Btn.Left) || Pressed(Btn.Right))) SetVolume(volume + (Pressed(Btn.Left) ? -0.1f : 0.1f));
+            Highlight(pauseImages, pauseFocus);
+            if (Confirm && pauseFocus == 0) SetPaused(false);
+            else if (Confirm && pauseFocus == 1) { SetPaused(false); Restart(); }
+            return;
+        }
+        if (ended)
+        {
+            if (Confirm) Restart();
+            return;
+        }
+        if (choosing)
+        {
+            for (int i = 0; i < 4 && i < shownChoices.Count; i++) if (Pressed(Btn.D1 + i)) { Choose(shownChoices[i]); return; }
+            if (Confirm && choiceFocus < shownChoices.Count) { Choose(shownChoices[choiceFocus]); return; }
+            if (Move != 0 && shownChoices.Count > 0) FocusChoice((choiceFocus + Move + shownChoices.Count) % shownChoices.Count);
+            return;
+        }
+        if (Confirm || Pressed(Btn.Right)) OnClick();
+
+        // Hold Space/Ctrl: fast-skip lines (stops at choices, never picks one).
+        if (Key(Btn.Space, true) || Key(Btn.Ctrl, true))
+        {
+            holdTime += Time.unscaledDeltaTime;
+            skipTimer -= Time.unscaledDeltaTime;
+            if (holdTime > 0.4f && skipTimer <= 0f && !choosing && !ended)
+            {
+                skipTimer = 0.05f;
+                OnClick();
+            }
+        }
+        else holdTime = skipTimer = 0f;
+    }
+
+    void FocusChoice(int i)
+    {
+        choiceFocus = i;
+        Highlight(choiceImages, i);
+    }
+
+    static void Highlight(IList<Image> images, int focus)
+    {
+        for (int i = 0; i < images.Count; i++) images[i].color = i == focus ? FocusColor : ButtonColor;
+    }
+
+    void SetPaused(bool on)
+    {
+        if (on == paused) return;
+        paused = on;
+        if (on)
+        {
+            prevTimeScale = Time.timeScale;
+            Time.timeScale = 0f;
+            pauseFocus = 0;
+            Highlight(pauseImages, 0);
+        }
+        else Time.timeScale = prevTimeScale;
+        pausePanel.SetActive(on);
+    }
+
+    void SetVolume(float v)
+    {
+        volume = Mathf.Clamp01(Mathf.Round(v * 10f) / 10f);
+        volumeText.text = $"Volume {Mathf.RoundToInt(volume * 100f)}%";
+        if (audioStarted && bedA != null) bedA.volume = Master;
+    }
+
+    void OnDestroy()
+    {
+        if (paused) Time.timeScale = prevTimeScale;
+    }
+
     // ─── UI construction (all in code) ────────────────────────────────────────
 
     void BuildUI()
@@ -683,7 +1044,12 @@ public class DialoguePlayer : MonoBehaviour
             var es = new GameObject("EventSystem", typeof(EventSystem));
             // Prefer the Input System's UI module (projects with the new Input System only would throw on
             // StandaloneInputModule); fall back to the legacy module when the package isn't installed.
+            // Match the project's Active Input Handling so clicks work in both.
+#if ENABLE_INPUT_SYSTEM
             var module = Type.GetType("UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem");
+#else
+            Type module = null;
+#endif
             if (module != null) es.AddComponent(module);
             else es.AddComponent<StandaloneInputModule>();
         }
@@ -701,10 +1067,11 @@ public class DialoguePlayer : MonoBehaviour
         var clickCatcher = MakeImage(root, "Click To Advance", Vector2.zero, Vector2.one, Color.clear);
         clickCatcher.gameObject.AddComponent<Button>().onClick.AddListener(OnClick);
 
-        portrait = MakeImage(root, "Portrait", new Vector2(0.04f, 0.3f), new Vector2(0.3f, 0.95f), Color.white);
-        portrait.preserveAspect = true;
-        portrait.raycastTarget = false;
-        portrait.gameObject.SetActive(false);
+        stage = new GameObject("Stage", typeof(RectTransform)).GetComponent<RectTransform>();
+        stage.SetParent(root, false);
+        Stretch(stage, Vector2.zero, Vector2.one);
+        slots[0] = MakeSlot("Left", 0.2f); // staging off: the single portrait lives here
+        slots[1] = MakeSlot("Right", 0.8f);
 
         wordmark = MakeText(root, "Wordmark", new Vector2(0.05f, 0.35f), new Vector2(0.95f, 0.65f), 120, FontStyle.Bold);
         wordmark.alignment = TextAnchor.MiddleCenter;
@@ -717,6 +1084,11 @@ public class DialoguePlayer : MonoBehaviour
         accent.raycastTarget = false;
         nameText = MakeText((RectTransform)box.transform, "Speaker", new Vector2(0.03f, 0.74f), new Vector2(0.97f, 0.94f), 34, FontStyle.Bold);
         bodyText = MakeText((RectTransform)box.transform, "Line", new Vector2(0.03f, 0.08f), new Vector2(0.97f, 0.74f), 32, FontStyle.Normal);
+        hint = MakeText((RectTransform)box.transform, "Hint", new Vector2(0.5f, 0.02f), new Vector2(0.985f, 0.14f), 20, FontStyle.Normal);
+        hint.alignment = TextAnchor.LowerRight;
+        hint.color = new Color(1f, 1f, 1f, 0.35f);
+        hint.text = "Space / Enter to continue  ·  1–4 to choose";
+        hint.gameObject.SetActive(false);
 
         var choices = new GameObject("Choices", typeof(RectTransform), typeof(VerticalLayoutGroup));
         choiceBox = (RectTransform)choices.transform;
@@ -742,11 +1114,42 @@ public class DialoguePlayer : MonoBehaviour
         again.GetComponent<VerticalLayoutGroup>().childControlHeight = true;
         MakeButton(againRect, "Play again", 32).onClick.AddListener(Restart);
         endPanel.SetActive(false);
+
+        var pause = MakeImage(root, "Pause", Vector2.zero, Vector2.one, new Color(0f, 0f, 0f, 0.75f)); // blocks clicks
+        pausePanel = pause.gameObject;
+        var menu = new GameObject("Menu", typeof(RectTransform), typeof(VerticalLayoutGroup));
+        var menuRect = (RectTransform)menu.transform;
+        menuRect.SetParent(pause.transform, false);
+        Stretch(menuRect, new Vector2(0.38f, 0.36f), new Vector2(0.62f, 0.64f));
+        var menuLayout = menu.GetComponent<VerticalLayoutGroup>();
+        menuLayout.spacing = 14;
+        menuLayout.childAlignment = TextAnchor.MiddleCenter;
+        menuLayout.childControlHeight = menuLayout.childControlWidth = true;
+        menuLayout.childForceExpandHeight = false;
+        var resume = MakeButton(menuRect, "Resume", 32);
+        resume.onClick.AddListener(() => SetPaused(false));
+        var restart = MakeButton(menuRect, "Restart", 32);
+        restart.onClick.AddListener(() => { SetPaused(false); Restart(); });
+        var row = new GameObject("Volume", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        var rowRect = (RectTransform)row.transform;
+        rowRect.SetParent(menuRect, false);
+        row.GetComponent<LayoutElement>().minHeight = 70;
+        var rowLayout = row.GetComponent<HorizontalLayoutGroup>();
+        rowLayout.spacing = 10;
+        rowLayout.childControlHeight = rowLayout.childControlWidth = true;
+        MakeButton(rowRect, "-", 32).onClick.AddListener(() => SetVolume(volume - 0.1f));
+        var volumeButton = MakeButton(rowRect, "", 28);
+        volumeButton.GetComponent<LayoutElement>().flexibleWidth = 3;
+        volumeText = volumeButton.GetComponentInChildren<Text>();
+        MakeButton(rowRect, "+", 32).onClick.AddListener(() => SetVolume(volume + 0.1f));
+        pauseImages = new[] { resume.image, restart.image, volumeButton.image };
+        SetVolume(volume);
+        pausePanel.SetActive(false);
     }
 
     Button MakeButton(RectTransform parent, string label, int size)
     {
-        var img = MakeImage(parent, "Choice", Vector2.zero, Vector2.one, new Color(0.08f, 0.1f, 0.15f, 0.95f));
+        var img = MakeImage(parent, "Choice", Vector2.zero, Vector2.one, ButtonColor);
         img.gameObject.AddComponent<LayoutElement>().minHeight = 70;
         var text = MakeText((RectTransform)img.transform, "Label", new Vector2(0.03f, 0f), new Vector2(0.97f, 1f), size, FontStyle.Normal);
         text.alignment = TextAnchor.MiddleCenter;

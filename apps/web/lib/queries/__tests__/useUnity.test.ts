@@ -168,10 +168,11 @@ describe('useUnityConnection', () => {
 
 describe('playerSettingsFile', () => {
   it('turns chapter colours into a JsonUtility-friendly list', () => {
-    const json = JSON.parse(playerSettingsFile({ look: 'halftone', chapterColors: { '1': '#112233', '2': '#445566' }, textSpeedCps: 60, wordmarkTitle: true, ambience: true, volume: 0.4 }))
+    const json = JSON.parse(playerSettingsFile({ look: 'halftone', chapterColors: { '1': '#112233', '2': '#445566' }, textSpeedCps: 60, wordmarkTitle: true, ambience: true, volume: 0.4, twoCharacterStaging: true, characterSides: { Avery: 'left' } }))
     expect(json).toEqual({
       look: 'halftone', textSpeedCps: 60, wordmarkTitle: true, ambience: true, volume: 0.4,
       chapterColors: [{ chapter: '1', color: '#112233' }, { chapter: '2', color: '#445566' }],
+      twoCharacterStaging: true, characterSides: [{ speaker: 'Avery', side: 'left' }],
     })
     expect(PLAYER_SETTINGS_PATH).toBe('Assets/Resources/GameGold/player_settings.json')
   })

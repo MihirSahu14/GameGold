@@ -67,6 +67,7 @@ export type PitchInterview = {
 
 // How GameGold's built-in DialoguePlayer looks/sounds (synced to Unity as player_settings.json).
 export type PlayerLook = 'plain' | 'halftone' | 'duotone'
+export type StageSide = 'left' | 'right'
 export type PlayerSettings = {
   look: PlayerLook
   chapterColors: Record<string, string> // chapter → #rrggbb
@@ -74,6 +75,8 @@ export type PlayerSettings = {
   wordmarkTitle: boolean
   ambience: boolean
   volume: number // 0–1
+  twoCharacterStaging: boolean // left/right portrait slots with speaker focus; off = one portrait
+  characterSides: Record<string, StageSide> // speaker → fixed side
 }
 
 export interface Project {

@@ -37,5 +37,12 @@ def test_dialogue_player_reads_player_settings(client):
 
 def test_template_exposes_version_from_header(client):
     body = client.get("/unity/templates/DialoguePlayer").json()
-    assert isinstance(body["version"], int) and body["version"] >= 1
+    assert isinstance(body["version"], int) and body["version"] >= 2  # v2: two-character staging + keyboard
     assert body["code"].startswith(f"// GameGold DialoguePlayer v{body['version']}")
+
+
+def test_dialogue_player_v2_staging_and_keyboard(client):
+    code = client.get("/unity/templates/DialoguePlayer").json()["code"]
+    for needle in ("static int AssignSlot(", "twoCharacterStaging", "characterSides", "unscaledDeltaTime",
+                   "#if ENABLE_INPUT_SYSTEM", "#elif ENABLE_LEGACY_INPUT_MANAGER", "Keyboard.current"):
+        assert needle in code

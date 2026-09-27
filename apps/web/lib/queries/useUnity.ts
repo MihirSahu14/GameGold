@@ -4,7 +4,7 @@ import { api } from '../api'
 import { downloadBlob } from '../utils'
 import { svgToPngDataUri } from '../rasterize'
 import type {
-  Asset, AssetKind, PlayerSettings, UnityBuildPlan, UnityDiffItem, UnityDiffStatus, UnitySnapshot,
+  Asset, AssetKind, PlayerSettings, StageSide, UnityBuildPlan, UnityDiffItem, UnityDiffStatus, UnitySnapshot,
   UnitySnapshotFile, UnitySyncRecord, UnityChangePlan,
 } from '@gamegold/types'
 
@@ -230,10 +230,14 @@ export function useSyncToUnity(projectId: string) {
 
 export const PLAYER_SETTINGS_PATH = 'Assets/Resources/GameGold/player_settings.json'
 
-// JsonUtility can't read dictionaries, so chapter colours go over as a list.
+// JsonUtility can't read dictionaries, so chapter colours and character sides go over as lists.
 export function playerSettingsFile(s: PlayerSettings): string {
-  const { chapterColors, ...rest } = s
-  return JSON.stringify({ ...rest, chapterColors: Object.entries(chapterColors).map(([chapter, color]) => ({ chapter, color })) }, null, 2)
+  const { chapterColors, characterSides, ...rest } = s
+  return JSON.stringify({
+    ...rest,
+    chapterColors: Object.entries(chapterColors).map(([chapter, color]) => ({ chapter, color })),
+    characterSides: Object.entries(characterSides).map(([speaker, side]) => ({ speaker, side })),
+  }, null, 2)
 }
 
 // ─── Run all (plan) ───────────────────────────────────────────────────────────
@@ -328,8 +332,16 @@ export function overwriteTarget(path: string, assets: Asset[], record: UnitySync
 
 // Inverse of playerSettingsFile.
 export function settingsFromFile(file: Record<string, unknown>): PlayerSettings {
-  const { chapterColors, ...rest } = file as Omit<PlayerSettings, 'chapterColors'> & { chapterColors?: { chapter: string; color: string }[] }
-  return { ...rest, chapterColors: Object.fromEntries((chapterColors ?? []).map((c) => [c.chapter, c.color])) }
+  const { chapterColors, characterSides, twoCharacterStaging, ...rest } = file as Omit<PlayerSettings, 'chapterColors' | 'characterSides'> & {
+    chapterColors?: { chapter: string; color: string }[]
+    characterSides?: { speaker: string; side: StageSide }[]
+  }
+  return {
+    ...rest,
+    twoCharacterStaging: twoCharacterStaging ?? true, // v1 files predate staging
+    chapterColors: Object.fromEntries((chapterColors ?? []).map((c) => [c.chapter, c.color])),
+    characterSides: Object.fromEntries((characterSides ?? []).map((c) => [c.speaker, c.side])),
+  }
 }
 
 const PULL_KINDS: Record<string, AssetKind> = { Backgrounds: 'background', Portraits: 'portrait' }
@@ -467,6 +479,8 @@ const SETTINGS_FIELD_LABELS: Record<keyof PlayerSettings, string> = {
   ambience: 'ambience',
   volume: 'volume',
   chapterColors: 'chapter tint',
+  twoCharacterStaging: 'two-character staging',
+  characterSides: 'character sides',
 }
 
 // One line per changed key, e.g. "text speed 40 → 30" or "chapter tint intro #2a3f5c → #ff5277".

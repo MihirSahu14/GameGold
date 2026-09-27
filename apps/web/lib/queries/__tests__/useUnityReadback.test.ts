@@ -102,8 +102,13 @@ describe('overwriteTarget', () => {
 
 describe('settingsFromFile', () => {
   it('inverts playerSettingsFile', () => {
-    const s = { look: 'duotone' as const, chapterColors: { '1': '#112233' }, textSpeedCps: 50, wordmarkTitle: false, ambience: true, volume: 0.3 }
+    const s = { look: 'duotone' as const, chapterColors: { '1': '#112233' }, textSpeedCps: 50, wordmarkTitle: false, ambience: true, volume: 0.3,
+      twoCharacterStaging: false, characterSides: { Avery: 'left' as const, Skyler: 'right' as const } }
     expect(settingsFromFile(JSON.parse(playerSettingsFile(s)))).toEqual(s)
+  })
+
+  it('defaults staging on for v1 files', () => {
+    expect(settingsFromFile({ look: 'plain', chapterColors: [] })).toMatchObject({ twoCharacterStaging: true, characterSides: {} })
   })
 })
 
@@ -128,7 +133,7 @@ describe('pullFromUnity', () => {
   })
 
   it('player_settings.json → PATCH the project settings', async () => {
-    const s = { look: 'plain' as const, chapterColors: {}, textSpeedCps: 40, wordmarkTitle: false, ambience: false, volume: 0.5 }
+    const s = { look: 'plain' as const, chapterColors: {}, textSpeedCps: 40, wordmarkTitle: false, ambience: false, volume: 0.5, twoCharacterStaging: true, characterSides: {} }
     await pullFromUnity('p1', { path: PLAYER_SETTINGS_PATH, status: 'changed' }, [], read(playerSettingsFile(s)))
     expect(api.patch).toHaveBeenCalledWith('/projects/p1', { playerSettings: s })
   })

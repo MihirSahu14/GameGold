@@ -4,7 +4,9 @@ import React from 'react'
 import type { PlayerSettings } from '@gamegold/types'
 import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
 
-const DEFAULTS: PlayerSettings = { look: 'plain', chapterColors: {}, textSpeedCps: 40, wordmarkTitle: false, ambience: false, volume: 0.5 }
+const DEFAULTS: PlayerSettings = { look: 'plain', chapterColors: {}, textSpeedCps: 40, wordmarkTitle: false, ambience: false, volume: 0.5,
+  twoCharacterStaging: true, characterSides: {},
+}
 
 function renderPanel(connected: boolean, onSync = vi.fn(), onSave = vi.fn()) {
   render(<PlayerSettingsPanel settings={DEFAULTS} chapters={['1', '2']} connected={connected} busy={false} onSave={onSave} onSync={onSync} />)
@@ -22,7 +24,22 @@ describe('PlayerSettingsPanel', () => {
     fireEvent.click(screen.getByText('SAVE'))
     expect(onSave).toHaveBeenCalledWith({
       look: 'halftone', chapterColors: { '2': '#aa0000' }, textSpeedCps: 80, wordmarkTitle: true, ambience: true, volume: 0.5,
+      twoCharacterStaging: true, characterSides: {},
     })
+  })
+
+  it('sends staging toggle and fixed character sides', () => {
+    const onSave = vi.fn()
+    render(<PlayerSettingsPanel settings={DEFAULTS} chapters={[]} speakers={['Avery', 'Skyler']} connected busy={false} onSave={onSave} onSync={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(/avery stage side/i), { target: { value: 'left' } })
+    fireEvent.change(screen.getByLabelText(/skyler stage side/i), { target: { value: 'right' } })
+    fireEvent.change(screen.getByLabelText(/skyler stage side/i), { target: { value: '' } })
+    fireEvent.click(screen.getByText('SAVE'))
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ twoCharacterStaging: true, characterSides: { Avery: 'left' } }))
+    fireEvent.click(screen.getByLabelText(/two-character staging/i))
+    expect(screen.queryByLabelText(/avery stage side/i)).toBeNull()
+    fireEvent.click(screen.getByText('SAVE'))
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ twoCharacterStaging: false }))
   })
 
   it('disables Sync settings with a tooltip until Unity is connected', () => {

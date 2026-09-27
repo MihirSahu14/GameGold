@@ -60,6 +60,11 @@ class PlayerSettings(BaseModel):
     wordmark_title: bool = False
     ambience: bool = False
     volume: float = Field(default=0.5, ge=0, le=1)
+    two_character_staging: bool = True
+    # speaker name -> fixed stage side; unlisted speakers take a free slot.
+    character_sides: dict[Annotated[str, Field(min_length=1, max_length=40)], Literal["left", "right"]] = Field(
+        default_factory=dict, max_length=20
+    )
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
