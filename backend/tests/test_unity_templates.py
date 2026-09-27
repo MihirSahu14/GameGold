@@ -59,5 +59,5 @@ def test_dialogue_player_v3_presentation(client):
 
 def test_dialogue_player_v4_original_backgrounds(client):
     body = client.get("/unity/templates/DialoguePlayer").json()
-    assert body["version"] >= 4  # gap 61: designer art skips the print + tint
-    assert "originalBackgrounds.Exists(" in body["code"]
+    assert body["version"] >= 5  # gap 61: designer art skips the print + tint; v5: art cards hide the textbox
+    assert "originalBackgrounds.Exists(" in body["code"] and "artCard: true" in body["code"]

@@ -117,6 +117,9 @@ namespace GameGold.MCP
             if (importer != null)
             {
                 importer.textureType    = TextureImporterType.Sprite;
+                // Single = one sprite covering the whole texture. A Multiple-mode .meta left over from an earlier,
+                // smaller image keeps its old sprite rect, so an overwrite would show a cropped/zoomed corner.
+                importer.spriteImportMode = SpriteImportMode.Single;
                 importer.spritePixelsPerUnit = ppu;
                 importer.filterMode     = ppu <= 32 ? FilterMode.Point : FilterMode.Bilinear;
                 importer.SaveAndReimport();

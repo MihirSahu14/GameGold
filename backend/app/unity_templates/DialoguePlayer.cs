@@ -1,4 +1,4 @@
-// GameGold DialoguePlayer v4
+// GameGold DialoguePlayer v5
 // GameGold DialoguePlayer — plays a GameGold narrative dialogue JSON in Play mode.
 // Setup: put this on any GameObject, save the dialogue JSON as
 // Assets/Resources/GameGold/dialogue.json, backgrounds in Resources/GameGold/Backgrounds/<bg>,
@@ -20,6 +20,7 @@
 // quiet "Play again" (Space/Enter). Choice ripple (v3): one identical soft ring + water-drop cue after every
 // choice, tinted by the chapter colour, gated by player_settings.json's choiceRipple.
 // Original art (v4): backgrounds listed in originalBackgrounds are shown exactly as drawn — no print, no tint.
+// Art cards (v5): a one-word ALL-CAPS line on an original-art background hides the textbox — the art is the card.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -266,7 +267,13 @@ public class DialoguePlayer : MonoBehaviour
         fullText = Str(current, "text") ?? "";
         if (fullText.Length == 0) { Continue(); return; } // silent node: route straight on
         hops = 0;
-        if (wordmarkTitle && currentBg == "title" && IsWordmark(fullText))
+        bool wordmarkLine = IsWordmark(fullText);
+        if (wordmarkLine && IsOriginal(currentBg))
+        {
+            ShowWordmark(fullText, artCard: true);
+            return;
+        }
+        if (wordmarkTitle && currentBg == "title" && wordmarkLine)
         {
             ShowWordmark(fullText);
             return;
@@ -471,7 +478,7 @@ public class DialoguePlayer : MonoBehaviour
             background.sprite = null;
             background.color = Color.Lerp(Color.black, tint, 0.2f);
         }
-        else if (originalBackgrounds.Exists(b => string.Equals(b, currentBg, StringComparison.OrdinalIgnoreCase)))
+        else if (IsOriginal(currentBg))
         {
             background.sprite = rawBackground;
             background.color = Color.white;
@@ -488,6 +495,9 @@ public class DialoguePlayer : MonoBehaviour
         }
     }
 
+    bool IsOriginal(string bg) =>
+        bg != null && originalBackgrounds.Exists(b => string.Equals(b, bg, StringComparison.OrdinalIgnoreCase));
+
     // "RIPPLE", "AVERY": one all-caps word.
     static bool IsWordmark(string line)
     {
@@ -497,10 +507,17 @@ public class DialoguePlayer : MonoBehaviour
         return true;
     }
 
-    void ShowWordmark(string word)
+    // artCard: the designer's art already carries the title — show it alone, no overlay text.
+    void ShowWordmark(string word, bool artCard = false)
     {
         textbox.SetActive(false);
         stage.gameObject.SetActive(false);
+        if (artCard)
+        {
+            wordmarkAlpha = 1f; // nothing fading in: the next click advances
+            wordmark.gameObject.SetActive(false);
+            return;
+        }
         wordmark.text = string.Join("  ", word.Trim().ToCharArray()); // legacy Text has no letter-spacing
         wordmarkAlpha = 0f;
         wordmark.color = Color.clear;
