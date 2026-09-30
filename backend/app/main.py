@@ -17,7 +17,7 @@ from app.db.mongodb import connect_db, close_db, get_db
 from app.prompts.health_prompt import HEALTH_SYSTEM_PROMPT, HEALTH_USER_PROMPT
 from app.routers import auth, me, oauth, projects, gdd, systems, assets, playtest, deployment, unity
 from app.routers.auth import get_current_user
-from app.services.llm_utils import TrialBudgetExhausted, complete
+from app.services.llm_utils import TRIAL_BUDGET_MESSAGE, TrialBudgetExhausted, complete
 from scripts.migrate_emails import migrate as migrate_emails
 from scripts.migrate_stages import migrate as migrate_stages
 
@@ -73,7 +73,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.exception_handler(TrialBudgetExhausted)
 async def trial_budget_exhausted(request: Request, exc: TrialBudgetExhausted):
     return JSONResponse(status_code=402, content={
-        "detail": "Today's free AI budget is used up. Add your own API key in Settings to keep going.",
+        "detail": TRIAL_BUDGET_MESSAGE,
         "code": "trial_budget_exhausted",
     })
 

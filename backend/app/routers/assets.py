@@ -35,7 +35,7 @@ from app.services.asset_service import (
 )
 from app.services.dialogue_validate import validate_tree
 from app.services.replicate_service import generate_sprite_image, SpriteGenerationError
-from app.services.llm_utils import strip_html
+from app.services.llm_utils import TRIAL_BUDGET_MESSAGE, TrialBudgetExhausted, strip_html
 
 router = APIRouter(prefix="/projects/{project_id}/assets", tags=["assets"])
 
@@ -241,6 +241,11 @@ async def create_sprites_batch(
         for item in body.items:
             try:
                 image_prompt, guide, url = await _generate_sprite(item, game_context)
+            except TrialBudgetExhausted:
+                # Keep what's already saved; the rest can't run today on the trial key
+                done = len(out.assets) + len(out.errors)
+                out.errors += [BatchItemError(name=i.name, detail=TRIAL_BUDGET_MESSAGE) for i in body.items[done:]]
+                break
             except ValueError as exc:
                 out.errors.append(BatchItemError(name=item.name, detail=str(exc)))
                 continue
