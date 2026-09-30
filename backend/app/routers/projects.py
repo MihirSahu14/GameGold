@@ -11,6 +11,8 @@ from app.models.project import (
     DecisionRequest,
     GateCheckRequest,
     GateOut,
+    HomePublishedCreate,
+    HomeSavedCreate,
     PitchInterviewOut,
     ProjectCreate,
     ProjectInDB,
@@ -152,7 +154,11 @@ async def update_project(
         raise HTTPException(status_code=404, detail="Project not found")
     check_project_ownership(project, current_user["_id"])
 
-    update_data = data.model_dump(exclude_none=True)
+    update_data = data.model_dump(exclude_none=True, exclude={"home"})
+    if data.home is not None:
+        # Merge field-by-field so a PATCH with only publishTarget keeps repoUrl.
+        for key, value in data.home.model_dump(exclude_unset=True).items():
+            update_data[f"home.{key}"] = value
     if update_data:
         update_data["updated_at"] = datetime.utcnow()
         await db.projects.update_one(
@@ -162,6 +168,22 @@ async def update_project(
 
     updated = await db.projects.find_one({"_id": oid})
     return ProjectOut(**serialize_project(updated))
+
+
+@router.post("/{project_id}/home/saved", response_model=ProjectOut, response_model_by_alias=True)
+async def record_saved(project_id: str, body: HomeSavedCreate, current_user: dict = Depends(get_current_user)):
+    db = get_db()
+    project = await load_owned_project(db, project_id, current_user["_id"])
+    return await set_and_return(db, project, {
+        "home.last_saved_commit": body.commit, "home.last_saved_at": datetime.utcnow()})
+
+
+@router.post("/{project_id}/home/published", response_model=ProjectOut, response_model_by_alias=True)
+async def record_published(project_id: str, body: HomePublishedCreate, current_user: dict = Depends(get_current_user)):
+    db = get_db()
+    project = await load_owned_project(db, project_id, current_user["_id"])
+    return await set_and_return(db, project, {
+        "home.last_published_url": body.url, "home.last_published_at": datetime.utcnow()})
 
 
 @router.get("/{project_id}/gates", response_model=GateOut)

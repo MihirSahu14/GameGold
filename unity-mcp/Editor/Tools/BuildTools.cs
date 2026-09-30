@@ -28,34 +28,19 @@ namespace GameGold.MCP
             if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL))
                 return GameGoldMCP.Error("Web Build Support isn't installed — add it to this Unity version in Unity Hub (Installs > ⚙ > Add modules)");
 
-            var project = Path.GetFullPath(Path.GetDirectoryName(Application.dataPath));
-            var rel = SimpleJson.Parse(body).GetString("outputPath", "Builds/WebGL");
-            if (string.IsNullOrWhiteSpace(rel)) rel = "Builds/WebGL";
-            var output = Path.GetFullPath(Path.Combine(project, rel));
-            var assets = Path.Combine(project, "Assets");
-            if (!output.StartsWith(project + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                return GameGoldMCP.Error("'outputPath' must be a folder inside the Unity project");
-            if (output.Equals(assets, StringComparison.OrdinalIgnoreCase) ||
-                output.StartsWith(assets + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                return GameGoldMCP.Error("'outputPath' must not be under Assets/ — Unity would import the build");
-            foreach (var reserved in ReservedFolders)
-            {
-                var dir = Path.Combine(project, reserved);
-                if (output.Equals(dir, StringComparison.OrdinalIgnoreCase) ||
-                    output.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                    return GameGoldMCP.Error($"'outputPath' must not be under {reserved}/ — Unity manages that folder");
-            }
+            var output = ResolveOutput(SimpleJson.Parse(body).GetString("outputPath", "Builds/WebGL"), "outputPath", out var pathError);
+            if (output == null) return GameGoldMCP.Error(pathError);
 
             var active = SceneManager.GetActiveScene();
             if (active.isDirty)
                 return GameGoldMCP.Error($"Save scene '{active.name}' first (File > Save) — the build uses the saved file");
-            var scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
-            if (scenes.Length == 0)
-            {
-                if (string.IsNullOrEmpty(active.path))
-                    return GameGoldMCP.Error("The active scene has never been saved — save it first (File > Save As)");
-                scenes = new[] { active.path };
-            }
+            if (string.IsNullOrEmpty(active.path))
+                return GameGoldMCP.Error("The active scene has never been saved — save it first (File > Save As)");
+            // The game starts in the scene you're working in (Build Settings often still lists the
+            // template's SampleScene first); other enabled Build Settings scenes are kept after it.
+            var scenes = new[] { active.path }
+                .Concat(EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path))
+                .Distinct().ToArray();
 
             // Plain files: works on itch.io and any static host without Content-Encoding headers.
             // Restored after the build so the developer's own setting survives.
@@ -63,9 +48,34 @@ namespace GameGold.MCP
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
 
             _scheduled = true;
-            Save("building", $"Building {scenes.Length} scene(s) for WebGL…", output, 0, 0);
+            Save("building", $"Building for WebGL — starts in '{active.name}'…", output, 0, 0);
             EditorApplication.delayCall += () => Run(scenes, output, compression);
             return GameGoldMCP.Ok("Build started", "{\"state\":\"building\"}");
+        }
+
+        /// <summary>Resolves a project-relative build folder to an absolute path, or null + error when it
+        /// escapes the project or lands in Assets/ or a Unity-managed folder. Main thread only.</summary>
+        internal static string ResolveOutput(string rel, string argName, out string error)
+        {
+            error = null;
+            var project = Path.GetFullPath(Path.GetDirectoryName(Application.dataPath));
+            if (string.IsNullOrWhiteSpace(rel)) rel = "Builds/WebGL";
+            var output = Path.GetFullPath(Path.Combine(project, rel));
+            var assets = Path.Combine(project, "Assets");
+            if (!output.StartsWith(project + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                error = $"'{argName}' must be a folder inside the Unity project";
+            else if (output.Equals(assets, StringComparison.OrdinalIgnoreCase) ||
+                     output.StartsWith(assets + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                error = $"'{argName}' must not be under Assets/ — Unity would import the build";
+            else
+                foreach (var reserved in ReservedFolders)
+                {
+                    var dir = Path.Combine(project, reserved);
+                    if (output.Equals(dir, StringComparison.OrdinalIgnoreCase) ||
+                        output.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    { error = $"'{argName}' must not be under {reserved}/ — Unity manages that folder"; break; }
+                }
+            return error == null ? output : null;
         }
 
         private static void Run(string[] scenes, string output, WebGLCompressionFormat compression)
@@ -84,7 +94,7 @@ namespace GameGold.MCP
                 var seconds = (DateTime.UtcNow - started).TotalSeconds;
                 var ok = report.summary.result == BuildResult.Succeeded;
                 Save(ok ? "succeeded" : "failed",
-                     ok ? "Build succeeded" : $"Build {report.summary.result}: {report.summary.totalErrors} error(s) — see the Unity Console",
+                     ok ? $"Build succeeded — starts in '{Path.GetFileNameWithoutExtension(scenes[0])}'" : $"Build {report.summary.result}: {report.summary.totalErrors} error(s) — see the Unity Console",
                      output, ok ? FolderMb(output) : 0, seconds);
             }
             catch (Exception ex)

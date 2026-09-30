@@ -1,3 +1,4 @@
+import re
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 from typing import Annotated, Literal, Optional, get_args
@@ -73,6 +74,51 @@ class PlayerSettings(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
+PublishTarget = Literal["local", "itch", "github_pages"]
+_CRED_URL = re.compile(r"^https?://[^/]*@")
+# fullmatch: no trailing-newline slip past $; no '@' after the host (same rules as the bridge's IsRepoUrl).
+_REPO_URL = re.compile(r"https://[^\s/@]+/[^\s@]+|git@[\w.-]+:[\w./-]+")
+_ITCH_TARGET = r"^[\w-]+/[\w-]+$"
+
+
+class ProjectHome(BaseModel):
+    """Where the Unity project lives (git remote) and where web builds are published."""
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    repo_url: Optional[str] = None
+    publish_target: PublishTarget = "local"
+    itch_target: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+    last_saved_commit: Optional[str] = None
+    last_published_url: Optional[str] = None
+    last_published_at: Optional[datetime] = None
+
+
+class ProjectHomeUpdate(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    repo_url: Optional[str] = Field(default=None, max_length=300)
+    publish_target: Optional[PublishTarget] = None
+    itch_target: Optional[str] = Field(default=None, pattern=_ITCH_TARGET, max_length=100)
+
+    @field_validator("repo_url")
+    @classmethod
+    def no_credentials(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if _CRED_URL.match(v) or not _REPO_URL.fullmatch(v):
+            raise ValueError("Use the repo's plain https:// or git@ URL — never one with a token or password in it")
+        return v
+
+
+class HomeSavedCreate(BaseModel):
+    commit: str = Field(pattern=r"^[0-9a-f]{7,40}$")
+
+
+class HomePublishedCreate(BaseModel):
+    url: str = Field(pattern=r"^https://\S+$", max_length=300)
+
+
 class ProjectCreate(BaseModel):
     # No stage: every project starts at "pitch".
     title: str = Field(min_length=1, max_length=100)
@@ -90,6 +136,7 @@ class ProjectUpdate(BaseModel):
     riskiest_assumption: Optional[str] = Field(default=None, max_length=500)
     risk_kind: Optional[RiskKind] = None
     player_settings: Optional[PlayerSettings] = None
+    home: Optional[ProjectHomeUpdate] = None
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
@@ -109,6 +156,7 @@ class ProjectOut(BaseModel):
     riskiest_assumption: str = ""
     risk_kind: Optional[RiskKind] = None
     player_settings: PlayerSettings = Field(default_factory=PlayerSettings)
+    home: ProjectHome = Field(default_factory=ProjectHome)
     stage_entered_at: Optional[datetime] = None
     alpha_at: Optional[datetime] = None
     provenance_generated_at: Optional[datetime] = None
@@ -161,6 +209,7 @@ class ProjectInDB(BaseModel):
     riskiest_assumption: str = ""
     risk_kind: Optional[RiskKind] = None
     player_settings: PlayerSettings = Field(default_factory=PlayerSettings)
+    home: ProjectHome = Field(default_factory=ProjectHome)
     stage_entered_at: datetime = Field(default_factory=datetime.utcnow)
     alpha_at: Optional[datetime] = None
     provenance_generated_at: Optional[datetime] = None

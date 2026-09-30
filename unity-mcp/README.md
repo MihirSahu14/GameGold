@@ -26,5 +26,13 @@ The server only listens on `localhost:7432`. Tool calls must be `POST` with `Con
 | `playmode.enter` / `playmode.exit` | | Play mode |
 | `build.webgl` | `{ outputPath? = "Builds/WebGL" }` (inside the project, not under `Assets/`) | Starts a WebGL build (uncompressed, for itch.io / static hosting) of the enabled Build Settings scenes, or the active scene if none. Refuses in Play mode, during a build, or with an unsaved scene. Returns `{ state: "building" }` at once |
 | `build.status` | | `{ state: idle\|building\|succeeded\|failed, message, outputPath, sizeMb, seconds }` |
+| `vcs.status` | | `{ gitInstalled, butlerInstalled, isRepo, remoteUrl, branch, dirtyFiles, lastCommit }` |
+| `vcs.connect` | `{ repoUrl, replace? }` (`https://…` or `git@…:…`; URLs with a password/token are refused) | `git init -b main` + Unity `.gitignore` if needed, then sets `origin` (refuses to change a different `origin` unless `replace`) |
+| `vcs.save` | `{ message }` | Background job: `git add -A`, commit, `git push -u origin HEAD`. Returns `{ jobId }` |
+| `publish.itch` | `{ itchTarget: "user/game", buildPath? = "Builds/WebGL" }` | Background job: `butler push <build> user/game:html5` (run `butler login` once first). Returns `{ jobId }` |
+| `publish.pages` | `{ buildPath? = "Builds/WebGL" }` | Background job: force-pushes the build as a single commit to `gh-pages` (github.com remotes only); your branch and index are untouched. Returns `{ jobId }` |
+| `job.status` | `{ jobId }` | `{ state: running\|succeeded\|failed, output, result: { commit, url } }` |
 
 While a build runs the Editor's main thread is busy, so `build.status` calls may time out until it finishes; keep polling.
+
+git and butler run as local processes with this machine's own sign-in (Git Credential Manager, `gh auth login`, `butler login`); GameGold never sees a token. Arguments are passed directly (no shell), prompts are disabled, and credentials are scrubbed from any output returned.

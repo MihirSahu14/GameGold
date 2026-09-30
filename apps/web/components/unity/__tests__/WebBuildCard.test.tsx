@@ -1,17 +1,44 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
+import type { Project, ProjectHome } from '@gamegold/types'
 import { WebBuildCard } from '@/components/unity/WebBuildCard'
+
+vi.mock('@/lib/api', () => ({ api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
+import { api } from '@/lib/api'
+const mockApi = api as unknown as { get: ReturnType<typeof vi.fn>; post: ReturnType<typeof vi.fn> }
+
+function renderCard(ui: React.ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
+}
+
+type Run = (tool: string, args: Record<string, unknown>) => Promise<unknown>
+// The card asks build.status once on open (to pick up an earlier build); answer that with idle
+// so each test's own reply sequence is unchanged.
+function opening(run: Run) {
+  let first = true
+  return vi.fn((tool: string, args: Record<string, unknown>) => {
+    if (first && tool === 'build.status') { first = false; return Promise.resolve({ success: true, message: '', data: { state: 'idle' } }) }
+    return run(tool, args)
+  })
+}
 
 const done = {
   state: 'succeeded', message: 'Build succeeded', outputPath: 'C:/Ripple/Builds/WebGL', sizeMb: 12.5, seconds: 95,
 }
 
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockApi.get.mockResolvedValue({ data: [] })
+  mockApi.post.mockResolvedValue({ data: {} })
+})
 afterEach(() => vi.useRealTimers())
 
 describe('WebBuildCard (gap 66)', () => {
   it('is disabled until Unity is connected', () => {
-    render(<WebBuildCard connected={false} run={vi.fn()} />)
+    renderCard(<WebBuildCard projectId="p1" connected={false} run={vi.fn()} />)
     expect(screen.getByRole('button', { name: /build for web/i })).toBeDisabled()
   })
 
@@ -21,7 +48,7 @@ describe('WebBuildCard (gap 66)', () => {
       .mockResolvedValueOnce({ success: true, message: 'Build started', data: { state: 'building' } })
       .mockResolvedValueOnce({ success: false, message: 'Tool timed out' }) // main thread busy building
       .mockResolvedValueOnce({ success: true, message: 'Build succeeded', data: done })
-    render(<WebBuildCard connected run={run} />)
+    renderCard(<WebBuildCard projectId="p1" connected run={opening(run)} />)
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /build for web/i })) })
     expect(run).toHaveBeenCalledWith('build.webgl', {})
@@ -48,7 +75,7 @@ describe('WebBuildCard (gap 66)', () => {
 
   it('shows the failure message when the build is refused', async () => {
     const run = vi.fn().mockResolvedValue({ success: false, message: "Save scene 'Main' first" })
-    render(<WebBuildCard connected run={run} />)
+    renderCard(<WebBuildCard projectId="p1" connected run={opening(run)} />)
     fireEvent.click(screen.getByRole('button', { name: /build for web/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent("Save scene 'Main' first")
   })
@@ -58,7 +85,7 @@ describe('WebBuildCard (gap 66)', () => {
     const run = vi.fn()
       .mockResolvedValueOnce({ success: true, message: 'Build started', data: { state: 'building' } })
       .mockResolvedValueOnce({ success: true, message: 'Build failed', data: { ...done, state: 'failed', message: 'Build Failed: 2 error(s) — see the Unity Console' } })
-    render(<WebBuildCard connected run={run} />)
+    renderCard(<WebBuildCard projectId="p1" connected run={opening(run)} />)
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /build for web/i })) })
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(screen.getByRole('alert')).toHaveTextContent('2 error(s)')
@@ -75,7 +102,7 @@ describe('WebBuildCard (gap 66)', () => {
     const run = vi.fn()
       .mockResolvedValueOnce(started)
       .mockResolvedValue({ success: false, message: 'Failed to reach Unity MCP server: TypeError' })
-    render(<WebBuildCard connected run={run} />)
+    renderCard(<WebBuildCard projectId="p1" connected run={opening(run)} />)
     await startBuild()
     await act(async () => { await vi.advanceTimersByTimeAsync(9 * 3000) })
     expect(screen.queryByRole('alert')).toBeNull()
@@ -90,7 +117,7 @@ describe('WebBuildCard (gap 66)', () => {
     const run = vi.fn()
       .mockResolvedValueOnce(started)
       .mockResolvedValue({ success: false, message: 'Tool timed out' })
-    render(<WebBuildCard connected run={run} />)
+    renderCard(<WebBuildCard projectId="p1" connected run={opening(run)} />)
     await startBuild()
     await act(async () => { await vi.advanceTimersByTimeAsync(15 * 3000) })
     expect(screen.queryByRole('alert')).toBeNull()
@@ -102,9 +129,108 @@ describe('WebBuildCard (gap 66)', () => {
     const run = vi.fn()
       .mockResolvedValueOnce(started)
       .mockResolvedValueOnce({ success: true, message: 'Build idle', data: { ...done, state: 'idle', message: '' } })
-    render(<WebBuildCard connected run={run} />)
+    renderCard(<WebBuildCard projectId="p1" connected run={opening(run)} />)
     await startBuild()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(screen.getByRole('alert')).toHaveTextContent('The build was interrupted (Unity restarted).')
+  })
+
+  const HOME: ProjectHome = {
+    repoUrl: null, publishTarget: 'local', itchTarget: null,
+    lastSavedAt: null, lastSavedCommit: null, lastPublishedUrl: null, lastPublishedAt: null,
+  }
+  const withHome = (home: Partial<ProjectHome>) => ({ _id: 'p1', title: 'Ripple', home: { ...HOME, ...home } }) as Project
+  const builtRun = () => vi.fn()
+    .mockResolvedValueOnce(started)
+    .mockResolvedValueOnce({ success: true, message: 'Build succeeded', data: done })
+  const finishBuild = async () => {
+    await startBuild()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+  }
+
+  it('itch target: publish button is disabled until an itch target is set', async () => {
+    vi.useFakeTimers()
+    renderCard(<WebBuildCard projectId="p1" project={withHome({ publishTarget: 'itch' })} connected run={opening(builtRun())} />)
+    await finishBuild()
+    expect(screen.getByRole('button', { name: /publish to itch\.io/i })).toBeDisabled()
+    expect(screen.getByText(/Set your itch\.io target/)).toBeInTheDocument()
+    expect(screen.queryByRole('listitem')).toBeNull()
+  })
+
+  it('itch target: publishes through butler and records the URL', async () => {
+    vi.useFakeTimers()
+    const run = builtRun()
+      .mockResolvedValueOnce({ success: true, message: 'Started', data: { jobId: 'j1' } })
+      .mockResolvedValueOnce({ success: true, message: '', data: { state: 'succeeded', output: '', result: { url: 'https://me.itch.io/ripple' } } })
+    renderCard(<WebBuildCard projectId="p1" project={withHome({ publishTarget: 'itch', itchTarget: 'me/ripple' })} connected run={opening(run)} />)
+    await finishBuild()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /publish to itch\.io/i })) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+    expect(run).toHaveBeenCalledWith('publish.itch', { itchTarget: 'me/ripple' })
+    expect(screen.getByRole('link', { name: 'https://me.itch.io/ripple' })).toBeInTheDocument()
+    expect(screen.getByText(/3\+ people/)).toBeInTheDocument()
+    expect(mockApi.post).toHaveBeenCalledWith('/projects/p1/home/published', { url: 'https://me.itch.io/ripple' })
+  })
+
+  it('pages target: disabled without a repo; first publish shows the one-time Pages setup', async () => {
+    vi.useFakeTimers()
+    const { unmount } = renderCard(<WebBuildCard projectId="p1" project={withHome({ publishTarget: 'github_pages' })} connected run={opening(builtRun())} />)
+    await finishBuild()
+    expect(screen.getByRole('button', { name: /publish to github pages/i })).toBeDisabled()
+    expect(screen.getByText(/Connect a GitHub repo/)).toBeInTheDocument()
+    unmount()
+
+    const run = builtRun()
+      .mockResolvedValueOnce({ success: true, message: 'Started', data: { jobId: 'j2' } })
+      .mockResolvedValueOnce({ success: true, message: '', data: { state: 'succeeded', output: '', result: { url: 'https://me.github.io/Ripple/' } } })
+    renderCard(<WebBuildCard projectId="p1" project={withHome({ publishTarget: 'github_pages', repoUrl: 'https://github.com/me/Ripple.git' })} connected run={opening(run)} />)
+    await finishBuild()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /publish to github pages/i })) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+    expect(run).toHaveBeenCalledWith('publish.pages', {})
+    expect(screen.getByRole('link', { name: 'https://me.github.io/Ripple/' })).toBeInTheDocument()
+    expect(screen.getByText(/First time only: .*gh-pages/)).toBeInTheDocument()
+  })
+
+  it('shows the scrubbed job output when publishing fails', async () => {
+    vi.useFakeTimers()
+    const run = builtRun()
+      .mockResolvedValueOnce({ success: true, message: 'Started', data: { jobId: 'j3' } })
+      .mockResolvedValueOnce({ success: true, message: '', data: { state: 'failed', output: 'Run `butler login` once', result: {} } })
+    renderCard(<WebBuildCard projectId="p1" project={withHome({ publishTarget: 'itch', itchTarget: 'me/ripple' })} connected run={opening(run)} />)
+    await finishBuild()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /publish to itch\.io/i })) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+    expect(screen.getByRole('alert')).toHaveTextContent('butler login')
+    expect(mockApi.post).not.toHaveBeenCalled()
+  })
+
+  it('warns when something was synced after the build started (even while it was building)', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-30T10:00:00Z'))
+    // server timestamps carry no offset (UTC); synced 1 s after the click, before the build finished
+    mockApi.get.mockResolvedValue({ data: [{ path: 'Assets/x.png', sha256: 'x', source: 'a1', syncedAt: '2026-09-30T10:00:01' }] })
+    renderCard(<WebBuildCard projectId="p1" connected run={opening(builtRun())} />)
+    await finishBuild()
+    expect(screen.getByText(/Build is older than your latest changes/)).toBeInTheDocument()
+  })
+
+  it('no stale warning when the build is newer than every sync', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-30T12:00:00Z'))
+    mockApi.get.mockResolvedValue({ data: [{ path: 'Assets/x.png', sha256: 'x', source: 'a1', syncedAt: '2026-09-30T11:59:59' }] })
+    renderCard(<WebBuildCard projectId="p1" connected run={opening(builtRun())} />)
+    await finishBuild()
+    expect(screen.queryByText(/Build is older/)).toBeNull()
+  })
+})
+
+describe('WebBuildCard — earlier build', () => {
+  it('picks up a build Unity already finished when the page opens', async () => {
+    const run = vi.fn().mockResolvedValue({ success: true, message: '', data: done })
+    renderCard(<WebBuildCard projectId="p1" connected run={run} />)
+    expect(await screen.findByText(/Built in 95s/)).toBeInTheDocument()
+    expect(run).toHaveBeenCalledWith('build.status', {})
+    expect(screen.queryByText(/older than your latest changes/)).not.toBeInTheDocument()
   })
 })

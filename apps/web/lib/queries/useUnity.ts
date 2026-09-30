@@ -514,21 +514,48 @@ export type WebBuildStatus = { state: WebBuildState; message: string; outputPath
 export const BUILD_POLL_MS = 3000
 export const BUILD_POLL_MAX_FAILURES = 10
 // The bridge answers this while Unity's main thread is busy building — contact is fine, keep waiting.
-const BRIDGE_BUSY = 'Tool timed out'
+export const BRIDGE_BUSY = 'Tool timed out'
 
-export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) => Promise<ToolResult> = executeTool) {
+/** The backend stores naive UTC datetimes and serializes them without an offset — read those as UTC, not local time. */
+export function parseServerTime(s: string): number {
+  return Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(s) ? s : `${s}Z`)
+}
+
+export function useWebBuild(
+  exec: (tool: string, args: Record<string, unknown>) => Promise<ToolResult> = executeTool,
+  connected = false,
+) {
   const [status, setStatus] = useState<WebBuildStatus | null>(null)
   const [startedAt, setStartedAt] = useState(0)
   const [now, setNow] = useState(0)
+  // when the successful build was STARTED — changes synced after that aren't in it (stale-build check)
+  const [builtFrom, setBuiltFrom] = useState<number | null>(null)
   const building = status?.state === 'building'
 
   const start = useCallback(async () => {
-    const res = await exec('build.webgl', {})
     const t = Date.now()
+    const res = await exec('build.webgl', {})
     setStartedAt(t)
     setNow(t)
     setStatus({ state: res.success ? 'building' : 'failed', message: res.message, outputPath: '', sizeMb: 0, seconds: 0 })
   }, [exec])
+
+  // On open, pick up a build Unity already finished (or is still running) — the bridge remembers it
+  // for the Editor session, so reopening the page doesn't force a rebuild before publishing.
+  const [checked, setChecked] = useState(false)
+  useEffect(() => {
+    if (!connected || checked || status) return
+    let cancelled = false
+    void exec('build.status', {}).then((res) => {
+      if (cancelled) return
+      setChecked(true)
+      const data = res.data as WebBuildStatus | undefined
+      if (!res.success || !data || data.state === 'idle') return
+      if (data.state === 'building') { const t = Date.now(); setStartedAt(t); setNow(t) }
+      setStatus(data) // builtFrom stays null: we don't know when that build started, so no stale warning
+    })
+    return () => { cancelled = true }
+  }, [connected, checked, status, exec])
 
   useEffect(() => {
     if (!building) return
@@ -544,13 +571,16 @@ export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) 
       if (failures >= BUILD_POLL_MAX_FAILURES) fail('Lost contact with Unity during the build — check the Unity Console.')
       // idle after building: SessionState was wiped, so Unity restarted mid-build
       else if (res.success && data?.state === 'idle') fail('The build was interrupted (Unity restarted).')
-      else if (res.success && data && data.state !== 'building') setStatus(data)
+      else if (res.success && data && data.state !== 'building') {
+        setStatus(data)
+        setBuiltFrom(data.state === 'succeeded' ? startedAt : null)
+      }
       else timer = setTimeout(() => void poll(), BUILD_POLL_MS)
     }
     timer = setTimeout(() => void poll(), BUILD_POLL_MS)
     const tick = setInterval(() => setNow(Date.now()), 1000)
     return () => { cancelled = true; clearTimeout(timer); clearInterval(tick) }
-  }, [building, exec])
+  }, [building, exec, startedAt])
 
-  return { status, elapsed: building ? Math.round((now - startedAt) / 1000) : 0, start }
+  return { status, elapsed: building ? Math.round((now - startedAt) / 1000) : 0, start, builtFrom }
 }
