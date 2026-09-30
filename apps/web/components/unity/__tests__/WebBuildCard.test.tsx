@@ -64,4 +64,47 @@ describe('WebBuildCard (gap 66)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('2 error(s)')
     expect(screen.queryByRole('listitem')).toBeNull()
   })
+
+  const started = { success: true, message: 'Build started', data: { state: 'building' } }
+  const startBuild = async () => {
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /build for web/i })) })
+  }
+
+  it('gives up after 10 consecutive unreachable status calls', async () => {
+    vi.useFakeTimers()
+    const run = vi.fn()
+      .mockResolvedValueOnce(started)
+      .mockResolvedValue({ success: false, message: 'Failed to reach Unity MCP server: TypeError' })
+    render(<WebBuildCard connected run={run} />)
+    await startBuild()
+    await act(async () => { await vi.advanceTimersByTimeAsync(9 * 3000) })
+    expect(screen.queryByRole('alert')).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('alert')).toHaveTextContent('Lost contact with Unity during the build')
+    await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
+    expect(run).toHaveBeenCalledTimes(11) // polling stopped
+  })
+
+  it('keeps waiting while the bridge reports the main thread busy', async () => {
+    vi.useFakeTimers()
+    const run = vi.fn()
+      .mockResolvedValueOnce(started)
+      .mockResolvedValue({ success: false, message: 'Tool timed out' })
+    render(<WebBuildCard connected run={run} />)
+    await startBuild()
+    await act(async () => { await vi.advanceTimersByTimeAsync(15 * 3000) })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('button', { name: /building/i })).toBeDisabled()
+  })
+
+  it('treats idle after building as an interrupted build', async () => {
+    vi.useFakeTimers()
+    const run = vi.fn()
+      .mockResolvedValueOnce(started)
+      .mockResolvedValueOnce({ success: true, message: 'Build idle', data: { ...done, state: 'idle', message: '' } })
+    render(<WebBuildCard connected run={run} />)
+    await startBuild()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('alert')).toHaveTextContent('The build was interrupted (Unity restarted).')
+  })
 })

@@ -512,6 +512,9 @@ export type WebBuildState = 'idle' | 'building' | 'succeeded' | 'failed'
 export type WebBuildStatus = { state: WebBuildState; message: string; outputPath: string; sizeMb: number; seconds: number }
 
 export const BUILD_POLL_MS = 3000
+export const BUILD_POLL_MAX_FAILURES = 10
+// The bridge answers this while Unity's main thread is busy building — contact is fine, keep waiting.
+const BRIDGE_BUSY = 'Tool timed out'
 
 export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) => Promise<ToolResult> = executeTool) {
   const [status, setStatus] = useState<WebBuildStatus | null>(null)
@@ -531,12 +534,17 @@ export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) 
     if (!building) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout>
+    let failures = 0
+    const fail = (message: string) => setStatus({ state: 'failed', message, outputPath: '', sizeMb: 0, seconds: 0 })
     const poll = async () => {
       const res = await exec('build.status', {})
       if (cancelled) return
       const data = res.data as WebBuildStatus | undefined
-      // A failed call usually means Unity's main thread is busy building (the bridge times out) — keep waiting.
-      if (res.success && data && data.state !== 'building') setStatus(data)
+      failures = res.success || res.message === BRIDGE_BUSY ? 0 : failures + 1
+      if (failures >= BUILD_POLL_MAX_FAILURES) fail('Lost contact with Unity during the build — check the Unity Console.')
+      // idle after building: SessionState was wiped, so Unity restarted mid-build
+      else if (res.success && data?.state === 'idle') fail('The build was interrupted (Unity restarted).')
+      else if (res.success && data && data.state !== 'building') setStatus(data)
       else timer = setTimeout(() => void poll(), BUILD_POLL_MS)
     }
     timer = setTimeout(() => void poll(), BUILD_POLL_MS)
