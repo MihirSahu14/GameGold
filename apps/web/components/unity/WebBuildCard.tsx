@@ -42,6 +42,7 @@ export function WebBuildCard({ connected, run = executeTool }: WebBuildCardProps
         <div className="mt-4 text-xs text-[#8b97a7]">
           <div role="status" className="mb-3 text-green-500">
             ✓ Built in {status.seconds}s ({status.sizeMb} MB) → <code className="text-[#c8d4e2]">{status.outputPath}</code>
+            {status.message && <div className="mt-1 text-[#8b97a7]">{status.message}</div>}
           </div>
           <ol className="m-0 flex list-decimal flex-col gap-1.5 pl-5 leading-relaxed">
             <li>Zip the contents of <code className="text-[#c8d4e2]">{status.outputPath}</code> (index.html at the top level).</li>

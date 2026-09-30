@@ -49,13 +49,13 @@ namespace GameGold.MCP
             var active = SceneManager.GetActiveScene();
             if (active.isDirty)
                 return GameGoldMCP.Error($"Save scene '{active.name}' first (File > Save) — the build uses the saved file");
-            var scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
-            if (scenes.Length == 0)
-            {
-                if (string.IsNullOrEmpty(active.path))
-                    return GameGoldMCP.Error("The active scene has never been saved — save it first (File > Save As)");
-                scenes = new[] { active.path };
-            }
+            if (string.IsNullOrEmpty(active.path))
+                return GameGoldMCP.Error("The active scene has never been saved — save it first (File > Save As)");
+            // The game starts in the scene you're working in (Build Settings often still lists the
+            // template's SampleScene first); other enabled Build Settings scenes are kept after it.
+            var scenes = new[] { active.path }
+                .Concat(EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path))
+                .Distinct().ToArray();
 
             // Plain files: works on itch.io and any static host without Content-Encoding headers.
             // Restored after the build so the developer's own setting survives.
@@ -63,7 +63,7 @@ namespace GameGold.MCP
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
 
             _scheduled = true;
-            Save("building", $"Building {scenes.Length} scene(s) for WebGL…", output, 0, 0);
+            Save("building", $"Building for WebGL — starts in '{active.name}'…", output, 0, 0);
             EditorApplication.delayCall += () => Run(scenes, output, compression);
             return GameGoldMCP.Ok("Build started", "{\"state\":\"building\"}");
         }
@@ -84,7 +84,7 @@ namespace GameGold.MCP
                 var seconds = (DateTime.UtcNow - started).TotalSeconds;
                 var ok = report.summary.result == BuildResult.Succeeded;
                 Save(ok ? "succeeded" : "failed",
-                     ok ? "Build succeeded" : $"Build {report.summary.result}: {report.summary.totalErrors} error(s) — see the Unity Console",
+                     ok ? $"Build succeeded — starts in '{Path.GetFileNameWithoutExtension(scenes[0])}'" : $"Build {report.summary.result}: {report.summary.totalErrors} error(s) — see the Unity Console",
                      output, ok ? FolderMb(output) : 0, seconds);
             }
             catch (Exception ex)
