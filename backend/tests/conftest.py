@@ -135,7 +135,17 @@ def mock_db():
     db.deployments.update_one = AsyncMock()
     db.deployments.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
 
+    db.llm_budget = MagicMock()
+    db.llm_budget.find_one = AsyncMock(return_value=None)  # nothing spent today
+    db.llm_budget.update_one = AsyncMock()
+
     return db
+
+
+@pytest.fixture(autouse=True)
+def _llm_budget_db(mock_db, monkeypatch):
+    """complete() reads/records the trial budget — point it at mock_db everywhere."""
+    monkeypatch.setattr("app.services.llm_utils.get_db", lambda: mock_db)
 
 
 # ─── TestClient ───────────────────────────────────────────────────────────────
@@ -157,6 +167,7 @@ def client(mock_db, monkeypatch):
     monkeypatch.setattr("app.routers.playtest.get_db", lambda: mock_db)
     monkeypatch.setattr("app.routers.deployment.get_db", lambda: mock_db)
     monkeypatch.setattr("app.routers.unity.get_db", lambda: mock_db)
+    monkeypatch.setattr("app.routers.me.get_db", lambda: mock_db)
     monkeypatch.setattr("app.main.connect_db", AsyncMock())
     monkeypatch.setattr("app.main.close_db", AsyncMock())
     monkeypatch.setattr("app.main.migrate_stages", AsyncMock(return_value={}))

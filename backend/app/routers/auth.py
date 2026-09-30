@@ -29,6 +29,7 @@ from app.services.auth_service import (
     decode_token,
 )
 from app.services.email_sender import send_password_reset
+from app.services.llm_utils import current_llm_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer(auto_error=False)
@@ -76,6 +77,7 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="User not found")
     user = serialize_user(user)
     request.state.user_id = user["_id"]
+    current_llm_user.set(user)  # complete() picks the user's own LLM key from here
     return user
 
 
