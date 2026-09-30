@@ -184,3 +184,10 @@ describe('toastError', () => {
     expect(toast.href).toBe('/settings')
   })
 })
+
+describe('apiErrorMessage', () => {
+  it('falls back when detail is a 422 validation list', async () => {
+    const { apiErrorMessage } = await import('@/lib/api')
+    expect(apiErrorMessage({ response: { status: 422, data: { detail: [{ msg: 'bad' }] } } }, 'Invalid input.')).toBe('Invalid input.')
+  })
+})
