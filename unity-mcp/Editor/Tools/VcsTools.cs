@@ -217,7 +217,7 @@ namespace GameGold.MCP
             else if (args.GetBool("replace"))
                 set = Probe(root, "git", "remote", "set-url", "origin", url);
             else
-                return GameGoldMCP.Error($"This project already pushes to {Scrub(current.output.Trim())} — pass replace to switch it to {url}");
+                return GameGoldMCP.Error($"This project's origin already points to {Scrub(current.output.Trim())} — replace it with {url}?");
             if (set.code != 0) return GameGoldMCP.Error("Couldn't set the remote: " + Scrub(set.output));
 
             log.Append($"origin → {url}");
