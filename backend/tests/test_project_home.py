@@ -47,6 +47,9 @@ def test_home_patch_only_changes_given_fields(client, mock_db):
     "https://user:pass@gitlab.com/a/b",
     "ftp://example.com/repo",
     "github.com/a/b",
+    "https://github.com/a/b.git\n",
+    "https://github.com/a/b@c",
+    "git@github.com:a/b.git\n",
 ])
 def test_home_rejects_credential_or_odd_urls(client, mock_db, url):
     mock_db.projects.find_one.return_value = dict(DOC)

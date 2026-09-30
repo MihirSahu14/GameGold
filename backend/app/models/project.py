@@ -76,7 +76,8 @@ class PlayerSettings(BaseModel):
 
 PublishTarget = Literal["local", "itch", "github_pages"]
 _CRED_URL = re.compile(r"^https?://[^/]*@")
-_REPO_URL = re.compile(r"^(https://[^\s@]+|git@[\w.-]+:[\w./-]+)$")
+# fullmatch: no trailing-newline slip past $; no '@' after the host (same rules as the bridge's IsRepoUrl).
+_REPO_URL = re.compile(r"https://[^\s/@]+/[^\s@]+|git@[\w.-]+:[\w./-]+")
 _ITCH_TARGET = r"^[\w-]+/[\w-]+$"
 
 
@@ -105,7 +106,7 @@ class ProjectHomeUpdate(BaseModel):
     def no_credentials(cls, v: Optional[str]) -> Optional[str]:
         if v is None or v == "":
             return None
-        if _CRED_URL.match(v) or not _REPO_URL.match(v):
+        if _CRED_URL.match(v) or not _REPO_URL.fullmatch(v):
             raise ValueError("Use the repo's plain https:// or git@ URL — never one with a token or password in it")
         return v
 
