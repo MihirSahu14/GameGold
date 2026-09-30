@@ -143,13 +143,25 @@ async def _record_trial_cost(response) -> None:
     )
 
 
+def _own_key_error(e: Exception, provider: str, key: str) -> str:
+    """Plain words for the common provider failures; anything else keeps the (scrubbed) provider message."""
+    name = PROVIDERS.get(provider, provider)
+    if isinstance(e, litellm.AuthenticationError):
+        return f"Your {name} key was rejected — check that it's correct and still active."
+    if isinstance(e, litellm.NotFoundError):
+        return f"{name} doesn't recognise that model — pick another in Settings."
+    if isinstance(e, litellm.RateLimitError):
+        return f"Your {name} key hit a rate limit or ran out of credit — try again shortly."
+    return f"Your {name} key was rejected: {scrub(str(e), key)[:300]}"
+
+
 async def call_with_key(system_prompt: str, user_prompt: str, max_tokens: int, provider: str, model: str, key: str) -> str:
     """Call on a user's own key. Errors never fall back to the trial key and never carry the key."""
     try:
         response = await asyncio.to_thread(_call_llm, system_prompt, user_prompt, max_tokens, model, key)
     except Exception as e:
         # from None: the original exception text may contain the key
-        raise ValueError(f"Your {PROVIDERS.get(provider, provider)} key was rejected: {scrub(str(e), key)[:300]}") from None
+        raise ValueError(_own_key_error(e, provider, key)) from None
     return _text(response)
 
 

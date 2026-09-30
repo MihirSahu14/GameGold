@@ -1,3 +1,4 @@
+import litellm
 """BYOK + trial budget: the complete() gate, /me/llm routes, key encryption/scrubbing,
 402 shape, and client IP for rate limits. LiteLLM is always mocked."""
 import asyncio
@@ -238,3 +239,11 @@ def test_real_auth_route_runs_on_own_key(auth_client, mock_db, llm_ok, secret, a
     resp = auth_client.get("/health/llm", headers=auth_headers)
     assert resp.status_code == 200, resp.text
     assert llm_ok.call_args.kwargs["api_key"] == KEY
+
+
+def test_own_key_auth_error_reads_plainly(mock_db, secret, monkeypatch):
+    err = litellm.AuthenticationError(message=f"User not found {KEY}", llm_provider="openrouter", model="x")
+    monkeypatch.setattr("litellm.completion", MagicMock(side_effect=err))
+    with pytest.raises(ValueError) as info:
+        _run(_own_key_user(), lambda: complete("sys", "hi"))
+    assert str(info.value) == "Your OpenRouter key was rejected — check that it's correct and still active."
