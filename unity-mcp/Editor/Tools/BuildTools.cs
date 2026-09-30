@@ -15,6 +15,7 @@ namespace GameGold.MCP
     {
         private const string Key = "GameGold.MCP.Build.";
         private static bool _scheduled; // static on purpose: a reload drops a pending delayCall too
+        private static readonly string[] ReservedFolders = { "Library", "ProjectSettings", "Packages", "Temp", "Logs", "UserSettings" };
 
         /// <summary>args: { outputPath? = "Builds/WebGL" } — inside the project, not under Assets/.
         /// Schedules the build and returns { state: "building" } right away.</summary>
@@ -37,6 +38,13 @@ namespace GameGold.MCP
             if (output.Equals(assets, StringComparison.OrdinalIgnoreCase) ||
                 output.StartsWith(assets + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 return GameGoldMCP.Error("'outputPath' must not be under Assets/ — Unity would import the build");
+            foreach (var reserved in ReservedFolders)
+            {
+                var dir = Path.Combine(project, reserved);
+                if (output.Equals(dir, StringComparison.OrdinalIgnoreCase) ||
+                    output.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    return GameGoldMCP.Error($"'outputPath' must not be under {reserved}/ — Unity manages that folder");
+            }
 
             var active = SceneManager.GetActiveScene();
             if (active.isDirty)
@@ -49,16 +57,18 @@ namespace GameGold.MCP
                 scenes = new[] { active.path };
             }
 
-            // Plain files: works on itch.io and any static host without Content-Encoding headers
+            // Plain files: works on itch.io and any static host without Content-Encoding headers.
+            // Restored after the build so the developer's own setting survives.
+            var compression = PlayerSettings.WebGL.compressionFormat;
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
 
             _scheduled = true;
             Save("building", $"Building {scenes.Length} scene(s) for WebGL…", output, 0, 0);
-            EditorApplication.delayCall += () => Run(scenes, output);
+            EditorApplication.delayCall += () => Run(scenes, output, compression);
             return GameGoldMCP.Ok("Build started", "{\"state\":\"building\"}");
         }
 
-        private static void Run(string[] scenes, string output)
+        private static void Run(string[] scenes, string output, WebGLCompressionFormat compression)
         {
             var started = DateTime.UtcNow;
             try
@@ -83,6 +93,7 @@ namespace GameGold.MCP
             }
             finally
             {
+                PlayerSettings.WebGL.compressionFormat = compression;
                 _scheduled = false;
             }
         }
