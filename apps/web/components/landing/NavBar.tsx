@@ -37,6 +37,7 @@ export function NavBar() {
   return (
     <nav
       ref={navRef}
+      className="px-4 py-3.5 md:px-7 md:py-[18px]"
       style={{
         position: 'fixed',
         top: 0,
@@ -46,7 +47,6 @@ export function NavBar() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '18px 28px',
         borderBottom: '1px solid transparent',
         transition: 'background .3s, border-color .3s',
         background: 'transparent',
@@ -86,6 +86,7 @@ export function NavBar() {
             key={href}
             href={href}
             data-cursor="hover"
+            className="max-md:hidden"
             style={{ textDecoration: 'none', color: '#8b97a7', fontSize: '12px', letterSpacing: '2px' }}
           >
             {label}
@@ -94,14 +95,13 @@ export function NavBar() {
         <a
           href={REGISTER}
           data-cursor="hover"
+          className="whitespace-nowrap px-3 py-2 text-[11px] md:px-4 md:py-[9px] md:text-[12px]"
           style={{
             textDecoration: 'none',
             color: '#07090d',
             background: '#4ea8ff',
             fontWeight: 700,
-            fontSize: '12px',
             letterSpacing: '1px',
-            padding: '9px 16px',
           }}
         >
           START BUILDING
