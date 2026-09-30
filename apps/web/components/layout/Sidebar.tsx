@@ -14,6 +14,7 @@ import type { ProjectStage } from '@gamegold/types'
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Projects', icon: '🗂️' },
+  { href: '/settings', label: 'Settings', icon: '⚙️' },
 ]
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-space-mono), monospace' }
