@@ -125,7 +125,7 @@ export type VcsStatus = {
   isRepo: boolean
   remoteUrl: string | null
   branch: string | null
-  dirtyFiles: number
+  dirtyFiles: number // -1 = unknown (git status timed out)
   lastCommit: string | null
 }
 

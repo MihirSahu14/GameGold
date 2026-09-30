@@ -194,10 +194,11 @@ describe('WebBuildCard (gap 66)', () => {
     expect(mockApi.post).not.toHaveBeenCalled()
   })
 
-  it('warns when something was synced after the build finished', async () => {
+  it('warns when something was synced after the build started (even while it was building)', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-30T10:00:00Z'))
-    mockApi.get.mockResolvedValue({ data: [{ path: 'Assets/x.png', sha256: 'x', source: 'a1', syncedAt: '2026-09-30T11:00:00Z' }] })
+    // server timestamps carry no offset (UTC); synced 1 s after the click, before the build finished
+    mockApi.get.mockResolvedValue({ data: [{ path: 'Assets/x.png', sha256: 'x', source: 'a1', syncedAt: '2026-09-30T10:00:01' }] })
     renderCard(<WebBuildCard projectId="p1" connected run={builtRun()} />)
     await finishBuild()
     expect(screen.getByText(/Build is older than your latest changes/)).toBeInTheDocument()
@@ -206,7 +207,7 @@ describe('WebBuildCard (gap 66)', () => {
   it('no stale warning when the build is newer than every sync', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-30T12:00:00Z'))
-    mockApi.get.mockResolvedValue({ data: [{ path: 'Assets/x.png', sha256: 'x', source: 'a1', syncedAt: '2026-09-30T11:00:00Z' }] })
+    mockApi.get.mockResolvedValue({ data: [{ path: 'Assets/x.png', sha256: 'x', source: 'a1', syncedAt: '2026-09-30T11:59:59' }] })
     renderCard(<WebBuildCard projectId="p1" connected run={builtRun()} />)
     await finishBuild()
     expect(screen.queryByText(/Build is older/)).toBeNull()

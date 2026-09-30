@@ -68,13 +68,36 @@ describe('ProjectHomeCard', () => {
   })
 
   it('offers Replace origin when the existing origin differs', async () => {
-    const run = fakeRun((_tool, args) => (args.replace ? { success: true, message: 'ok' } : { success: false, message: 'origin already points to https://github.com/old/repo' }))
+    const run = fakeRun((_tool, args) => (args.replace ? { success: true, message: 'ok' } : { success: false, message: "This project's origin already points to https://github.com/old/repo — replace it?" }))
     renderCard(project(), run)
     fireEvent.change(screen.getByLabelText('Repo URL'), { target: { value: 'https://github.com/me/Ripple.git' } })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Connect' })) })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /replace origin/i })) })
     expect(run).toHaveBeenCalledWith('vcs.connect', { repoUrl: 'https://github.com/me/Ripple.git', replace: true })
     await waitFor(() => expect(mockApi.patch).toHaveBeenCalled())
+  })
+
+  it('editing the URL hides Replace origin; other origin errors never offer it', async () => {
+    const run = fakeRun(() => ({ success: false, message: "This project's origin already points to https://github.com/old/repo — replace it?" }))
+    renderCard(project(), run)
+    const input = screen.getByLabelText('Repo URL')
+    fireEvent.change(input, { target: { value: 'https://github.com/me/Ripple.git' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Connect' })) })
+    expect(screen.getByRole('button', { name: /replace origin/i })).toBeInTheDocument()
+    fireEvent.change(input, { target: { value: 'https://github.com/me/Other.git' } })
+    expect(screen.queryByRole('button', { name: /replace origin/i })).toBeNull()
+
+    run.mockImplementation(async (tool: string) => (tool === 'vcs.status' ? STATUS : { success: false, message: "Couldn't set the remote: origin locked" }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Connect' })) })
+    expect(screen.getByRole('alert')).toHaveTextContent('origin locked')
+    expect(screen.queryByRole('button', { name: /replace origin/i })).toBeNull()
+  })
+
+  it('shows unknown when git status timed out', async () => {
+    const run = fakeRun()
+    run.mockImplementation(async () => ({ ...STATUS, data: { ...STATUS.data, dirtyFiles: -1 } }))
+    renderCard(project(), run)
+    expect(await screen.findByText(/unknown unsaved files/)).toBeInTheDocument()
   })
 
   it('publish target radio updates the project; itch shows the target field saved on blur', async () => {

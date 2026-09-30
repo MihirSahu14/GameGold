@@ -516,16 +516,22 @@ export const BUILD_POLL_MAX_FAILURES = 10
 // The bridge answers this while Unity's main thread is busy building — contact is fine, keep waiting.
 export const BRIDGE_BUSY = 'Tool timed out'
 
+/** The backend stores naive UTC datetimes and serializes them without an offset — read those as UTC, not local time. */
+export function parseServerTime(s: string): number {
+  return Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(s) ? s : `${s}Z`)
+}
+
 export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) => Promise<ToolResult> = executeTool) {
   const [status, setStatus] = useState<WebBuildStatus | null>(null)
   const [startedAt, setStartedAt] = useState(0)
   const [now, setNow] = useState(0)
-  const [finishedAt, setFinishedAt] = useState<number | null>(null) // when the browser saw success (stale-build check)
+  // when the successful build was STARTED — changes synced after that aren't in it (stale-build check)
+  const [builtFrom, setBuiltFrom] = useState<number | null>(null)
   const building = status?.state === 'building'
 
   const start = useCallback(async () => {
-    const res = await exec('build.webgl', {})
     const t = Date.now()
+    const res = await exec('build.webgl', {})
     setStartedAt(t)
     setNow(t)
     setStatus({ state: res.success ? 'building' : 'failed', message: res.message, outputPath: '', sizeMb: 0, seconds: 0 })
@@ -547,14 +553,14 @@ export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) 
       else if (res.success && data?.state === 'idle') fail('The build was interrupted (Unity restarted).')
       else if (res.success && data && data.state !== 'building') {
         setStatus(data)
-        setFinishedAt(data.state === 'succeeded' ? Date.now() : null)
+        setBuiltFrom(data.state === 'succeeded' ? startedAt : null)
       }
       else timer = setTimeout(() => void poll(), BUILD_POLL_MS)
     }
     timer = setTimeout(() => void poll(), BUILD_POLL_MS)
     const tick = setInterval(() => setNow(Date.now()), 1000)
     return () => { cancelled = true; clearTimeout(timer); clearInterval(tick) }
-  }, [building, exec])
+  }, [building, exec, startedAt])
 
-  return { status, elapsed: building ? Math.round((now - startedAt) / 1000) : 0, start, finishedAt }
+  return { status, elapsed: building ? Math.round((now - startedAt) / 1000) : 0, start, builtFrom }
 }

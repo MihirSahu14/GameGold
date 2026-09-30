@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { Project, PublishTarget } from '@gamegold/types'
 import { executeTool, type ToolResult } from '@/lib/queries/useUnity'
 import { useUpdateHome, useVcsStatus } from '@/lib/queries/useProjectHome'
@@ -23,7 +24,8 @@ const mark = (ok: boolean) => (ok ? '✓' : '✗')
 
 /** Where the Unity project lives (the developer's own git repo) and where web builds go. No tokens — git/butler use this machine's sign-in. */
 export function ProjectHomeCard({ projectId, project, connected, run = executeTool }: ProjectHomeCardProps) {
-  const { data: vcs, refetch } = useVcsStatus(connected, run)
+  const { data: vcs } = useVcsStatus(connected, run)
+  const qc = useQueryClient()
   const updateHome = useUpdateHome(projectId)
   const home = project.home
   const [repoUrl, setRepoUrl] = useState(home.repoUrl ?? '')
@@ -41,11 +43,11 @@ export function ProjectHomeCard({ projectId, project, connected, run = executeTo
     setConnecting(false)
     if (!r.success) {
       setError(r.message)
-      setOriginDiffers(!replace && /origin/i.test(r.message))
+      setOriginDiffers(!replace && /already points to/i.test(r.message))
       return
     }
     updateHome.mutate({ repoUrl: url })
-    void refetch()
+    void qc.invalidateQueries({ queryKey: ['vcs-status'] })
   }
 
   return (
@@ -58,7 +60,7 @@ export function ProjectHomeCard({ projectId, project, connected, run = executeTo
           <span>git {mark(vcs.gitInstalled)} · butler {mark(vcs.butlerInstalled)}</span>
           {vcs.isRepo && (
             <span className="ml-3">
-              {vcs.remoteUrl ?? 'no remote'}{vcs.branch && ` @ ${vcs.branch}`} · {vcs.dirtyFiles} unsaved file{vcs.dirtyFiles === 1 ? '' : 's'}
+              {vcs.remoteUrl ?? 'no remote'}{vcs.branch && ` @ ${vcs.branch}`} · {vcs.dirtyFiles < 0 ? 'unknown' : vcs.dirtyFiles} unsaved file{vcs.dirtyFiles === 1 ? '' : 's'}
             </span>
           )}
           {!vcs.gitInstalled && (
@@ -74,7 +76,7 @@ export function ProjectHomeCard({ projectId, project, connected, run = executeTo
         <input
           aria-label="Repo URL"
           value={repoUrl}
-          onChange={(e) => setRepoUrl(e.target.value)}
+          onChange={(e) => { setRepoUrl(e.target.value); setOriginDiffers(false) }}
           placeholder="https://github.com/you/your-game.git"
           className="min-w-64 flex-1 border border-[#1b2533] bg-[#07090d] px-3 py-2 text-xs text-[#c8d4e2]"
         />

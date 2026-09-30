@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { Project } from '@gamegold/types'
 import { executeTool, useUnitySyncs, type ToolResult } from '@/lib/queries/useUnity'
-import { runBridgeJob, summarizeChanges, useRecordSaved } from '@/lib/queries/useProjectHome'
+import { runBridgeJob, summarizeChanges, useRecordSaved, useUnmountSignal } from '@/lib/queries/useProjectHome'
 import { useToastStore } from '@/store/toastStore'
 
 type SaveVersionButtonProps = {
@@ -19,13 +20,17 @@ export function SaveVersionButton({ projectId, project, run = executeTool }: Sav
   const [message, setMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const unmount = useUnmountSignal()
+  const qc = useQueryClient()
 
   const save = async () => {
     if (!message?.trim()) return
     setSaving(true)
     setError(null)
-    const job = await runBridgeJob('vcs.save', { message }, run)
+    const job = await runBridgeJob('vcs.save', { message }, run, unmount.current?.signal)
+    if (unmount.current?.signal.aborted) return
     setSaving(false)
+    void qc.invalidateQueries({ queryKey: ['vcs-status'] })
     if (job.state === 'succeeded' && job.result.commit) {
       recordSaved.mutate(job.result.commit)
       useToastStore.getState().pushToast(`Saved version ${job.result.commit}`, 'info')

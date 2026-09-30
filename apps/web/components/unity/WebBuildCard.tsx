@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import type { Project } from '@gamegold/types'
-import { executeTool, useUnitySyncs, useWebBuild, type ToolResult } from '@/lib/queries/useUnity'
-import { runBridgeJob, useRecordPublished } from '@/lib/queries/useProjectHome'
+import { executeTool, parseServerTime, useUnitySyncs, useWebBuild, type ToolResult } from '@/lib/queries/useUnity'
+import { runBridgeJob, useRecordPublished, useUnmountSignal } from '@/lib/queries/useProjectHome'
 
 type WebBuildCardProps = {
   projectId: string
@@ -14,7 +14,7 @@ type WebBuildCardProps = {
 
 /** WebGL build through the bridge + how to share it with playtesters (gap 66), published per the project's target. */
 export function WebBuildCard({ projectId, project, connected, run = executeTool }: WebBuildCardProps) {
-  const { status, elapsed, start, finishedAt } = useWebBuild(run)
+  const { status, elapsed, start, builtFrom } = useWebBuild(run)
   const building = status?.state === 'building'
   const { data: syncs } = useUnitySyncs(projectId)
   const recordPublished = useRecordPublished(projectId)
@@ -23,17 +23,19 @@ export function WebBuildCard({ projectId, project, connected, run = executeTool 
   const [publishing, setPublishing] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [published, setPublished] = useState<{ url: string; first: boolean } | null>(null)
+  const unmount = useUnmountSignal()
 
-  const newestSync = Math.max(0, ...(syncs ?? []).map((s) => Date.parse(s.syncedAt)))
-  const stale = finishedAt !== null && newestSync > finishedAt
+  const newestSync = Math.max(0, ...(syncs ?? []).map((s) => parseServerTime(s.syncedAt)))
+  const stale = builtFrom !== null && newestSync > builtFrom
 
   const publish = async () => {
     setPublishing(true)
     setPublishError(null)
     setPublished(null)
     const job = target === 'itch'
-      ? await runBridgeJob('publish.itch', { itchTarget: home?.itchTarget }, run)
-      : await runBridgeJob('publish.pages', {}, run)
+      ? await runBridgeJob('publish.itch', { itchTarget: home?.itchTarget }, run, unmount.current?.signal)
+      : await runBridgeJob('publish.pages', {}, run, unmount.current?.signal)
+    if (unmount.current?.signal.aborted) return
     setPublishing(false)
     if (job.state === 'succeeded' && job.result.url) {
       recordPublished.mutate(job.result.url)
