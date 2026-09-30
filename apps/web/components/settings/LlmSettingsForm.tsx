@@ -133,6 +133,11 @@ export function LlmSettingsForm({ config }: LlmSettingsFormProps) {
             value={model}
             onChange={(e) => setModel(e.target.value)}
             placeholder={suggestions[1]?.model}
+            name="llm-model"
+            autoComplete="off"
+            spellCheck={false}
+            data-1p-ignore
+            data-lpignore="true"
             required
             className="flex-1 bg-transparent px-1 py-2 text-[13px] outline-none"
           />
@@ -163,7 +168,12 @@ export function LlmSettingsForm({ config }: LlmSettingsFormProps) {
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder={config.usingOwnKey ? 'Enter a new key to replace it' : 'Paste your key'}
-          autoComplete="off"
+          // Chrome ignores "off" on password fields and fills the user's GameGold login here;
+          // "new-password" stops the fill, so a site password can't be sent to a provider as a key.
+          name="llm-api-key"
+          autoComplete="new-password"
+          data-1p-ignore
+          data-lpignore="true"
           required
           className="border border-[#1b2533] bg-[#07090d] px-3 py-2 text-[13px] outline-none"
         />
