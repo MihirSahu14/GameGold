@@ -56,6 +56,8 @@ namespace GameGold.MCP
             ["asset.readFile"]       = AssetTools.ReadFile,
             ["playmode.enter"]       = PlayModeTools.Enter,
             ["playmode.exit"]        = PlayModeTools.Exit,
+            ["build.webgl"]          = BuildTools.WebGL,
+            ["build.status"]         = BuildTools.Status,
         };
 
         static GameGoldMCP()
