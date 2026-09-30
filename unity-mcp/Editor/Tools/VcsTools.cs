@@ -41,8 +41,8 @@ namespace GameGold.MCP
             Regex.IsMatch(url ?? "", @"^https?://[^/]*@");
 
         public static string Scrub(string text) =>
-            Regex.Replace(Regex.Replace(text ?? "", @"(https?://)[^/@\s]+@", "$1***@"),
-                          @"(ghp_|gho_|github_pat_|glpat-)[A-Za-z0-9_\-]+", "***");
+            Regex.Replace(Regex.Replace(text ?? "", @"(https?://)[^/@\s]+@", "$1***@", RegexOptions.IgnoreCase),
+                          @"(gh[pousr]_|github_pat_|glpat-)[A-Za-z0-9_\-]+", "***");
 
         // https://github.com/owner/repo(.git) | git@github.com:owner/repo(.git) → https://owner.github.io/repo/
         public static string PagesUrl(string remote)
@@ -61,9 +61,10 @@ namespace GameGold.MCP
             return $"https://{parts[0]}.itch.io/{parts[1]}";
         }
 
-        // Only https://host/path or git@host:path — also rules out a leading '-' being read as a git option.
+        // Only https://host/path (no '@' anywhere) or git@host:path — also rules out a leading '-' being read as a
+        // git option. Same rules as the backend's _REPO_URL; \z so a trailing newline can't slip past '$'.
         public static bool IsRepoUrl(string url) =>
-            Regex.IsMatch(url ?? "", @"^(https://[^\s/@]+/\S+|git@[^\s:@]+:\S+)$");
+            Regex.IsMatch(url ?? "", @"\A(https://[^\s/@]+/[^\s@]+|git@[\w.-]+:[\w./-]+)\z");
 
         // Windows command-line quoting (CommandLineToArgvW / MSVCRT rules). Unity's .NET 4.8 profile has no
         // ProcessStartInfo.ArgumentList, so each argument is quoted here instead; there is still no shell.
@@ -115,25 +116,29 @@ namespace GameGold.MCP
             catch (Exception) { return (-1, ""); }
         }
 
-        // Runs a job step and logs it; returns the output, or null (job marked failed) on non-zero exit.
+        // Runs a job step and logs it; returns the output, or null on non-zero exit. Never touches State —
+        // the job only ends (StartJob) after the caller has logged its hint, so a poll can't see a hint-less failure.
         private static string Step(Job job, string root, IDictionary<string, string> env, string exe, params string[] args)
         {
             var (code, output) = Run(exe, root, env, JobTimeout, args);
             job.Log($"$ {exe} {string.Join(" ", args)}\n{output}");
-            if (code != 0) job.State = "failed";
             return code == 0 ? output : null;
         }
 
-        private static string StartJob(Action<Job> work)
+        private static volatile string LastJobId;
+
+        // work returns true on success; State is set only after it returns.
+        private static string StartJob(Func<Job, bool> work)
         {
             // ponytail: one job at a time — two pushes racing on the same repo only produce confusing errors
             if (Jobs.Values.Any(j => j.State == "running"))
                 return GameGoldMCP.Error("Another save or publish is still running — wait for it to finish");
             var id = Guid.NewGuid().ToString("N").Substring(0, 12);
             var job = Jobs[id] = new Job();
+            LastJobId = id;
             Task.Run(() =>
             {
-                try { work(job); if (job.State == "running") job.State = "succeeded"; }
+                try { job.State = work(job) ? "succeeded" : "failed"; }
                 catch (Exception ex) { job.Log(ex.Message); job.State = "failed"; }
             });
             return GameGoldMCP.Ok("Started", $"{{\"jobId\":\"{id}\"}}");
@@ -158,6 +163,7 @@ namespace GameGold.MCP
         /// <summary>→ { gitInstalled, butlerInstalled, isRepo, remoteUrl, branch, dirtyFiles, lastCommit }</summary>
         internal static string Status(string _)
         {
+            var budget = Stopwatch.StartNew(); // runs on the main thread — keep the whole call inside ~8 s
             var root = ProjectRoot();
             bool git = Probe(root, "git", "--version").code == 0;
             bool butler = Probe(root, "butler", "--version").code == 0;
@@ -170,8 +176,11 @@ namespace GameGold.MCP
                 if (r.code == 0) remote = Scrub(r.output.Trim());
                 var b = Probe(root, "git", "branch", "--show-current");
                 if (b.code == 0 && b.output.Trim().Length > 0) branch = b.output.Trim();
-                var s = Probe(root, "git", "status", "--porcelain");
-                if (s.code == 0) dirty = s.output.Split('\n').Count(l => l.Trim().Length > 0);
+                // big projects can take a while to scan; -1 = unknown (timed out or failed)
+                (int code, string output) s;
+                try { s = Run("git", root, null, Math.Max(500, 8_000 - (int)budget.ElapsedMilliseconds), "status", "--porcelain"); }
+                catch (Exception) { s = (-1, ""); }
+                dirty = s.code == 0 ? s.output.Split('\n').Count(l => l.Trim().Length > 0) : -1;
                 var l1 = Probe(root, "git", "log", "-1", "--format=%h %s");
                 if (l1.code == 0 && l1.output.Trim().Length > 0) last = Scrub(l1.output.Trim());
             }
@@ -234,20 +243,29 @@ namespace GameGold.MCP
 
             return StartJob(job =>
             {
-                if (Step(job, root, null, "git", "add", "-A") == null) return;
-                if (Run("git", root, null, JobTimeout, "diff", "--cached", "--quiet").code == 0)
+                if (Step(job, root, null, "git", "add", "-A") == null) return false;
+                if (Run("git", root, null, JobTimeout, "diff", "--cached", "--quiet").code != 0)
                 {
-                    job.Log("Nothing to save — no changes since the last version");
-                    job.State = "failed";
-                    return;
+                    if (Step(job, root, null, "git", "commit", "-m", message) == null) return false;
                 }
-                if (Step(job, root, null, "git", "commit", "-m", message) == null) return;
+                else
+                {
+                    // Nothing new to commit, but an earlier push may have failed. No upstream (rev-list fails) counts as unpushed.
+                    var ahead = Run("git", root, null, ProbeTimeout, "rev-list", "--count", "@{u}..HEAD");
+                    if (ahead.code == 0 && ahead.output.Trim() == "0")
+                    {
+                        job.Log("Nothing to save — no changes since the last version");
+                        return false;
+                    }
+                    job.Log("No new changes — pushing the versions that weren't pushed yet.");
+                }
                 if (Step(job, root, null, "git", "push", "-u", "origin", "HEAD") == null)
                 {
                     job.Log("Push failed — sign in to your git host on this machine (Git Credential Manager or `gh auth login`), then press Save again.");
-                    return;
+                    return false;
                 }
                 job.Commit = Run("git", root, null, ProbeTimeout, "rev-parse", "--short", "HEAD").output.Trim();
+                return true;
             });
         }
 
@@ -281,9 +299,10 @@ namespace GameGold.MCP
                 if (Step(job, root, null, "butler", "push", dir, target + ":html5") == null)
                 {
                     job.Log("Run `butler login` once in a terminal, then try again.");
-                    return;
+                    return false;
                 }
                 job.Url = ItchUrl(target);
+                return true;
             });
         }
 
@@ -306,31 +325,35 @@ namespace GameGold.MCP
             {
                 File.WriteAllText(Path.Combine(dir, ".nojekyll"), "");
                 if (File.Exists(index)) File.Delete(index);
-                if (Step(job, root, env, "git", "--work-tree=" + dir, "add", "-A", "--force", ".") == null) return;
+                if (Step(job, root, env, "git", "--work-tree=" + dir, "add", "-A", "--force", ".") == null) return false;
                 var tree = Step(job, root, env, "git", "write-tree")?.Trim();
-                if (tree == null) return;
+                if (tree == null) return false;
                 var commit = Step(job, root, env, "git", "commit-tree", tree, "-m", "Publish playtest build")?.Trim();
-                if (commit == null) return;
+                if (commit == null) return false;
                 if (Step(job, root, env, "git", "push", "-f", "origin", commit + ":refs/heads/gh-pages") == null)
                 {
                     job.Log("Push failed — sign in to GitHub on this machine (Git Credential Manager or `gh auth login`), then try again.");
-                    return;
+                    return false;
                 }
                 job.Url = pagesUrl;
+                return true;
             });
         }
 
-        /// <summary>args: { jobId } → { state: running|succeeded|failed, output (scrubbed, last 4000 chars), result: { commit, url } }</summary>
+        /// <summary>args: { jobId? } → { jobId, state: running|succeeded|failed, output (scrubbed, last 4000 chars), result: { commit, url } }.
+        /// No jobId → the most recent job (e.g. when the start call's reply was lost to a busy main thread).</summary>
         internal static string JobStatus(string body)
         {
             var id = SimpleJson.Parse(body).GetString("jobId");
+            if (id.Length == 0) id = LastJobId;
+            if (id == null) return GameGoldMCP.Error("No save or publish has run yet");
             if (!Jobs.TryGetValue(id, out var job))
                 return GameGoldMCP.Error("Unknown job — Unity may have reloaded scripts; check the repo or try again");
             string output;
             lock (job) output = Scrub(job.Output.ToString()); // scrub before trimming so a cut can't split a token
             if (output.Length > 4000) output = output.Substring(output.Length - 4000);
             var state = job.State;
-            var data = $"{{\"state\":\"{state}\",\"output\":{Str(output)}," +
+            var data = $"{{\"jobId\":\"{id}\",\"state\":\"{state}\",\"output\":{Str(output)}," +
                        $"\"result\":{{\"commit\":{Str(job.Commit)},\"url\":{Str(job.Url)}}}}}";
             return GameGoldMCP.Ok($"Job {state}", data);
         }
