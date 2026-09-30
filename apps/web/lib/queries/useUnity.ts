@@ -514,12 +514,13 @@ export type WebBuildStatus = { state: WebBuildState; message: string; outputPath
 export const BUILD_POLL_MS = 3000
 export const BUILD_POLL_MAX_FAILURES = 10
 // The bridge answers this while Unity's main thread is busy building — contact is fine, keep waiting.
-const BRIDGE_BUSY = 'Tool timed out'
+export const BRIDGE_BUSY = 'Tool timed out'
 
 export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) => Promise<ToolResult> = executeTool) {
   const [status, setStatus] = useState<WebBuildStatus | null>(null)
   const [startedAt, setStartedAt] = useState(0)
   const [now, setNow] = useState(0)
+  const [finishedAt, setFinishedAt] = useState<number | null>(null) // when the browser saw success (stale-build check)
   const building = status?.state === 'building'
 
   const start = useCallback(async () => {
@@ -544,7 +545,10 @@ export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) 
       if (failures >= BUILD_POLL_MAX_FAILURES) fail('Lost contact with Unity during the build — check the Unity Console.')
       // idle after building: SessionState was wiped, so Unity restarted mid-build
       else if (res.success && data?.state === 'idle') fail('The build was interrupted (Unity restarted).')
-      else if (res.success && data && data.state !== 'building') setStatus(data)
+      else if (res.success && data && data.state !== 'building') {
+        setStatus(data)
+        setFinishedAt(data.state === 'succeeded' ? Date.now() : null)
+      }
       else timer = setTimeout(() => void poll(), BUILD_POLL_MS)
     }
     timer = setTimeout(() => void poll(), BUILD_POLL_MS)
@@ -552,5 +556,5 @@ export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) 
     return () => { cancelled = true; clearTimeout(timer); clearInterval(tick) }
   }, [building, exec])
 
-  return { status, elapsed: building ? Math.round((now - startedAt) / 1000) : 0, start }
+  return { status, elapsed: building ? Math.round((now - startedAt) / 1000) : 0, start, finishedAt }
 }

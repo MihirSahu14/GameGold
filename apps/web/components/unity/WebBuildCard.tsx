@@ -1,16 +1,51 @@
 'use client'
 
-import { executeTool, useWebBuild, type ToolResult } from '@/lib/queries/useUnity'
+import { useState } from 'react'
+import type { Project } from '@gamegold/types'
+import { executeTool, useUnitySyncs, useWebBuild, type ToolResult } from '@/lib/queries/useUnity'
+import { runBridgeJob, useRecordPublished } from '@/lib/queries/useProjectHome'
 
 type WebBuildCardProps = {
+  projectId: string
+  project?: Project
   connected: boolean
   run?: (tool: string, args: Record<string, unknown>) => Promise<ToolResult>
 }
 
-/** WebGL build through the bridge + how to share it with playtesters (gap 66). */
-export function WebBuildCard({ connected, run = executeTool }: WebBuildCardProps) {
-  const { status, elapsed, start } = useWebBuild(run)
+/** WebGL build through the bridge + how to share it with playtesters (gap 66), published per the project's target. */
+export function WebBuildCard({ projectId, project, connected, run = executeTool }: WebBuildCardProps) {
+  const { status, elapsed, start, finishedAt } = useWebBuild(run)
   const building = status?.state === 'building'
+  const { data: syncs } = useUnitySyncs(projectId)
+  const recordPublished = useRecordPublished(projectId)
+  const home = project?.home
+  const target = home?.publishTarget ?? 'local'
+  const [publishing, setPublishing] = useState(false)
+  const [publishError, setPublishError] = useState<string | null>(null)
+  const [published, setPublished] = useState<{ url: string; first: boolean } | null>(null)
+
+  const newestSync = Math.max(0, ...(syncs ?? []).map((s) => Date.parse(s.syncedAt)))
+  const stale = finishedAt !== null && newestSync > finishedAt
+
+  const publish = async () => {
+    setPublishing(true)
+    setPublishError(null)
+    setPublished(null)
+    const job = target === 'itch'
+      ? await runBridgeJob('publish.itch', { itchTarget: home?.itchTarget }, run)
+      : await runBridgeJob('publish.pages', {}, run)
+    setPublishing(false)
+    if (job.state === 'succeeded' && job.result.url) {
+      recordPublished.mutate(job.result.url)
+      setPublished({ url: job.result.url, first: !home?.lastPublishedUrl })
+    } else {
+      setPublishError(job.output || 'Publish failed — check the Unity Console.')
+    }
+  }
+  const publishLabel = target === 'itch' ? 'Publish to itch.io' : 'Publish to GitHub Pages'
+  const publishBlocker = target === 'itch'
+    ? (!home?.itchTarget ? 'Set your itch.io target (user/game) in Project home first.' : null)
+    : (!home?.repoUrl ? 'Connect a GitHub repo in Project home first.' : null)
 
   return (
     <div className="mb-6 border border-[#1b2533] bg-[#0b1018] p-5">
@@ -44,12 +79,42 @@ export function WebBuildCard({ connected, run = executeTool }: WebBuildCardProps
             ✓ Built in {status.seconds}s ({status.sizeMb} MB) → <code className="text-[#c8d4e2]">{status.outputPath}</code>
             {status.message && <div className="mt-1 text-[#8b97a7]">{status.message}</div>}
           </div>
-          <ol className="m-0 flex list-decimal flex-col gap-1.5 pl-5 leading-relaxed">
-            <li>Zip the contents of <code className="text-[#c8d4e2]">{status.outputPath}</code> (index.html at the top level).</li>
-            <li>On itch.io: Upload new project → Kind: HTML → upload the zip → tick &lsquo;This file will be played in the browser&rsquo;.</li>
-            <li>Send the link to 3+ people who haven&rsquo;t seen the game.</li>
-            <li>Log each session on the Playtests page.</li>
-          </ol>
+          {stale && (
+            <div role="alert" className="mb-3 text-amber-400">Build is older than your latest changes — build again before publishing.</div>
+          )}
+          {target === 'local' ? (
+            <ol className="m-0 flex list-decimal flex-col gap-1.5 pl-5 leading-relaxed">
+              <li>Zip the contents of <code className="text-[#c8d4e2]">{status.outputPath}</code> (index.html at the top level).</li>
+              <li>On itch.io: Upload new project → Kind: HTML → upload the zip → tick &lsquo;This file will be played in the browser&rsquo;.</li>
+              <li>Send the link to 3+ people who haven&rsquo;t seen the game.</li>
+              <li>Log each session on the Playtests page.</li>
+            </ol>
+          ) : (
+            <div>
+              <button
+                onClick={() => void publish()}
+                disabled={!connected || publishing || !!publishBlocker}
+                className="border border-[#4ea8ff]/40 bg-[#4ea8ff]/10 px-4 py-2 text-[11px] tracking-[1px] text-[#4ea8ff] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {publishing ? 'Publishing…' : publishLabel}
+              </button>
+              {publishBlocker && <div className="mt-2 text-[#8b97a7]">{publishBlocker}</div>}
+              {publishError && (
+                <pre role="alert" className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap border border-red-500/30 p-2 text-[11px] text-red-500">{publishError}</pre>
+              )}
+              {published && (
+                <div className="mt-3 leading-relaxed">
+                  <div className="text-green-500">
+                    ✓ Live at <a className="underline" href={published.url} target="_blank" rel="noreferrer">{published.url}</a>
+                  </div>
+                  <div>Send it to 3+ people who haven&rsquo;t seen the game; log each session on Playtests.</div>
+                  {target === 'github_pages' && published.first && (
+                    <div className="mt-1 text-amber-400">First time only: in the repo, Settings → Pages → Source: Deploy from a branch → gh-pages / (root) → Save.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

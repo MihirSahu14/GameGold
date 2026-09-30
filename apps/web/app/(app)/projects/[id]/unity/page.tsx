@@ -8,6 +8,7 @@ import { PlayControls } from '@/components/unity/PlayControls'
 import { UnityChangesPanel } from '@/components/unity/UnityChangesPanel'
 import { RuntimeUpdate } from '@/components/unity/RuntimeUpdate'
 import { WebBuildCard } from '@/components/unity/WebBuildCard'
+import { ProjectHomeCard } from '@/components/unity/ProjectHomeCard'
 import { ChangeSomethingPanel } from '@/components/unity/ChangeSomethingPanel'
 import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
 import { useToastStore } from '@/store/toastStore'
@@ -507,7 +508,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
             />
           )}
 
-          <WebBuildCard connected={mcpStatus === 'connected'} />
+          {project && <ProjectHomeCard projectId={id} project={project} connected={mcpStatus === 'connected'} />}
+          <WebBuildCard projectId={id} project={project} connected={mcpStatus === 'connected'} />
 
           {/* Install instructions (when not connected) */}
           {mcpStatus !== 'connected' && (

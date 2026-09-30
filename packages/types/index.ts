@@ -96,12 +96,41 @@ export interface Project {
   riskiestAssumption: string
   riskKind: RiskKind | null
   playerSettings: PlayerSettings
+  home: ProjectHome
   stageEnteredAt: string | null
   alphaAt: string | null
   provenanceGeneratedAt: string | null
   createdAt: string
   updatedAt: string
 }
+
+// ─── Project home: git repo + publish target (save version / publish) ─────────
+
+export type PublishTarget = 'local' | 'itch' | 'github_pages'
+
+export type ProjectHome = {
+  repoUrl: string | null
+  publishTarget: PublishTarget
+  itchTarget: string | null // itch.io "user/game"
+  lastSavedAt: string | null
+  lastSavedCommit: string | null
+  lastPublishedUrl: string | null
+  lastPublishedAt: string | null
+}
+
+/** vcs.status from the bridge. */
+export type VcsStatus = {
+  gitInstalled: boolean
+  butlerInstalled: boolean
+  isRepo: boolean
+  remoteUrl: string | null
+  branch: string | null
+  dirtyFiles: number
+  lastCommit: string | null
+}
+
+/** job.status from the bridge (vcs.save, publish.itch, publish.pages). output is already scrubbed of tokens. */
+export type BridgeJob = { state: 'running' | 'succeeded' | 'failed'; output: string; result: { commit?: string; url?: string } }
 
 export type ProjectCreate = {
   title: string
