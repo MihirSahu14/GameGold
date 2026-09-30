@@ -66,10 +66,19 @@ def test_trial_at_or_over_budget_raises_without_calling(mock_db, llm_ok, spent):
     mock_db.llm_budget.update_one.assert_not_called()
 
 
-def test_unpriceable_model_records_zero(mock_db, llm_ok, monkeypatch):
+def test_unpriceable_model_estimates_from_usage(mock_db, llm_ok, monkeypatch):
     monkeypatch.setattr("litellm.completion_cost", MagicMock(side_effect=Exception("no price")))
+    llm_ok.return_value.usage = MagicMock(prompt_tokens=1000, completion_tokens=500)
     _run(None, lambda: complete("sys", "hi"))
-    assert mock_db.llm_budget.update_one.call_args.args[1]["$inc"]["spent_usd"] == 0.0
+    spent = mock_db.llm_budget.update_one.call_args.args[1]["$inc"]["spent_usd"]
+    assert spent == pytest.approx(0.003 + 0.0075)
+
+
+def test_unpriceable_model_without_usage_charges_flat(mock_db, llm_ok, monkeypatch):
+    monkeypatch.setattr("litellm.completion_cost", MagicMock(side_effect=Exception("no price")))
+    llm_ok.return_value.usage = None
+    _run(None, lambda: complete("sys", "hi"))
+    assert mock_db.llm_budget.update_one.call_args.args[1]["$inc"]["spent_usd"] == 0.01
 
 
 def test_402_shape(client, mock_db, llm_ok):

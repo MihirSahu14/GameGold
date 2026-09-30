@@ -24,6 +24,9 @@ logger = logging.getLogger("app.llm")
 current_llm_user: ContextVar[dict | None] = ContextVar("current_llm_user", default=None)
 
 
+TRIAL_BUDGET_MESSAGE = "Today's free AI budget is used up. Add your own API key in Settings to keep going."
+
+
 class TrialBudgetExhausted(Exception):
     """Today's global free-trial budget on GameGold's key is spent (-> HTTP 402)."""
 
@@ -132,12 +135,21 @@ async def trial_spent_usd() -> float:
     return float(doc["spent_usd"]) if doc else 0.0
 
 
+def _estimate_cost(response) -> float:
+    """Conservative price for models LiteLLM can't price ($3/1M in, $15/1M out); flat $0.01 without usage."""
+    usage = getattr(response, "usage", None)
+    pt, ct = getattr(usage, "prompt_tokens", None), getattr(usage, "completion_tokens", None)
+    if isinstance(pt, int) and isinstance(ct, int):
+        return (pt * 3 + ct * 15) / 1_000_000
+    return 0.01
+
+
 async def _record_trial_cost(response) -> None:
     try:
         cost = float(litellm.completion_cost(completion_response=response))
     except Exception:
-        logger.warning("Could not price trial LLM call for model=%s; recording $0", settings.llm_model)
-        cost = 0.0
+        cost = _estimate_cost(response)
+        logger.warning("Could not price trial LLM call for model=%s; estimating $%.4f", settings.llm_model, cost)
     await get_db().llm_budget.update_one(
         {"_id": _today()}, {"$inc": {"spent_usd": cost, "calls": 1}}, upsert=True
     )
