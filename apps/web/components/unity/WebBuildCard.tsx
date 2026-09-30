@@ -14,7 +14,7 @@ type WebBuildCardProps = {
 
 /** WebGL build through the bridge + how to share it with playtesters (gap 66), published per the project's target. */
 export function WebBuildCard({ projectId, project, connected, run = executeTool }: WebBuildCardProps) {
-  const { status, elapsed, start, builtFrom } = useWebBuild(run)
+  const { status, elapsed, start, builtFrom } = useWebBuild(run, connected)
   const building = status?.state === 'building'
   const { data: syncs } = useUnitySyncs(projectId)
   const recordPublished = useRecordPublished(projectId)

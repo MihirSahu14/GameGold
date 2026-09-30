@@ -521,7 +521,10 @@ export function parseServerTime(s: string): number {
   return Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(s) ? s : `${s}Z`)
 }
 
-export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) => Promise<ToolResult> = executeTool) {
+export function useWebBuild(
+  exec: (tool: string, args: Record<string, unknown>) => Promise<ToolResult> = executeTool,
+  connected = false,
+) {
   const [status, setStatus] = useState<WebBuildStatus | null>(null)
   const [startedAt, setStartedAt] = useState(0)
   const [now, setNow] = useState(0)
@@ -536,6 +539,23 @@ export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) 
     setNow(t)
     setStatus({ state: res.success ? 'building' : 'failed', message: res.message, outputPath: '', sizeMb: 0, seconds: 0 })
   }, [exec])
+
+  // On open, pick up a build Unity already finished (or is still running) — the bridge remembers it
+  // for the Editor session, so reopening the page doesn't force a rebuild before publishing.
+  const [checked, setChecked] = useState(false)
+  useEffect(() => {
+    if (!connected || checked || status) return
+    let cancelled = false
+    void exec('build.status', {}).then((res) => {
+      if (cancelled) return
+      setChecked(true)
+      const data = res.data as WebBuildStatus | undefined
+      if (!res.success || !data || data.state === 'idle') return
+      if (data.state === 'building') { const t = Date.now(); setStartedAt(t); setNow(t) }
+      setStatus(data) // builtFrom stays null: we don't know when that build started, so no stale warning
+    })
+    return () => { cancelled = true }
+  }, [connected, checked, status, exec])
 
   useEffect(() => {
     if (!building) return
