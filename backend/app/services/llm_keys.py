@@ -1,4 +1,6 @@
 """Users' own LLM keys: encryption at rest and scrubbing keys out of error text."""
+import base64
+import hashlib
 import re
 
 from cryptography.fernet import Fernet
@@ -23,10 +25,11 @@ class OwnKeysNotConfigured(Exception):
 
 
 def _fernet() -> Fernet:
-    try:
-        return Fernet(settings.llm_key_secret.encode())
-    except ValueError as exc:  # empty or not a Fernet key
-        raise OwnKeysNotConfigured() from exc
+    # Any long random string works (e.g. Render's "Generate"): the Fernet key is derived from it.
+    secret = settings.llm_key_secret
+    if len(secret) < 32:
+        raise OwnKeysNotConfigured()
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest()))
 
 
 def encrypt_key(key: str) -> str:

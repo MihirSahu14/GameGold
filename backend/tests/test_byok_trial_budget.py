@@ -11,7 +11,7 @@ from starlette.requests import Request
 from app.config import settings
 from app.core.rate_limit import client_ip, user_or_ip_key
 from app.routers.auth import get_current_user
-from app.services.llm_keys import decrypt_key, encrypt_key, scrub
+from app.services.llm_keys import OwnKeysNotConfigured, decrypt_key, encrypt_key, scrub
 from app.services.llm_utils import TrialBudgetExhausted, complete, current_llm_user
 from tests.conftest import TEST_USER, make_llm_response
 
@@ -256,3 +256,11 @@ def test_own_key_auth_error_reads_plainly(mock_db, secret, monkeypatch):
     with pytest.raises(ValueError) as info:
         _run(_own_key_user(), lambda: complete("sys", "hi"))
     assert str(info.value) == "Your OpenRouter key was rejected — check that it's correct and still active."
+
+
+def test_any_long_secret_works_and_short_is_not_configured(monkeypatch):
+    monkeypatch.setattr(settings, "llm_key_secret", "x" * 44 + "+/=")  # e.g. Render "Generate" (std base64)
+    assert decrypt_key(encrypt_key(KEY)) == KEY
+    monkeypatch.setattr(settings, "llm_key_secret", "short")
+    with pytest.raises(OwnKeysNotConfigured):
+        encrypt_key(KEY)
