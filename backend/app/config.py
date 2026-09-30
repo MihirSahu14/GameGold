@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # AI — swap model string to switch providers (Groq dev, Claude prod)
     llm_model: str = "anthropic/claude-haiku-4-5"
     llm_api_key: str
+    # Free trial on the key above — global cap per UTC day; own keys are unlimited
+    trial_daily_budget_usd: float = 1.0
+    # Fernet key that encrypts users' own LLM keys; empty = own keys disabled (503)
+    llm_key_secret: str = ""
 
     # Image generation (Phase 3) — optional; sprite gen returns a clear error without it
     replicate_api_token: str = ""
