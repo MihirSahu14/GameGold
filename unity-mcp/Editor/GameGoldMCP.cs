@@ -58,6 +58,12 @@ namespace GameGold.MCP
             ["playmode.exit"]        = PlayModeTools.Exit,
             ["build.webgl"]          = BuildTools.WebGL,
             ["build.status"]         = BuildTools.Status,
+            ["vcs.status"]           = VcsTools.Status,
+            ["vcs.connect"]          = VcsTools.Connect,
+            ["vcs.save"]             = VcsTools.Save,
+            ["publish.itch"]         = VcsTools.PublishItch,
+            ["publish.pages"]        = VcsTools.PublishPages,
+            ["job.status"]           = VcsTools.JobStatus,
         };
 
         static GameGoldMCP()
