@@ -130,6 +130,8 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
 /** Show a failed request as an error toast. */
 export function toastError(err: unknown, fallback: string): void {
   // 429s were already toasted by the response interceptor.
-  if ((err as { response?: { status?: number } } | undefined)?.response?.status === 429) return
-  useToastStore.getState().pushToast(apiErrorMessage(err, fallback), 'error')
+  const status = (err as { response?: { status?: number } } | undefined)?.response?.status
+  if (status === 429) return
+  // 402 = free trial budget used up; the detail says to add a key, so link to Settings.
+  useToastStore.getState().pushToast(apiErrorMessage(err, fallback), 'error', status === 402 ? '/settings' : undefined)
 }

@@ -171,3 +171,16 @@ describe('handleResponseError', () => {
     postSpy.mockRestore()
   })
 })
+
+describe('toastError', () => {
+  it('shows the 402 trial-budget detail with a link to Settings', async () => {
+    const { toastError } = await import('@/lib/api')
+    toastError(
+      { response: { status: 402, data: { detail: "Today's free AI budget is used up.", code: 'trial_budget_exhausted' } } },
+      'Generation failed.',
+    )
+    const [toast] = useToastStore.getState().toasts
+    expect(toast.message).toBe("Today's free AI budget is used up.")
+    expect(toast.href).toBe('/settings')
+  })
+})
