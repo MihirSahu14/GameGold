@@ -99,6 +99,7 @@ export function HeroSection() {
   return (
     <section
       id="gg-hero"
+      className="px-4 pb-[150px] pt-[104px] md:px-6 md:pb-20 md:pt-[120px]"
       style={{
         position: 'relative',
         zIndex: 2,
@@ -108,16 +109,15 @@ export function HeroSection() {
         alignItems: 'center',
         justifyContent: 'center',
         textAlign: 'center',
-        padding: '120px 24px 80px',
       }}
     >
       {/* Corner HUDs */}
-      <div style={{ position: 'absolute', top: '84px', left: '28px', fontSize: '11px', color: '#3a4757', letterSpacing: '1px', fontFamily: 'var(--font-space-mono), monospace' }}>
+      <div className="left-4 md:left-7" style={{ position: 'absolute', top: '84px', fontSize: '11px', color: '#3a4757', letterSpacing: '1px', fontFamily: 'var(--font-space-mono), monospace' }}>
         + <span>x:{fmt(coords.x)} y:{fmt(coords.y)}</span>
       </div>
-      <div style={{ position: 'absolute', top: '84px', right: '28px', fontSize: '11px', color: '#3a4757', letterSpacing: '1px' }}>SYS://READY +</div>
-      <div style={{ position: 'absolute', bottom: '28px', left: '28px', fontSize: '11px', color: '#3a4757', letterSpacing: '1px' }}>+ v0.5.0</div>
-      <div style={{ position: 'absolute', bottom: '28px', right: '28px', fontSize: '11px', color: '#3a4757', letterSpacing: '1px' }}>PHASES 1&#8211;5 LIVE +</div>
+      <div className="right-4 md:right-7" style={{ position: 'absolute', top: '84px', fontSize: '11px', color: '#3a4757', letterSpacing: '1px' }}>SYS://READY +</div>
+      <div className="left-4 md:left-7" style={{ position: 'absolute', bottom: '28px', fontSize: '11px', color: '#3a4757', letterSpacing: '1px' }}>+ v0.5.0</div>
+      <div className="right-4 md:right-7" style={{ position: 'absolute', bottom: '28px', fontSize: '11px', color: '#3a4757', letterSpacing: '1px' }}>PHASES 1&#8211;5 LIVE +</div>
 
       {/* Parallax markers */}
       <span data-depth="34" style={{ position: 'absolute', top: '22%', left: '16%', color: '#1f3147', fontSize: '22px', userSelect: 'none' }}>+</span>
@@ -144,7 +144,7 @@ export function HeroSection() {
         data-depth="6"
         style={{
           fontFamily: 'var(--font-pixel), monospace',
-          fontSize: 'clamp(34px, 8vw, 92px)',
+          fontSize: 'clamp(24px, 8vw, 92px)',
           lineHeight: 1,
           color: '#eaf2ff',
           margin: '0 0 28px',
@@ -193,7 +193,7 @@ export function HeroSection() {
 
       {/* Scroll cue */}
       <div style={{ position: 'absolute', bottom: '60px', left: '50%', transform: 'translateX(-50%)', textAlign: 'center' }}>
-        <div style={{ fontSize: '11px', letterSpacing: '3px', color: '#4a5a6c', marginBottom: '10px' }}>SCROLL TO SEE THE STORY</div>
+        <div className="whitespace-nowrap" style={{ fontSize: '11px', letterSpacing: '3px', color: '#4a5a6c', marginBottom: '10px' }}>SCROLL TO SEE THE STORY</div>
         <div style={{ animation: 'ggBob 1.6s ease-in-out infinite', color: '#4ea8ff', fontSize: '18px' }}>&#8595;</div>
       </div>
     </section>
