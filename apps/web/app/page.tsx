@@ -80,7 +80,8 @@ export default function LandingPage() {
       {/* ── WHAT IS GAMEGOLD ── */}
       <section
         id="gg-what"
-        style={{ position: 'relative', zIndex: 2, maxWidth: '1040px', margin: '0 auto', padding: '120px 28px' }}
+        className="px-4 py-20 md:px-7 md:py-[120px]"
+        style={{ position: 'relative', zIndex: 2, maxWidth: '1040px', margin: '0 auto' }}
       >
         <div style={{ fontSize: '12px', letterSpacing: '3px', color: '#4ea8ff', marginBottom: '28px' }}>
           {'// WHAT IS GAMEGOLD'}
@@ -106,7 +107,7 @@ export default function LandingPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))',
             gap: '16px',
           }}
         >
@@ -132,13 +133,13 @@ export default function LandingPage() {
       {/* ── PHILOSOPHY ── */}
       <section
         id="gg-philosophy"
+        className="px-4 py-20 md:px-7 md:py-[120px]"
         style={{
           position: 'relative',
           zIndex: 2,
           background: '#0a0f16',
           borderTop: '1px solid #141c27',
           borderBottom: '1px solid #141c27',
-          padding: '120px 28px',
         }}
       >
         <div style={{ maxWidth: '1040px', margin: '0 auto' }}>
@@ -173,8 +174,8 @@ export default function LandingPage() {
               }}
             >
               <div
+                className="px-3 py-4 md:px-[22px]"
                 style={{
-                  padding: '16px 22px',
                   ...pixel,
                   fontSize: '10px',
                   color: '#4ea8ff',
@@ -184,7 +185,7 @@ export default function LandingPage() {
               >
                 WHAT GAMEGOLD DOES
               </div>
-              <div style={{ padding: '16px 22px', ...pixel, fontSize: '10px', color: '#f4c20d', letterSpacing: '1px' }}>
+              <div className="px-3 py-4 md:px-[22px]" style={{ ...pixel, fontSize: '10px', color: '#f4c20d', letterSpacing: '1px' }}>
                 WHAT YOU DO IN UNITY
               </div>
             </div>
@@ -200,10 +201,10 @@ export default function LandingPage() {
                   borderTop: '1px solid #141c27',
                 }}
               >
-                <div style={{ padding: '16px 22px', borderRight: '1px solid #141c27', color: '#c8d4e2', fontSize: '14px' }}>
+                <div className="px-3 py-4 text-[13px] md:px-[22px] md:text-[14px]" style={{ borderRight: '1px solid #141c27', color: '#c8d4e2' }}>
                   {left}
                 </div>
-                <div style={{ padding: '16px 22px', color: '#8b97a7', fontSize: '14px' }}>
+                <div className="px-3 py-4 text-[13px] md:px-[22px] md:text-[14px]" style={{ color: '#8b97a7' }}>
                   <span style={{ color: '#4ea8ff' }}>&#8594;</span> {right}
                 </div>
               </div>
@@ -271,11 +272,11 @@ export default function LandingPage() {
 
       {/* ── CTA ── */}
       <section
+        className="px-4 pb-20 pt-24 md:px-7 md:pt-[140px]"
         style={{
           position: 'relative',
           zIndex: 2,
           textAlign: 'center',
-          padding: '140px 28px 80px',
         }}
       >
         <span data-depth="40" style={{ position: 'absolute', top: '30%', left: '18%', color: '#1f3147', fontSize: '22px', userSelect: 'none' }}>+</span>
@@ -328,12 +329,12 @@ export default function LandingPage() {
 
       {/* ── FOOTER ── */}
       <footer
+        className="px-4 py-10 md:px-7"
         style={{
           position: 'relative',
           zIndex: 2,
           borderTop: '1px solid #141c27',
           background: '#0a0f16',
-          padding: '40px 28px',
           display: 'flex',
           flexWrap: 'wrap',
           gap: '18px',
