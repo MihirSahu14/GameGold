@@ -116,7 +116,7 @@ export function MCPDemo() {
         @keyframes ggMcpWalk { 0% { transform: translateX(0); } 50% { transform: translateX(120px); } 100% { transform: translateX(0); } }
       `}</style>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '20px' }}>
 
         {/* ── LEFT: Build plan ─────────────────────────────────────────── */}
         <div style={{ border: '1px solid #1b2533', background: '#0b1018' }}>

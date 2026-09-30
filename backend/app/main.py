@@ -3,6 +3,7 @@ import time
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -14,9 +15,9 @@ from app.core.csrf import CSRFMiddleware
 from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import connect_db, close_db, get_db
 from app.prompts.health_prompt import HEALTH_SYSTEM_PROMPT, HEALTH_USER_PROMPT
-from app.routers import auth, oauth, projects, gdd, systems, assets, playtest, deployment, unity
+from app.routers import auth, me, oauth, projects, gdd, systems, assets, playtest, deployment, unity
 from app.routers.auth import get_current_user
-from app.services.llm_utils import complete
+from app.services.llm_utils import TRIAL_BUDGET_MESSAGE, TrialBudgetExhausted, complete
 from scripts.migrate_emails import migrate as migrate_emails
 from scripts.migrate_stages import migrate as migrate_stages
 
@@ -67,6 +68,16 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(TrialBudgetExhausted)
+async def trial_budget_exhausted(request: Request, exc: TrialBudgetExhausted):
+    return JSONResponse(status_code=402, content={
+        "detail": TRIAL_BUDGET_MESSAGE,
+        "code": "trial_budget_exhausted",
+    })
+
+
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(CSRFMiddleware)
 
@@ -86,6 +97,7 @@ app.add_middleware(TimingMiddleware)
 
 # Routers
 app.include_router(auth.router)
+app.include_router(me.router)
 app.include_router(oauth.router)
 app.include_router(projects.router)
 app.include_router(gdd.router)

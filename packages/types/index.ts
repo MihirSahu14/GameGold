@@ -475,6 +475,27 @@ export type UnityChangePlan = {
   isPlaying?: boolean
 }
 
+// ─── LLM settings (bring your own key) ──────────────────────────────────────
+
+export type LlmProvider = 'openrouter' | 'anthropic' | 'openai' | 'gemini' | 'groq'
+
+/** GET/PUT/DELETE /me/llm. The key itself never comes back — only its last 4. */
+export type LlmConfig = {
+  provider: LlmProvider | null
+  /** Full LiteLLM string incl. provider prefix, e.g. "openrouter/anthropic/claude-sonnet-5.5". */
+  model: string | null
+  keyLast4: string | null
+  usingOwnKey: boolean
+  trial: { budgetUsd: number; spentUsd: number; remainingUsd: number }
+}
+
+export type LlmConfigUpdate = {
+  provider: LlmProvider
+  /** Full LiteLLM string incl. provider prefix. */
+  model: string
+  apiKey: string
+}
+
 // ─── API Responses ───────────────────────────────────────────────────────────
 
 export interface ApiResponse<T> {

@@ -166,10 +166,10 @@ export function PhaseSection() {
 
         {/* Section kicker */}
         <div
+          className="left-4 md:left-7"
           style={{
             position: 'absolute',
             top: '84px',
-            left: '28px',
             fontSize: '12px',
             letterSpacing: '3px',
             color: '#4ea8ff',
@@ -181,6 +181,7 @@ export function PhaseSection() {
 
         {/* Bottom HUD bar */}
         <div
+          className="px-4 max-md:flex-wrap md:px-7"
           style={{
             position: 'absolute',
             left: 0,
@@ -188,11 +189,13 @@ export function PhaseSection() {
             bottom: 0,
             borderTop: '1px solid #141c27',
             background: 'rgba(8,12,18,0.6)',
-            padding: '16px 28px',
+            paddingTop: '16px',
+            paddingBottom: '16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '20px',
+            columnGap: '20px',
+            rowGap: '10px',
             fontFamily: 'var(--font-space-mono), monospace',
           }}
         >
@@ -214,9 +217,9 @@ export function PhaseSection() {
               <span
                 key={i}
                 ref={(el) => { segRefs.current[i] = el }}
+                className="w-5 md:w-[34px]"
                 style={{
                   display: 'inline-block',
-                  width: '34px',
                   height: '4px',
                   background: i === 0 ? PHASES[0].color : '#1b2533',
                   transition: 'background .25s',
@@ -224,19 +227,19 @@ export function PhaseSection() {
               />
             ))}
           </div>
-          <div style={{ fontSize: '11px', letterSpacing: '2px', color: '#4a5a6c', whiteSpace: 'nowrap' }}>
+          <div className="max-md:hidden" style={{ fontSize: '11px', letterSpacing: '2px', color: '#4a5a6c', whiteSpace: 'nowrap' }}>
             KEEP SCROLLING &#8595;
           </div>
         </div>
 
         {/* Left rail */}
         <div
+          className="hidden md:flex"
           style={{
             position: 'absolute',
             left: '28px',
             top: '50%',
             transform: 'translateY(-50%)',
-            display: 'flex',
             flexDirection: 'column',
             gap: '14px',
             zIndex: 5,
@@ -272,13 +275,12 @@ export function PhaseSection() {
             <div
               key={i}
               ref={(el) => { panelRefs.current[i] = el }}
+              className="flex-col justify-center gap-5 px-4 md:flex-row md:justify-start md:gap-12 md:pl-20 md:pr-7"
               style={{
                 position: 'absolute',
                 inset: 0,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '48px',
-                padding: '0 28px 0 80px',
                 opacity: i === 0 ? 1 : 0,
                 transform: i === 0 ? 'translateY(0)' : 'translateY(30px)',
                 transition: 'opacity .5s, transform .5s',
@@ -286,7 +288,7 @@ export function PhaseSection() {
               }}
             >
               {/* Big number + floating icon */}
-              <div style={{ flex: '0 0 auto', textAlign: 'center' }}>
+              <div className="flex items-center gap-5 md:block" style={{ flex: '0 0 auto', textAlign: 'center' }}>
                 <div
                   style={{
                     fontFamily: 'var(--font-pixel), monospace',
@@ -300,14 +302,15 @@ export function PhaseSection() {
                   {phase.num}
                 </div>
                 <div
-                  style={{ fontSize: '40px', marginTop: '18px', animation: 'ggFloat 3s ease-in-out infinite' }}
+                  className="text-[32px] md:mt-[18px] md:text-[40px]"
+                  style={{ animation: 'ggFloat 3s ease-in-out infinite' }}
                 >
                   {phase.icon}
                 </div>
               </div>
 
               {/* Text content */}
-              <div style={{ flex: 1 }}>
+              <div className="max-md:w-full" style={{ flex: 1 }}>
                 <div
                   style={{
                     display: 'inline-block',
@@ -334,8 +337,8 @@ export function PhaseSection() {
                   {phase.title}
                 </h3>
                 <p
+                  className="text-[14px] md:text-[16px]"
                   style={{
-                    fontSize: '16px',
                     color: '#8b97a7',
                     maxWidth: '460px',
                     lineHeight: 1.7,

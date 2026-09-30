@@ -132,12 +132,12 @@ export function UnityGuideSection() {
   return (
     <section
       id="gg-unity"
+      className="px-4 py-20 md:px-7 md:py-[120px]"
       style={{
         position: 'relative',
         zIndex: 2,
         maxWidth: '1040px',
         margin: '0 auto',
-        padding: '120px 28px',
       }}
     >
       <div style={{ fontSize: '12px', letterSpacing: '3px', color: '#4ea8ff', marginBottom: '28px' }}>
@@ -162,18 +162,18 @@ export function UnityGuideSection() {
         &#8595; click a step to mark it complete
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: '24px' }}>
         <UnityCard filename="Player_Idle_8frame.png" label="Sprite generated" steps={SPRITE_STEPS} />
         <UnityCard filename="PlayerController.cs" label="Script generated" steps={SCRIPT_STEPS} />
       </div>
 
       {/* MCP callout */}
       <div
+        className="p-4 md:p-7"
         style={{
           marginTop: '48px',
           border: '1px solid #4a3d0e',
           background: 'linear-gradient(135deg, rgba(244,194,13,0.06), rgba(11,16,24,0.4))',
-          padding: '28px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>

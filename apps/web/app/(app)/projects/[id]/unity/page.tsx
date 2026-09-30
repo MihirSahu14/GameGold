@@ -7,6 +7,7 @@ import { MissingScripts } from '@/components/unity/MissingScripts'
 import { PlayControls } from '@/components/unity/PlayControls'
 import { UnityChangesPanel } from '@/components/unity/UnityChangesPanel'
 import { RuntimeUpdate } from '@/components/unity/RuntimeUpdate'
+import { WebBuildCard } from '@/components/unity/WebBuildCard'
 import { ChangeSomethingPanel } from '@/components/unity/ChangeSomethingPanel'
 import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
 import { useToastStore } from '@/store/toastStore'
@@ -505,6 +506,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
               onOverwrite={(item) => void handleOverwrite(item)}
             />
           )}
+
+          <WebBuildCard connected={mcpStatus === 'connected'} />
 
           {/* Install instructions (when not connected) */}
           {mcpStatus !== 'connected' && (

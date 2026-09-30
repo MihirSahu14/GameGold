@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useToastStore } from '@/store/toastStore'
 
 export function Toaster() {
@@ -22,6 +23,11 @@ export function Toaster() {
           }
         >
           <span>{toast.message}</span>
+          {toast.href && (
+            <Link href={toast.href} className="font-semibold underline">
+              Settings →
+            </Link>
+          )}
           <button
             type="button"
             aria-label="Dismiss"

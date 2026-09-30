@@ -119,10 +119,12 @@ export async function handleResponseError(error: {
 api.interceptors.response.use((response) => response, handleResponseError)
 
 export function apiErrorMessage(err: unknown, fallback: string): string {
-  const axiosErr = err as { response?: { data?: { detail?: string } } } | undefined
+  const axiosErr = err as { response?: { data?: { detail?: unknown } } } | undefined
   if (!axiosErr) return fallback
   if (axiosErr.response) {
-    return axiosErr.response.data?.detail ?? fallback
+    // A 422 detail is a list of validation errors, not a message.
+    const detail = axiosErr.response.data?.detail
+    return typeof detail === 'string' ? detail : fallback
   }
   return 'Could not reach the server — it may be down, or the request was blocked by CORS. Check the browser console for details.'
 }
@@ -130,6 +132,8 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
 /** Show a failed request as an error toast. */
 export function toastError(err: unknown, fallback: string): void {
   // 429s were already toasted by the response interceptor.
-  if ((err as { response?: { status?: number } } | undefined)?.response?.status === 429) return
-  useToastStore.getState().pushToast(apiErrorMessage(err, fallback), 'error')
+  const status = (err as { response?: { status?: number } } | undefined)?.response?.status
+  if (status === 429) return
+  // 402 = free trial budget used up; the detail says to add a key, so link to Settings.
+  useToastStore.getState().pushToast(apiErrorMessage(err, fallback), 'error', status === 402 ? '/settings' : undefined)
 }

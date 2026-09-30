@@ -16,6 +16,7 @@ import { PlaytestReportView } from '@/components/playtest/PlaytestReportView'
 import { BugTracker } from '@/components/playtest/BugTracker'
 import { SessionLogForm, RING_LABELS } from '@/components/playtest/SessionLogForm'
 import { DecisionPanel } from '@/components/playtest/DecisionPanel'
+import { TrialNote } from '@/components/layout/TrialNote'
 import type {
   PlaytestPersona,
   PlaytestReport,
@@ -140,6 +141,7 @@ export default function PlaytestingPage({
             <p className="text-zinc-500 text-xs mt-0.5">
               Watch real people play, log what happened. Only human sessions count toward stage gates.
             </p>
+            <TrialNote />
           </div>
           <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 gap-0.5">
             {TABS.map((t) => (

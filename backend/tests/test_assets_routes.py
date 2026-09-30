@@ -585,6 +585,31 @@ def test_batch_sprites_partial_failure_keeps_going(client, mock_db, monkeypatch)
     assert mock_db.assets.insert_one.call_count == 2
 
 
+def test_batch_sprites_trial_budget_mid_batch_keeps_saved(client, mock_db, monkeypatch):
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    mock_db.llm_budget.find_one.side_effect = [{"spent_usd": 0.0}, {"spent_usd": 5.0}]  # trips on item 2
+    monkeypatch.setattr("litellm.completion", MagicMock(return_value=make_llm_response(CANNED_SPRITE_JSON)))
+    monkeypatch.setattr(
+        "app.routers.assets.generate_sprite_image",
+        AsyncMock(return_value="data:image/png;base64,abc123"),
+    )
+    mock_db.assets.insert_one.return_value = MagicMock(inserted_id=ObjectId())
+    mock_db.assets.find_one.side_effect = lambda q: _fake_asset_doc(
+        **mock_db.assets.insert_one.call_args[0][0] | {"_id": q["_id"]}
+    )
+
+    resp = client.post(
+        f"/projects/{TEST_PROJECT_ID}/assets/sprites/batch",
+        json={"items": [{"name": n, "description": "d"} for n in ("Cafe", "Avery", "Mug")]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [a["name"] for a in body["assets"]] == ["Cafe"]
+    assert [e["name"] for e in body["errors"]] == ["Avery", "Mug"]
+    assert all(e["detail"].startswith("Today's free AI budget is used up") for e in body["errors"])
+    assert mock_db.assets.insert_one.call_count == 1
+
+
 def test_batch_sprites_caps_items_at_12(client, mock_db):
     mock_db.projects.find_one.return_value = TEST_PROJECT
     items = [{"name": f"s{i}", "description": "d"} for i in range(13)]

@@ -20,6 +20,10 @@ services:
         value: anthropic/claude-haiku-4-5
       - key: LLM_API_KEY
         sync: false # Anthropic key (sk-ant-...) — set in the Render dashboard
+      - key: TRIAL_DAILY_BUDGET_USD
+        sync: false # e.g. 1.0 — global free-trial cap per UTC day (unset = 1.0)
+      - key: LLM_KEY_SECRET
+        sync: false # Fernet key for users' own LLM keys; never rotate casually (stored keys become unreadable)
       - key: REPLICATE_API_TOKEN
         sync: false
       - key: CORS_ORIGINS

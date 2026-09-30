@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { downloadBlob } from '../utils'
 import { svgToPngDataUri } from '../rasterize'
@@ -504,4 +504,53 @@ export function describeSettingsPatch(current: PlayerSettings, patch: Partial<Pl
     if (before !== after) lines.push(`${label} ${String(before)} → ${String(after)}`)
   }
   return lines
+}
+
+// ─── Build for web (gap 66): bridge build.webgl, then poll build.status ───────
+
+export type WebBuildState = 'idle' | 'building' | 'succeeded' | 'failed'
+export type WebBuildStatus = { state: WebBuildState; message: string; outputPath: string; sizeMb: number; seconds: number }
+
+export const BUILD_POLL_MS = 3000
+export const BUILD_POLL_MAX_FAILURES = 10
+// The bridge answers this while Unity's main thread is busy building — contact is fine, keep waiting.
+const BRIDGE_BUSY = 'Tool timed out'
+
+export function useWebBuild(exec: (tool: string, args: Record<string, unknown>) => Promise<ToolResult> = executeTool) {
+  const [status, setStatus] = useState<WebBuildStatus | null>(null)
+  const [startedAt, setStartedAt] = useState(0)
+  const [now, setNow] = useState(0)
+  const building = status?.state === 'building'
+
+  const start = useCallback(async () => {
+    const res = await exec('build.webgl', {})
+    const t = Date.now()
+    setStartedAt(t)
+    setNow(t)
+    setStatus({ state: res.success ? 'building' : 'failed', message: res.message, outputPath: '', sizeMb: 0, seconds: 0 })
+  }, [exec])
+
+  useEffect(() => {
+    if (!building) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout>
+    let failures = 0
+    const fail = (message: string) => setStatus({ state: 'failed', message, outputPath: '', sizeMb: 0, seconds: 0 })
+    const poll = async () => {
+      const res = await exec('build.status', {})
+      if (cancelled) return
+      const data = res.data as WebBuildStatus | undefined
+      failures = res.success || res.message === BRIDGE_BUSY ? 0 : failures + 1
+      if (failures >= BUILD_POLL_MAX_FAILURES) fail('Lost contact with Unity during the build — check the Unity Console.')
+      // idle after building: SessionState was wiped, so Unity restarted mid-build
+      else if (res.success && data?.state === 'idle') fail('The build was interrupted (Unity restarted).')
+      else if (res.success && data && data.state !== 'building') setStatus(data)
+      else timer = setTimeout(() => void poll(), BUILD_POLL_MS)
+    }
+    timer = setTimeout(() => void poll(), BUILD_POLL_MS)
+    const tick = setInterval(() => setNow(Date.now()), 1000)
+    return () => { cancelled = true; clearTimeout(timer); clearInterval(tick) }
+  }, [building, exec])
+
+  return { status, elapsed: building ? Math.round((now - startedAt) / 1000) : 0, start }
 }

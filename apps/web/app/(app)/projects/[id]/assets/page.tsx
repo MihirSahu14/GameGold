@@ -20,6 +20,7 @@ import { BatchSpritePanel } from '@/components/assets/BatchSpritePanel'
 import { UploadSpritePanel } from '@/components/assets/UploadSpritePanel'
 import { ProposalsPanel, proposalKey } from '@/components/assets/ProposalsPanel'
 import { StalenessBanner } from '@/components/layout/StalenessBanner'
+import { TrialNote } from '@/components/layout/TrialNote'
 import type { ArtStyle, AssetKind, AssetProposal, AssetType, ScriptType } from '@gamegold/types'
 import { cn } from '@/lib/utils'
 import { toastError } from '@/lib/api'
@@ -204,6 +205,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
           <div>
             <h1 className="text-zinc-50 font-semibold text-lg">Assets & Unity Guides</h1>
             <p className="text-zinc-500 text-xs mt-0.5">Generate C# scripts, AI-drawn sprites, and dialogue trees. Every asset includes step-by-step Unity setup instructions.</p>
+            <TrialNote />
           </div>
           <div className="flex items-center gap-3">
             <button
