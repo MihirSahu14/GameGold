@@ -1,4 +1,4 @@
-// GameGold CardBattlePlayer v1
+// GameGold CardBattlePlayer v2
 // GameGold CardBattlePlayer — plays a GameGold card-battler JSON (roguelite deckbuilder-lite) in Play mode.
 // Setup: put this on any GameObject, save the game as Assets/Resources/GameGold/cardgame.json, press Play.
 // It builds its own UI (legacy uGUI Text, no shaders, no external assets) and its own sounds.
@@ -1220,6 +1220,7 @@ public partial class CardBattlePlayer : MonoBehaviour
         text.alignment = TextAnchor.MiddleCenter;
         text.text = label;
         var button = img.gameObject.AddComponent<Button>();
+        button.targetGraphic = img; // built inside hidden panels: Awake (which would set it) hasn't run in players
         var colors = button.colors;
         colors.highlightedColor = new Color(0.75f, 0.85f, 1f);
         button.colors = colors;

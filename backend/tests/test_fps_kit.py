@@ -76,7 +76,7 @@ def test_validate_cases(label, patch, expected):
 
 def test_arena_player_template():
     code = UNITY_TEMPLATES["ArenaPlayer"]
-    assert code.startswith("// GameGold ArenaPlayer v1") and template_version(code) == 1
+    assert code.startswith("// GameGold ArenaPlayer v2") and template_version(code) == 2
     assert "public class ArenaPlayer : MonoBehaviour" in code
     for needle in ("GameGold/fps_arena", "JsonUtility.FromJson<ArenaData>", "#if ENABLE_INPUT_SYSTEM", "#elif ENABLE_LEGACY_INPUT_MANAGER",
                    "GameObject.CreatePrimitive", "CharacterController", "Physics.RaycastAll", "CursorLockMode.Locked",

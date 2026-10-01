@@ -1,4 +1,4 @@
-// GameGold ArenaPlayer v1
+// GameGold ArenaPlayer v2
 // GameGold ArenaPlayer — a complete 3D arena first-person shooter built at runtime from one JSON file.
 // Setup: put this on an empty GameObject in an empty scene, save the arena JSON as
 // Assets/Resources/GameGold/fps_arena.json and press Play. It builds the floor, walls, cover, light,
@@ -1207,6 +1207,7 @@ public class ArenaPlayer : MonoBehaviour
         text.text = label;
         text.color = textColor;
         var button = img.gameObject.AddComponent<Button>();
+        button.targetGraphic = img; // built inside hidden panels: Awake (which would set it) hasn't run in players
         var colors = button.colors;
         colors.highlightedColor = new Color(0.75f, 0.85f, 1f);
         button.colors = colors;

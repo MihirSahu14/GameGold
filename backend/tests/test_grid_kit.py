@@ -115,7 +115,7 @@ def test_ramp_warnings():
 
 def test_grid_player_runtime_contract():
     RUNTIME = RUNTIME_PATH.read_text(encoding="utf-8")
-    assert RUNTIME.startswith("// GameGold GridPlayer v1")
+    assert RUNTIME.startswith("// GameGold GridPlayer v2")
     assert "public class GridPlayer : MonoBehaviour" in RUNTIME
     for needle in ("GameGold/levels", "GameGold/grid_settings", "JsonUtility.FromJson", "GameGold/Sprites/",
                    "GameGold/Sfx/", "PlayerPrefs", "#if ENABLE_INPUT_SYSTEM", "#elif ENABLE_LEGACY_INPUT_MANAGER",

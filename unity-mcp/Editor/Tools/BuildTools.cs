@@ -25,6 +25,7 @@ namespace GameGold.MCP
             var missing = paths.Where(p => AssetDatabase.LoadAssetAtPath<SceneAsset>(p) == null).ToList();
             if (missing.Count > 0) return GameGoldMCP.Error($"No scene at: {string.Join(", ", missing)}");
             EditorBuildSettings.scenes = paths.Distinct().Select(p => new EditorBuildSettingsScene(p, true)).ToArray();
+            AssetDatabase.SaveAssets(); // write ProjectSettings now: a killed or crashed Editor never saves on quit
             return GameGoldMCP.Ok($"Build Settings now lists {EditorBuildSettings.scenes.Length} scene(s)");
         }
 

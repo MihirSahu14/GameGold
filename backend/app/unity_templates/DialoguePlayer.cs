@@ -1,4 +1,4 @@
-// GameGold DialoguePlayer v8
+// GameGold DialoguePlayer v9
 // GameGold DialoguePlayer — plays a GameGold narrative dialogue JSON in Play mode.
 // Setup: put this on any GameObject, save the dialogue JSON as
 // Assets/Resources/GameGold/dialogue.json, backgrounds in Resources/GameGold/Backgrounds/<bg>,
@@ -1304,6 +1304,7 @@ public class DialoguePlayer : MonoBehaviour
         text.alignment = TextAnchor.MiddleCenter;
         text.text = label;
         var button = img.gameObject.AddComponent<Button>();
+        button.targetGraphic = img; // built inside hidden panels: Awake (which would set it) hasn't run in players
         var colors = button.colors;
         colors.highlightedColor = new Color(0.75f, 0.85f, 1f);
         button.colors = colors;

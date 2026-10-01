@@ -1,4 +1,4 @@
-// GameGold GridPlayer v1
+// GameGold GridPlayer v2
 // GameGold GridPlayer — plays a GameGold grid-puzzle level set (Sokoban rules) in Play mode.
 // Setup: put this on any GameObject, save the levels as Assets/Resources/GameGold/levels.json, press Play.
 // It builds its own camera-free UI (legacy uGUI Text + coloured Images): no sprites, shaders or prefabs needed.
@@ -931,6 +931,7 @@ public class GridPlayer : MonoBehaviour
         text.alignment = TextAnchor.MiddleCenter;
         text.text = label;
         var button = img.gameObject.AddComponent<Button>();
+        button.targetGraphic = img; // built inside hidden panels: Awake (which would set it) hasn't run in players
         var colors = button.colors;
         colors.highlightedColor = new Color(0.75f, 0.85f, 1f);
         button.colors = colors;

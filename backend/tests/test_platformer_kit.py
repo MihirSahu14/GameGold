@@ -116,7 +116,7 @@ def test_sample_breaks_when_flag_walled_off():
 
 
 def test_runner_template_shape():
-    assert RUNNER.startswith("// GameGold PlatformerRunner v2\n")
+    assert RUNNER.startswith("// GameGold PlatformerRunner v3\n")
     for needle in ("public class PlatformerRunner : MonoBehaviour", "GameGold/platformer_levels", "GameGold/platformer_settings",
                    "JsonUtility.FromJson<LevelDoc>", "GameGold/Sprites/", "gg_step=1", "stepSeconds", "Time.timeScale = 0f",
                    "OnApplicationFocus", "PlayerPrefs", "#if ENABLE_INPUT_SYSTEM", "#elif ENABLE_LEGACY_INPUT_MANAGER",

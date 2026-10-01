@@ -1,4 +1,4 @@
-// GameGold PlatformerRunner v2
+// GameGold PlatformerRunner v3
 // GameGold PlatformerRunner — plays a GameGold platformer levels JSON in Play mode (Editor and WebGL).
 // Setup: put this on any GameObject in an empty scene, save the levels as
 // Assets/Resources/GameGold/platformer_levels.json and (optional) the feel settings as
@@ -1089,7 +1089,9 @@ public class PlatformerRunner : MonoBehaviour
         var text = MakeText((RectTransform)img.transform, "Label", new Vector2(0.03f, 0f), new Vector2(0.97f, 1f), size, FontStyle.Normal);
         text.alignment = TextAnchor.MiddleCenter;
         text.text = label;
-        return img.gameObject.AddComponent<Button>();
+        var button = img.gameObject.AddComponent<Button>();
+        button.targetGraphic = img; // built inside hidden panels: Awake (which would set it) hasn't run in players
+        return button;
     }
 
     Image MakeImage(RectTransform parent, string name, Vector2 min, Vector2 max, Color color)
