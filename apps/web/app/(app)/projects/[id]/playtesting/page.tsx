@@ -16,8 +16,13 @@ import { PlaytestReportView } from '@/components/playtest/PlaytestReportView'
 import { BugTracker } from '@/components/playtest/BugTracker'
 import { SessionLogForm, RING_LABELS } from '@/components/playtest/SessionLogForm'
 import { DecisionPanel } from '@/components/playtest/DecisionPanel'
+import { AgentPlaytestCard } from '@/components/playtest/AgentPlaytestCard'
+import { AgentPlayReportView } from '@/components/playtest/AgentPlayReportView'
+import { AGENT_LABELS } from '@/lib/queries/useAgentPlaytest'
+import { useUnityConnection } from '@/lib/queries/useUnity'
 import { TrialNote } from '@/components/layout/TrialNote'
 import type {
+  AgentPlayReport,
   PlaytestPersona,
   PlaytestReport,
   PlaytestSession,
@@ -27,13 +32,18 @@ import type {
 import { cn } from '@/lib/utils'
 import { toastError } from '@/lib/api'
 
-type Tab = 'sessions' | 'predicted' | 'bugs'
+type Tab = 'sessions' | 'agents' | 'predicted' | 'bugs'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'sessions', label: '👥 Human sessions' },
+  { key: 'agents', label: '🤖 Agent playthroughs' },
   { key: 'predicted', label: '🔮 Predicted issues (AI)' },
   { key: 'bugs', label: '🐛 Bug Tracker' },
 ]
+
+function tabFrom(tab: string | undefined): Tab {
+  return tab === 'bugs' || tab === 'predicted' || tab === 'agents' ? tab : 'sessions'
+}
 
 export default function PlaytestingPage({
   params,
@@ -54,17 +64,19 @@ export default function PlaytestingPage({
   const synthesize = useSynthesizeSessions(id)
   const decide = usePrototypeDecision(id)
 
-  const [activeTab, setActiveTab] = useState<Tab>(tab === 'bugs' || tab === 'predicted' ? tab : 'sessions')
+  const { status: bridge } = useUnityConnection()
+  const [activeTab, setActiveTab] = useState<Tab>(tabFrom(tab))
 
   // The page stays mounted across a Sidebar "Bugs" (?tab=bugs) navigation — the
   // initializer above only runs once, so re-sync whenever the URL param changes.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    setActiveTab(tab === 'bugs' || tab === 'predicted' ? tab : 'sessions')
+    setActiveTab(tabFrom(tab))
   }, [tab])
   /* eslint-enable react-hooks/set-state-in-effect */
   const [persona, setPersona] = useState<PlaytestPersona | null>(null)
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null)
+  const [selectedAgentReportId, setSelectedAgentReportId] = useState<string | null>(null)
   const [synthesis, setSynthesis] = useState<string | null>(null)
 
   // Persona list (and which one is picked) comes from the backend — it's
@@ -79,7 +91,9 @@ export default function PlaytestingPage({
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const sessions = (entries ?? []).filter((e): e is PlaytestSession => e.kind === 'session')
-  const reports = (entries ?? []).filter((e): e is PlaytestReport => e.kind !== 'session')
+  const reports = (entries ?? []).filter((e): e is PlaytestReport => e.kind !== 'session' && e.kind !== 'agent_play')
+  const agentReports = (entries ?? []).filter((e): e is AgentPlayReport => e.kind === 'agent_play')
+  const selectedAgentReport = agentReports.find((r) => r._id === selectedAgentReportId) ?? agentReports[0] ?? null
   const selectedReport = reports.find((r) => r._id === selectedReportId) ?? reports[0] ?? null
 
   async function handleRun() {
@@ -123,6 +137,7 @@ export default function PlaytestingPage({
     if (confirm('Delete this entry?')) {
       deleteReport.mutate(entryId)
       if (selectedReportId === entryId) setSelectedReportId(null)
+      if (selectedAgentReportId === entryId) setSelectedAgentReportId(null)
     }
   }
 
@@ -163,6 +178,41 @@ export default function PlaytestingPage({
       <div className="flex-1 overflow-y-auto p-6">
         {activeTab === 'bugs' ? (
           <BugTracker projectId={id} />
+        ) : activeTab === 'agents' ? (
+          <div className="flex flex-col gap-5 max-w-3xl">
+            {project && (
+              <AgentPlaytestCard projectId={id} publishedUrl={project.home.lastPublishedUrl} connected={bridge === 'connected'} />
+            )}
+            {agentReports.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-zinc-600 text-xs">Reports:</p>
+                {agentReports.map((r) => (
+                  <button
+                    key={r._id}
+                    onClick={() => setSelectedAgentReportId(r._id)}
+                    className={cn(
+                      'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border transition-colors',
+                      selectedAgentReport?._id === r._id
+                        ? 'bg-zinc-800 border-zinc-600 text-zinc-200'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300',
+                    )}
+                  >
+                    {AGENT_LABELS[r.agentPersona]} · {new Date(r.createdAt).toLocaleDateString()}
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDelete(r._id)
+                      }}
+                      className="text-zinc-700 hover:text-red-400 ml-0.5"
+                    >
+                      ✕
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {selectedAgentReport && <AgentPlayReportView key={selectedAgentReport._id} report={selectedAgentReport} />}
+          </div>
         ) : activeTab === 'sessions' ? (
           <div className="flex flex-col gap-5 max-w-3xl">
             {project?.stage === 'prototype' && (
