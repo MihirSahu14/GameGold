@@ -17,7 +17,8 @@ BugSeverity = Literal["low", "medium", "high", "critical"]
 BugStatus = Literal["open", "in-progress", "fixed", "wontfix"]
 PlaytestKind = Literal["ai_persona", "session", "agent_play"]
 AgentPersona = Literal["first_timer", "impatient", "poker", "custom"]
-AgentAction = Literal["click", "key", "wait", "stop"]
+AgentAction = Literal["click", "key", "act", "wait", "stop"]
+AgentInputType = Literal["key", "keys", "mouseMove", "mouseDown", "mouseUp", "click", "wait"]
 TesterRing = Literal["self", "friends", "discord", "steam_playtest", "ea"]
 
 
@@ -144,6 +145,8 @@ class AgentRunCreate(BaseModel):
     url: str = Field(max_length=2000)
     personas: list[AgentPersona] = Field(min_length=1, max_length=4)
     custom: str = Field(default="", max_length=300)
+    # The game is frozen between agent turns (bridge adds gg_step=1; real-time kit runtimes honour it).
+    step_mode: bool = False
 
     @field_validator("url")
     @classmethod
@@ -181,9 +184,11 @@ class AgentRunInDB(BaseModel):
     url: str
     agents: list[AgentPersona]
     custom: str = ""
-    max_steps: int
+    max_steps: int  # acting steps (click/key/act) per agent; total steps incl. waits ≤ 2× this
     using_own_key: bool
+    step_mode: bool = False
     steps_used: dict[str, int] = {}
+    actions_used: dict[str, int] = {}
     bad_reads: dict[str, int] = {}
     finished: list[str] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -193,7 +198,7 @@ class AgentStepCreate(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     agent: AgentPersona
-    n: int = Field(ge=1, le=60)
+    n: int = Field(ge=1, le=120)  # waits don't count toward max_steps, so n can reach 2× it
     jpeg_base64: str = Field(max_length=(MAX_FRAME_BYTES * 4) // 3 + 4)
     page_url: str = Field(default="", max_length=2000)
     # Screenshot pixel size (what the model sees) and the viewport size the
@@ -217,6 +222,19 @@ class AgentStepCreate(BaseModel):
         return v
 
 
+class AgentInputAction(BaseModel):
+    """One input inside an "act" step — passed straight to the bridge's browser.act (viewport coords)."""
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    type: AgentInputType
+    key: Optional[str] = None
+    keys: Optional[list[str]] = None
+    hold_ms: Optional[int] = None
+    x: Optional[int] = None
+    y: Optional[int] = None
+    ms: Optional[int] = None
+
+
 class AgentStepOut(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
@@ -224,6 +242,7 @@ class AgentStepOut(BaseModel):
     x: Optional[int] = None
     y: Optional[int] = None
     key: Optional[str] = None
+    actions: Optional[list[AgentInputAction]] = None
     note: str = ""
     stop_reason: Optional[str] = None
 

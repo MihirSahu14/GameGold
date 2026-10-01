@@ -1,4 +1,4 @@
-// GameGold DialoguePlayer v7
+// GameGold DialoguePlayer v8
 // GameGold DialoguePlayer — plays a GameGold narrative dialogue JSON in Play mode.
 // Setup: put this on any GameObject, save the dialogue JSON as
 // Assets/Resources/GameGold/dialogue.json, backgrounds in Resources/GameGold/Backgrounds/<bg>,
@@ -24,6 +24,8 @@
 // Cover fit (v6): backgrounds keep their aspect ratio and fill the screen (edges trimmed), never squashed.
 // Card prompt (v7): title/art cards fade in a pulsing "Click or press Space to continue" after 1.5 s — an
 // agent playtest showed first-time players waiting forever on the art card with no hint (gap 70).
+// Choice hint (v8): the first line says only "Space / Enter to continue"; "1–4 to choose" shows only while
+// choices are on screen — an agent saw "1-4" with no choices and never worked out what it meant (gap 72).
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -140,6 +142,7 @@ public class DialoguePlayer : MonoBehaviour
     Image[] pauseImages;
     int choiceFocus, pauseFocus;
     bool paused, hintDone;
+    const string ContinueHint = "Space / Enter to continue";
     float prevTimeScale = 1f, holdTime, skipTimer;
     static readonly Color ButtonColor = new Color(0.08f, 0.1f, 0.15f, 0.95f);
     static readonly Color FocusColor = new Color(0.17f, 0.3f, 0.5f, 0.98f);
@@ -295,6 +298,7 @@ public class DialoguePlayer : MonoBehaviour
         textbox.SetActive(true);
         cardTime = -1f; // a normal line replaces any title/art card prompt
         cardHint.gameObject.SetActive(false);
+        hint.text = ContinueHint;
         hint.gameObject.SetActive(!hintDone); // first line only
         hintDone = true;
         var speaker = Str(current, "speaker") ?? "";
@@ -810,10 +814,14 @@ public class DialoguePlayer : MonoBehaviour
             choiceImages.Add(button.image);
         }
         FocusChoice(0);
+        int keys = Math.Min(shownChoices.Count, 4);
+        hint.text = keys > 1 ? $"1–{keys} to choose" : "1 to choose"; // only while choices are on screen (gap 72)
+        hint.gameObject.SetActive(keys > 0);
     }
 
     void ClearChoices()
     {
+        if (choosing) hint.gameObject.SetActive(false);
         choosing = false;
         shownChoices.Clear();
         choiceImages.Clear();
@@ -1223,7 +1231,7 @@ public class DialoguePlayer : MonoBehaviour
         hint = MakeText((RectTransform)box.transform, "Hint", new Vector2(0.5f, 0.02f), new Vector2(0.985f, 0.14f), 20, FontStyle.Normal);
         hint.alignment = TextAnchor.LowerRight;
         hint.color = new Color(1f, 1f, 1f, 0.35f);
-        hint.text = "Space / Enter to continue  ·  1–4 to choose";
+        hint.text = ContinueHint;
         hint.gameObject.SetActive(false);
 
         var choices = new GameObject("Choices", typeof(RectTransform), typeof(VerticalLayoutGroup));

@@ -4,7 +4,7 @@ import { api, apiErrorMessage } from '../api'
 import { executeTool, type ToolResult } from './useUnity'
 import { useUnmountSignal } from './useProjectHome'
 import type {
-  AgentFinishCreate, AgentPersona, AgentPlayReport, AgentRun, AgentRunCreate, AgentStep, AgentStepCreate, PlaytestFrame,
+  AgentFinishCreate, AgentInputAction, AgentPersona, AgentPlayReport, AgentRun, AgentRunCreate, AgentStep, AgentStepCreate, PlaytestFrame,
 } from '@gamegold/types'
 
 type Exec = (tool: string, args: Record<string, unknown>) => Promise<ToolResult>
@@ -12,6 +12,10 @@ type Exec = (tool: string, args: Record<string, unknown>) => Promise<ToolResult>
 export const LOCAL_BUILD_URL = 'http://localhost:7432/play/index.html'
 export const VIEWPORT = { width: 1280, height: 720 }
 export const WAIT_MS = 1500
+// After each input, let text finish typing / animations land before the next screenshot (gap 73).
+export const SETTLE_MS = 600
+// maxSteps counts acting steps only (click/key/act); waits are free up to this many total steps (server mirrors it).
+export const TOTAL_STEPS_FACTOR = 2
 export const STOPPED_BY_YOU = 'Stopped by you'
 // Mirrors the server's limits (it enforces them; these only drive the estimate + trial note).
 export const TRIAL_LIMITS = { agents: 1, steps: 15 }
@@ -32,7 +36,15 @@ export type AgentPlaytestApi = {
   finish: (runId: string, agent: AgentPersona, body?: AgentFinishCreate) => Promise<AgentPlayReport>
 }
 
-export type AgentProgress = { agent: AgentPersona; n: number; maxSteps: number; jpegBase64?: string; note?: string }
+/** turns = acting steps used so far (what maxSteps limits); n = the step number incl. waits. */
+export type AgentProgress = {
+  agent: AgentPersona; n: number; turns: number; maxSteps: number; jpegBase64?: string; note?: string
+}
+
+/** Drops nulls the API sends for unused fields, so the bridge only sees what each input uses. */
+function bridgeActions(actions: AgentInputAction[]) {
+  return actions.map((a) => Object.fromEntries(Object.entries(a).filter(([, v]) => v != null)))
+}
 
 export type AgentPlaytestResult = { reports: AgentPlayReport[]; messages: string[] }
 
@@ -47,7 +59,8 @@ export function agentPlaytestApi(projectId: string): AgentPlaytestApi {
 
 /**
  * The whole agent playthrough: one run, then for each agent the server allowed:
- * browser.open → (screenshot → POST step → click/key/wait) until stop / step cap / abort / bridge error
+ * browser.open (stepMode → the game freezes between turns) → (screenshot → POST step → click/key/act + settle, or wait)
+ * until stop / turn cap (waits are free up to 2× maxSteps total steps) / abort / bridge error
  * (e.g. the game navigated off-site) / backend error → finish (report) → browser.close (always).
  * An abort (user Stop) stops the loop; the current agent still gets its report from the steps it took.
  * finish gets the stop reason unless the model stopped itself or hit the step cap (the server knows those).
@@ -71,22 +84,23 @@ export async function runAgentPlaytest(
     const run = await backend.createRun(body)
     for (const agent of run.agents) {
       if (signal?.aborted) break
-      const open = await exec('browser.open', { url: body.url, ...VIEWPORT })
+      const open = await exec('browser.open', { url: body.url, ...VIEWPORT, stepMode: !!body.stepMode })
       if (!open.success) {
         messages.push(`Couldn't open the game: ${open.message}`)
         break // same browser/URL for every agent — the next one would fail too
       }
       const sessionId = (open.data as { sessionId: string }).sessionId
       let taken = 0
+      let turns = 0 // acting steps — only these count toward maxSteps
       let stopReason: string | undefined
       let outOfBudget = false
       try {
-        for (let n = 1; n <= run.maxSteps; n++) {
+        for (let n = 1; n <= run.maxSteps * TOTAL_STEPS_FACTOR && turns < run.maxSteps; n++) {
           if (signal?.aborted) {
             stopReason = STOPPED_BY_YOU
             break
           }
-          onProgress?.({ agent, n, maxSteps: run.maxSteps })
+          onProgress?.({ agent, n, turns, maxSteps: run.maxSteps })
           const shot = await exec('browser.screenshot', { sessionId })
           if (!shot.success) {
             stopReason = shot.message
@@ -111,7 +125,8 @@ export async function runAgentPlaytest(
             break
           }
           taken = n
-          onProgress?.({ agent, n, maxSteps: run.maxSteps, jpegBase64: s.jpegBase64, note: step.note })
+          if (step.action !== 'wait' && step.action !== 'stop') turns++
+          onProgress?.({ agent, n, turns, maxSteps: run.maxSteps, jpegBase64: s.jpegBase64, note: step.note })
           if (step.action === 'stop') break
           if (signal?.aborted) {
             stopReason = STOPPED_BY_YOU
@@ -123,12 +138,15 @@ export async function runAgentPlaytest(
           }
           const act = step.action === 'click'
             ? await exec('browser.click', { sessionId, x: step.x, y: step.y })
-            : await exec('browser.key', { sessionId, key: step.key })
+            : step.action === 'act'
+              ? await exec('browser.act', { sessionId, actions: bridgeActions(step.actions ?? []) })
+              : await exec('browser.key', { sessionId, key: step.key })
           if (!act.success) {
             stopReason = act.message
             messages.push(`${AGENT_LABELS[agent]} stopped: ${act.message}`)
             break
           }
+          await wait(SETTLE_MS)
         }
         if (taken > 0) {
           reports.push(await backend.finish(run.runId, agent, stopReason ? { stopReason: stopReason.slice(0, 300) } : undefined))
@@ -162,7 +180,7 @@ export function useAgentPlaytest(projectId: string, exec: Exec = executeTool) {
     const res = await runAgentPlaytest(body, {
       api: agentPlaytestApi(projectId), exec, signal: c.signal,
       // keep the last thumbnail while the next screenshot is on its way
-      onProgress: (p) => setProgress((prev) => (p.jpegBase64 || prev?.agent !== p.agent ? p : { ...prev, n: p.n })),
+      onProgress: (p) => setProgress((prev) => (p.jpegBase64 || prev?.agent !== p.agent ? p : { ...prev, n: p.n, turns: p.turns })),
     })
     if (unmount.current?.signal.aborted) return res
     setRunning(false)

@@ -33,7 +33,9 @@ from app.models.playtest import (
     AgentPersona,
 )
 from app.services.agent_play_service import (
+    ACTING,
     OWN_KEY_MAX_STEPS,
+    TOTAL_STEPS_FACTOR,
     TRIAL_AGENTS,
     TRIAL_MAX_STEPS,
     agent_report,
@@ -273,6 +275,7 @@ async def create_agent_run(
         custom=body.custom.strip() if own else "",
         max_steps=OWN_KEY_MAX_STEPS if own else TRIAL_MAX_STEPS,
         using_own_key=own,
+        step_mode=body.step_mode,
     )
     result = await db.agent_runs.insert_one(run.model_dump())
     return AgentRunOut(run_id=str(result.inserted_id), max_steps=run.max_steps, agents=run.agents, using_own_key=own)
@@ -293,7 +296,9 @@ async def agent_run_step(
     agent = body.agent
     if agent not in run["agents"] or agent in run.get("finished", []):
         raise HTTPException(status_code=400, detail="That agent isn't playing in this run")
-    if body.n > run["max_steps"]:
+    # Only acting steps count toward max_steps; waits are free up to a hard cap on total steps.
+    actions_used = run.get("actions_used", {}).get(agent, 0)
+    if actions_used >= run["max_steps"] or body.n > run["max_steps"] * TOTAL_STEPS_FACTOR:
         raise HTTPException(status_code=400, detail="Step limit reached")
     if body.n <= run.get("steps_used", {}).get(agent, 0):
         raise HTTPException(status_code=409, detail="That step was already played")
@@ -312,8 +317,9 @@ async def agent_run_step(
     try:
         async with project_llm_slot(project_id):
             step = await agent_step(
-                agent, run.get("custom", ""), body.n, run["max_steps"], body.jpeg_base64,
+                agent, run.get("custom", ""), actions_used, run["max_steps"], body.jpeg_base64,
                 body.screen_width, body.screen_height, body.viewport_width, body.viewport_height, notes,
+                run.get("step_mode", False),
             )
     except Exception as exc:
         # Give the step back so a failed call doesn't burn it.
@@ -328,6 +334,8 @@ async def agent_run_step(
             step = AgentStepOut(action="wait", note=COULDNT_READ)
         else:
             step = AgentStepOut(action="stop", note=COULDNT_READ, stop_reason="Couldn't read the screen")
+    if step.action in ACTING:
+        await db.agent_runs.update_one({"_id": run["_id"]}, {"$inc": {f"actions_used.{agent}": 1}})
 
     now = datetime.utcnow()
     await db.playtest_frames.insert_one({
@@ -373,10 +381,12 @@ async def finish_agent(
         raise HTTPException(status_code=409, detail="This agent hasn't played any steps yet")
     steps = [{"n": f["n"], "action": f["action"], "note": f.get("note", "")} for f in frames]
     last = frames[-1]
+    acted = sum(1 for f in frames if f.get("action") in ACTING)
+    capped = acted >= run["max_steps"] or last["n"] >= run["max_steps"] * TOTAL_STEPS_FACTOR
     stop_reason = (
         (body.stop_reason if body else "")
         or last.get("stop_reason")
-        or ("Step limit reached" if last["n"] >= run["max_steps"] else "Stopped")
+        or ("Step limit reached" if capped else "Stopped")
     )
     try:
         async with project_llm_slot(project_id):

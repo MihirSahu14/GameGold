@@ -76,6 +76,7 @@ namespace GameGold.MCP
             ["browser.screenshot"]   = BrowserTools.Screenshot,
             ["browser.click"]        = BrowserTools.Click,
             ["browser.key"]          = BrowserTools.Key,
+            ["browser.act"]          = BrowserTools.Act,
             ["browser.close"]        = BrowserTools.Close,
         };
 

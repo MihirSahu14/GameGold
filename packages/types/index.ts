@@ -386,9 +386,20 @@ export type PlaytestSession = {
 // ─── Agent playtests of the live build (agents play the web build through the bridge) ──
 
 export type AgentPersona = 'first_timer' | 'impatient' | 'poker' | 'custom'
-export type AgentAction = 'click' | 'key' | 'wait' | 'stop'
+export type AgentAction = 'click' | 'key' | 'act' | 'wait' | 'stop'
+/** One input of an "act" step — sent as-is to the bridge's browser.act (x/y are viewport coords). */
+export type AgentInputAction = {
+  type: 'key' | 'keys' | 'mouseMove' | 'mouseDown' | 'mouseUp' | 'click' | 'wait'
+  key?: string | null
+  keys?: string[] | null
+  holdMs?: number | null
+  x?: number | null
+  y?: number | null
+  ms?: number | null
+}
 
-export type AgentRunCreate = { url: string; personas: AgentPersona[]; custom?: string }
+/** stepMode: the game is frozen between agent turns (browser.open adds gg_step=1; real-time kit runtimes honour it). */
+export type AgentRunCreate = { url: string; personas: AgentPersona[]; custom?: string; stepMode?: boolean }
 /** The server enforces trial limits — always use these maxSteps/agents, not what was asked for. */
 export type AgentRun = { runId: string; maxSteps: number; agents: AgentPersona[]; usingOwnKey: boolean }
 
@@ -403,7 +414,15 @@ export type AgentStepCreate = {
   viewportHeight: number
 }
 /** x/y are viewport coordinates (the backend scales the model's screenshot coords). */
-export type AgentStep = { action: AgentAction; x?: number; y?: number; key?: string; note: string; stopReason?: string }
+export type AgentStep = {
+  action: AgentAction
+  x?: number
+  y?: number
+  key?: string
+  actions?: AgentInputAction[] | null
+  note: string
+  stopReason?: string
+}
 /** Omit stopReason when the agent stopped itself or hit the step cap — the server works it out from the frames. */
 export type AgentFinishCreate = { stopReason?: string }
 
