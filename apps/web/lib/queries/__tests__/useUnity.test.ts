@@ -150,7 +150,7 @@ describe('useUnityConnection', () => {
     await waitFor(() => expect(a.result.current.status).toBe('connected'))
     expect(b.result.current.status).toBe('connected')
     expect(b.result.current.unityInfo?.version).toBe('6000.5')
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(8) // one scan of 7432–7439, shared
     expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:7432/status')
     vi.unstubAllGlobals()
   })

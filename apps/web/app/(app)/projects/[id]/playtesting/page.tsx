@@ -64,7 +64,7 @@ export default function PlaytestingPage({
   const synthesize = useSynthesizeSessions(id)
   const decide = usePrototypeDecision(id)
 
-  const { status: bridge } = useUnityConnection()
+  const { status: bridge } = useUnityConnection(project?.unityProjectName)
   const [activeTab, setActiveTab] = useState<Tab>(tabFrom(tab))
 
   // The page stays mounted across a Sidebar "Bugs" (?tab=bugs) navigation — the

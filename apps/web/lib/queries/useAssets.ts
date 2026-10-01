@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { Asset, AssetProposal, ArtStyle, AssetKind, BatchSpriteItem, BatchSpriteResult, DialogueTree, ScriptType } from '@gamegold/types'
+import type { Asset, AssetProposal, ArtStyle, AssetKind, BatchSpriteItem, BatchSpriteResult, DataKind, DialogueTree, ScriptType } from '@gamegold/types'
 
 // ─── List all assets for a project ───────────────────────────────────────────
 export function useAssets(projectId: string) {
@@ -193,13 +193,55 @@ export function parseTreeJson(text: string): { tree: DialogueTree } | { error: s
 type PydanticIssue = { loc?: (string | number)[]; msg?: string }
 
 /** 422 detail → lines: validator strings, or pydantic {loc, msg} objects. */
-export function dialogueErrors(err: unknown): string[] {
+export function dialogueErrors(err: unknown, fallback = 'Could not save the dialogue.'): string[] {
   const detail = (err as { response?: { data?: { detail?: unknown } } } | undefined)?.response?.data?.detail
   if (typeof detail === 'string') return [detail]
-  if (!Array.isArray(detail)) return ['Could not save the dialogue.']
+  if (!Array.isArray(detail)) return [fallback]
   return detail.map((d: string | PydanticIssue) =>
-    typeof d === 'string' ? d : `${(d.loc ?? []).filter((p) => p !== 'body' && p !== 'tree').join('.')}: ${d.msg ?? 'invalid'}`,
+    typeof d === 'string' ? d : `${(d.loc ?? []).filter((p) => p !== 'body' && p !== 'tree' && p !== 'data').join('.')}: ${d.msg ?? 'invalid'}`,
   )
+}
+
+// ─── Genre-kit data (levels, arena, cards… — designer JSON, no AI) ───────────
+export function useImportData(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { name: string; kind: DataKind; data: Record<string, unknown> }) => {
+      const res = await api.post<Asset>(`/projects/${projectId}/assets/data/import`, payload)
+      return res.data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['assets', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'gates'] })
+    },
+  })
+}
+
+export function useUpdateData(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ assetId, data }: { assetId: string; data: Record<string, unknown> }) => {
+      const res = await api.put<Asset>(`/projects/${projectId}/assets/${assetId}/data`, data)
+      return res.data
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Asset[]>(['assets', projectId], (prev) =>
+        prev?.map((a) => (a._id === updated._id ? updated : a)),
+      )
+    },
+  })
+}
+
+/** Pasted text → a JSON object, or a message to show inline. The kit's validator does the rest server-side. */
+export function parseJsonObject(text: string): { data: Record<string, unknown> } | { error: string } {
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch (err) {
+    return { error: `Invalid JSON: ${(err as Error).message}` }
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { error: 'JSON must be an object ({ … })' }
+  return { data: data as Record<string, unknown> }
 }
 
 // ─── Upload a designer-made image (no LLM) ───────────────────────────────────

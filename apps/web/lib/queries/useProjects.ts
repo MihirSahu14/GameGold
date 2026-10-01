@@ -80,6 +80,24 @@ export function useUpdateGenre(projectId: string) {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['projects', projectId], data)
+      void queryClient.invalidateQueries({ queryKey: ['unity-kit', projectId] }) // the genre picks the kit
+    },
+  })
+}
+
+// Kit override (null = from genre), which Unity editor to talk to, and per-kit settings.
+export type KitFieldsUpdate = Partial<Pick<Project, 'kit' | 'unityProjectName' | 'kitSettings'>>
+
+export function useUpdateKitFields(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (fields: KitFieldsUpdate) => {
+      const res = await api.patch<Project>(`/projects/${projectId}`, fields)
+      return res.data
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['projects', projectId], data)
+      void queryClient.invalidateQueries({ queryKey: ['unity-kit', projectId] })
     },
   })
 }
