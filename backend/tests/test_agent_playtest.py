@@ -549,3 +549,9 @@ def test_act_skips_bad_items():
     acts = parse_act([{"type": "teleport"}, {"type": "keys", "keys": ["w", "Tab"]},
                       {"type": "key", "key": "d", "holdMs": "long"}], lambda x, y: (x, y))
     assert [(a.type, a.keys or a.key, a.hold_ms) for a in acts] == [("keys", ["w"], 100), ("key", "d", 100)]
+
+
+def test_note_only_answer_is_a_wait():
+    from app.services.agent_play_service import parse_step
+    step = parse_step('```json\n{"action": "note", "note": "I see a cube."}\n```', 100, 100, 100, 100)
+    assert step.action == "wait" and step.note == "I see a cube."

@@ -55,13 +55,15 @@ Rules:
 - wait: when something is loading or animating, or text is still typing out. If a line of
   text looks cut off mid-word, it is probably still appearing — wait instead of calling it a glitch.
 - stop: when this persona would quit (bored, stuck, lost, finished) — say why in stopReason.
-- note: one first-person sentence — what you see, what you're trying, how it feels. Don't use double quotes inside the note (use 'single quotes' to quote on-screen text).
+Every answer, whatever its action, also has "note": one first-person sentence — what you see, what you're trying,
+  how it feels. "note" is a field, never an action. Don't use double quotes inside the note (use 'single quotes' to quote on-screen text).
 - Only describe what is actually visible. Never guess at hidden content.
 """
 
 STEP_MODE_NOTE = (
     "The game is paused between your turns: time only moves while your inputs run, "
-    "so take your time deciding."
+    "so take your time deciding. A 'STEP MODE' banner on screen comes from this test setup, "
+    "not the game — ignore it and don't report it."
 )
 
 AGENT_REPORT_SYSTEM_PROMPT = """\

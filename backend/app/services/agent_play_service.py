@@ -150,7 +150,7 @@ def parse_step(text: str, sw: int, sh: int, vw: int, vh: int) -> Optional[AgentS
         if key is None:
             return None
         return AgentStepOut(action="key", key=key, note=note)
-    if action == "wait":
+    if action in ("wait", "note", "think"):  # "note"/"think": the model only described the screen
         return AgentStepOut(action="wait", note=note)
     if action == "stop":
         return AgentStepOut(action="stop", note=note, stop_reason=str(data.get("stopReason") or "")[:300] or "Gave up")
