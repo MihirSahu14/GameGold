@@ -33,7 +33,7 @@ The server only listens on `localhost:7432`. Tool calls must be `POST` with `Con
 | `publish.pages` | `{ buildPath? = "Builds/WebGL" }` | Background job: force-pushes the build as a single commit to `gh-pages` (github.com remotes only); your branch and index are untouched. Returns `{ jobId }` |
 | `job.status` | `{ jobId }` | `{ state: running\|succeeded\|failed, output, result: { commit, url } }` |
 | `browser.open` | `{ url, width? = 1280, height? = 720 }` (`https://…` or `http://localhost:7432/play/…`) | Starts your installed Edge (else Chrome) headless with a throwaway profile and opens the game. Returns `{ sessionId, width, height }` |
-| `browser.screenshot` | `{ sessionId, maxWidth? = 1024 }` | `{ jpegBase64, width, height, url }` — width/height are the viewport size click coordinates refer to. Fails with "The game navigated away to <origin>" if the page left the game's origin |
+| `browser.screenshot` | `{ sessionId, maxWidth? = 1024 }` | `{ jpegBase64, width, height, imageWidth, imageHeight, url }` — width/height are the viewport size click coordinates refer to; imageWidth/imageHeight the scaled JPEG's size. Fails with "The game navigated away to <origin>" if the page left the game's origin |
 | `browser.click` | `{ sessionId, x, y }` (viewport pixels) | Left click. Returns `{ url }` |
 | `browser.key` | `{ sessionId, key }` (`Space`, `Enter`, `ArrowUp/Down/Left/Right`, `Escape`, `1`-`9`, `a`-`z`) | Key press. Returns `{ url }` |
 | `browser.close` | `{ sessionId }` | Closes the browser and deletes its profile (also after 10 min idle, on script reload and on Editor quit) |

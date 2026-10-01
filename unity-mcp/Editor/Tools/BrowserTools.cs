@@ -17,7 +17,9 @@ namespace GameGold.MCP
     /// thread (GameGoldMCP's thread-safe set), so builds and compiles on the main thread can't stall them.</summary>
     internal static class BrowserTools
     {
-        private const int CdpTimeoutMs = 15_000, StartTimeoutMs = 10_000;
+        // OpenTimeoutMs stays under the web's 15 s tool timeout, so a slow open never outlives the caller.
+        private const int CdpTimeoutMs = 15_000, OpenTimeoutMs = 12_000;
+        private const string Reloading = "Unity is reloading — try again in a moment";
         private static readonly TimeSpan IdleLimit = TimeSpan.FromMinutes(10);
 
         private sealed class Session
@@ -30,12 +32,14 @@ namespace GameGold.MCP
         }
 
         private static readonly ConcurrentDictionary<string, Session> Sessions = new();
-        private static Timer _idleTimer;
+        private static Timer _idleTimer; // guarded by Sessions
+        private static bool _closing;     // written under the Sessions lock; set once CloseAll runs
 
         // ── Tools ───────────────────────────────────────────────────────────────────────
 
         public static string Open(string body)
         {
+            if (Volatile.Read(ref _closing)) return GameGoldMCP.Error(Reloading);
             var args = SimpleJson.Parse(body);
             var url = args.GetString("url");
             if (!IsAllowedUrl(url, out var uri))
@@ -50,6 +54,13 @@ namespace GameGold.MCP
                 Id = id, Width = w, Height = h, Origin = uri.GetLeftPart(UriPartial.Authority),
                 Profile = Path.Combine(Path.GetTempPath(), "gg-agent-" + id),
             };
+            var deadline = DateTime.UtcNow.AddMilliseconds(OpenTimeoutMs);
+            int Left()
+            {
+                var ms = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+                if (ms <= 0) throw new Exception($"it took longer than {OpenTimeoutMs / 1000} s");
+                return ms;
+            }
             try
             {
                 Directory.CreateDirectory(s.Profile);
@@ -58,23 +69,38 @@ namespace GameGold.MCP
                     UseShellExecute = false, CreateNoWindow = true,
                 });
                 s.Ws = new ClientWebSocket();
-                using (var cts = new CancellationTokenSource(CdpTimeoutMs))
-                    s.Ws.ConnectAsync(new Uri(FindPageTarget(s)), cts.Token).GetAwaiter().GetResult();
-                // Pins the viewport (and devicePixelRatio 1) so screenshot pixels == click coordinates.
-                s.Proc = BrowserProcess(s) ?? s.Proc;
+                var target = FindPageTarget(s, deadline);
+                using (var cts = new CancellationTokenSource(Left()))
+                    s.Ws.ConnectAsync(new Uri(target), cts.Token).GetAwaiter().GetResult();
+                s.Proc = BrowserProcess(s, Left()) ?? s.Proc;
+                // Pins the viewport (and devicePixelRatio 1) so click coordinates are viewport pixels.
                 Call(s, "Emulation.setDeviceMetricsOverride",
-                     $"{{\"width\":{w},\"height\":{h},\"deviceScaleFactor\":1,\"mobile\":false}}");
-                var nav = Call(s, "Page.navigate", $"{{\"url\":\"{GameGoldMCP.EscapeJson(url)}\"}}");
+                     $"{{\"width\":{w},\"height\":{h},\"deviceScaleFactor\":1,\"mobile\":false}}", Left());
+                var nav = Call(s, "Page.navigate", $"{{\"url\":\"{GameGoldMCP.EscapeJson(url)}\"}}", Left());
                 var navError = nav.GetString("errorText");
                 if (navError != "") throw new Exception($"{url} didn't load ({navError})");
+                Left(); // a navigate that finished past the deadline: the web has already given up on us
             }
             catch (Exception ex)
             {
                 Shutdown(s, graceful: false);
                 return GameGoldMCP.Error("Couldn't start the browser: " + ex.Message);
             }
-            Sessions[id] = s;
-            _idleTimer ??= new Timer(_ => CloseIdle(), null, 60_000, 60_000);
+            bool added;
+            lock (Sessions)
+            {
+                added = !_closing;
+                if (added)
+                {
+                    Sessions[id] = s;
+                    _idleTimer ??= new Timer(_ => CloseIdle(), null, 60_000, 60_000);
+                }
+            }
+            if (!added)
+            {
+                Shutdown(s, graceful: false);
+                return GameGoldMCP.Error(Reloading);
+            }
             return GameGoldMCP.Ok("Browser opened", $"{{\"sessionId\":\"{id}\",\"width\":{w},\"height\":{h}}}");
         }
 
@@ -92,9 +118,11 @@ namespace GameGold.MCP
                 var shot = Call(s, "Page.captureScreenshot",
                     $"{{\"format\":\"jpeg\",\"quality\":60,\"clip\":{{\"x\":0,\"y\":0,\"width\":{s.Width},\"height\":{s.Height}," +
                     $"\"scale\":{scale.ToString("0.####", CultureInfo.InvariantCulture)}}}}}");
-                // width/height are the viewport size that click coordinates refer to, not the (scaled) image size.
+                // width/height are the viewport size that click coordinates refer to; imageWidth/imageHeight the JPEG's.
+                int iw = (int)Math.Round(s.Width * scale), ih = (int)Math.Round(s.Height * scale);
                 return GameGoldMCP.Ok("Screenshot taken",
-                    $"{{\"jpegBase64\":\"{shot.GetString("data")}\",\"width\":{s.Width},\"height\":{s.Height},\"url\":\"{GameGoldMCP.EscapeJson(url)}\"}}");
+                    $"{{\"jpegBase64\":\"{shot.GetString("data")}\",\"width\":{s.Width},\"height\":{s.Height}," +
+                    $"\"imageWidth\":{iw},\"imageHeight\":{ih},\"url\":\"{GameGoldMCP.EscapeJson(url)}\"}}");
             }
             catch (Exception ex) { return GameGoldMCP.Error("Screenshot failed: " + ex.Message); }
         }
@@ -149,8 +177,12 @@ namespace GameGold.MCP
         /// <summary>Domain reload / Editor quit: the session table is about to be lost, so nothing may outlive it.</summary>
         public static void CloseAll()
         {
-            _idleTimer?.Dispose();
-            _idleTimer = null;
+            lock (Sessions)
+            {
+                _closing = true; // an Open still in flight shuts its browser down instead of registering it
+                _idleTimer?.Dispose();
+                _idleTimer = null;
+            }
             foreach (var id in Sessions.Keys.ToArray())
                 if (Sessions.TryRemove(id, out var s)) Shutdown(s, graceful: false);
         }
@@ -228,10 +260,9 @@ namespace GameGold.MCP
         }
 
         // The browser writes its port to <profile>/DevToolsActivePort; /json/list then names the page target.
-        private static string FindPageTarget(Session s)
+        private static string FindPageTarget(Session s, DateTime deadline)
         {
             var portFile = Path.Combine(s.Profile, "DevToolsActivePort");
-            var deadline = DateTime.UtcNow.AddMilliseconds(StartTimeoutMs);
             while (DateTime.UtcNow < deadline)
             {
                 try
@@ -258,11 +289,11 @@ namespace GameGold.MCP
 
         // Edge can relaunch itself at startup (seen when started from a sandboxed parent), so the process we
         // started may already be gone; ask the browser for its real PID so the kill fallback hits the right one.
-        private static Process BrowserProcess(Session s)
+        private static Process BrowserProcess(Session s, int timeoutMs)
         {
             try
             {
-                var raw = CallRaw(s, "SystemInfo.getProcessInfo", "{}", CdpTimeoutMs);
+                var raw = CallRaw(s, "SystemInfo.getProcessInfo", "{}", timeoutMs);
                 foreach (Match m in Regex.Matches(raw, @"\{[^{}]*""type""\s*:\s*""browser""[^{}]*\}"))
                 {
                     var id = Regex.Match(m.Value, @"""id""\s*:\s*(\d+)");
