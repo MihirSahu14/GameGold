@@ -106,6 +106,16 @@ def test_kit_list_and_sample_404(client):
     assert client.get("/unity/kits/narrative/sample").status_code == 404  # narrative ships no sample
 
 
+def test_agent_playtest_accepts_any_bridge_port():
+    import pytest
+    from app.models.playtest import AgentRunCreate
+
+    for port in (7432, 7433, 7439):
+        AgentRunCreate(url=f"http://localhost:{port}/play/index.html", personas=["first_timer"])
+    with pytest.raises(ValueError):
+        AgentRunCreate(url="http://localhost:7440/play/index.html", personas=["first_timer"])
+
+
 # ─── Generic data asset ──────────────────────────────────────────────────────
 
 LEVELS = {"levels": [{"name": "1", "rows": ["#####", "#@$.#", "#####"]}]}
