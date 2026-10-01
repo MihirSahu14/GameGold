@@ -13,17 +13,48 @@ from app.core.rate_limit import limiter, LLM_RATE_LIMIT
 from app.db.mongodb import get_db, to_object_id
 from app.models.unity import (
     UnityBuildPlanOut, UnityBuildPlanInDB, StepCompleteRequest, UnitySyncCreate, UnitySyncInDB, UnitySyncOut,
-    UnityChangeCreate, UnityChangeOut,
+    UnityChangeCreate, UnityChangeOut, KitOut, ProjectKitOut,
 )
+from app.kits.registry import KITS, Kit, is_available, kit_for_project, load_sample, missing_parts
 from app.routers.auth import get_current_user
 from app.services.deployment_service import export_build_pack, safe_filename
-from app.prompts.unity_prompt import NARRATIVE_GENRES
 from app.services.unity_service import (
-    UNITY_TEMPLATES, generate_build_plan, narrative_plan, pick_dialogue, plan_change, template_version,
+    UNITY_TEMPLATES, generate_build_plan, kit_data_asset, plan_change, runtime_plan, template_version,
 )
 
 router = APIRouter(prefix="/projects/{project_id}/unity", tags=["unity"])
 templates_router = APIRouter(prefix="/unity/templates", tags=["unity"])
+kits_router = APIRouter(prefix="/unity/kits", tags=["unity"])
+
+
+def kit_out(kit: Kit) -> KitOut:
+    missing = missing_parts(kit)
+    return KitOut(
+        id=kit.id, title=kit.title, runtime_class=kit.runtime_class, runtime_path=kit.runtime_path,
+        object_name=kit.object_name, data_kind=kit.data_kind, data_path=kit.data_path,
+        settings_path=kit.settings_path, genres=sorted(kit.genres), available=not missing, missing=missing,
+    )
+
+
+@kits_router.get("", response_model=list[KitOut], response_model_by_alias=True)
+async def list_kits(current_user: dict = Depends(get_current_user)):
+    return [kit_out(k) for k in KITS.values()]
+
+
+@kits_router.get("/{kit_id}/sample")
+async def get_kit_sample(kit_id: str, current_user: dict = Depends(get_current_user)):
+    kit = KITS.get(kit_id)
+    sample = load_sample(kit) if kit else None
+    if sample is None:
+        raise HTTPException(status_code=404, detail=f"No sample for kit {kit_id}")
+    return sample
+
+
+# Kit-specific "add your data first" messages; narrative's predates kits.
+def _no_data_message(kit: Kit) -> str:
+    if kit.id == "narrative":
+        return "Import or generate your story on the Assets page (Dialogue tab) first"
+    return f"Import your {kit.title} data ({kit.data_kind} JSON) on the Assets page (Game data tab) first"
 
 
 @templates_router.get("/{class_name}")
@@ -62,6 +93,15 @@ async def get_plan(
     return UnityBuildPlanOut(**serialize(doc))
 
 
+@router.get("/kit", response_model=ProjectKitOut, response_model_by_alias=True)
+async def get_project_kit(project_id: str, current_user: dict = Depends(get_current_user)):
+    """The genre kit this project builds on (override, else genre), or none."""
+    db = get_db()
+    project = await verify_project_access(project_id, current_user["_id"], db)
+    kit = kit_for_project(project)
+    return ProjectKitOut(kit=kit_out(kit) if kit else None, overridden=project.get("kit") in KITS)
+
+
 @router.post(
     "/plan/generate",
     response_model=UnityBuildPlanOut,
@@ -75,17 +115,18 @@ async def generate_plan(
     project_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Narrative: fixed DialoguePlayer plan. Otherwise the LLM plans from the pitch (pillars + core loop) + assets."""
+    """Genre kit available: fixed plan on GameGold's runtime. Otherwise the LLM plans from the pitch (pillars + core loop) + assets."""
     db = get_db()
     project = await verify_project_access(project_id, current_user["_id"], db)
 
     assets = await db.assets.find({"project_id": project_id}).to_list(200)
 
-    if project.get("genre") in NARRATIVE_GENRES:
-        # Fixed plan on GameGold's own DialoguePlayer — no LLM call.
-        if pick_dialogue(assets) is None:
-            raise HTTPException(status_code=409, detail="Import or generate your story on the Assets page (Dialogue tab) first")
-        summary, steps = narrative_plan(assets)
+    kit = kit_for_project(project)
+    if kit and is_available(kit):
+        # Fixed plan on GameGold's own runtime — no LLM call.
+        if kit_data_asset(kit, assets) is None:
+            raise HTTPException(status_code=409, detail=_no_data_message(kit))
+        summary, steps = runtime_plan(kit, assets)
         missing: list[str] = []
     else:
         card = project.get("concept_card") or {}

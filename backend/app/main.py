@@ -109,6 +109,7 @@ app.include_router(deployment.router)
 app.include_router(deployment.export_router)
 app.include_router(unity.router)
 app.include_router(unity.templates_router)
+app.include_router(unity.kits_router)
 
 
 @app.get("/")

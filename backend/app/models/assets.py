@@ -6,8 +6,10 @@ from pydantic.alias_generators import to_camel
 from typing import Any, Literal, Optional
 from datetime import datetime
 
+from app.kits.registry import DataKind
 
-AssetType = Literal["sprite", "script", "dialogue"]
+
+AssetType = Literal["sprite", "script", "dialogue", "data"]
 AssetKind = Literal["sprite", "background", "portrait"]
 ArtStyle = Literal["pixel", "illustrated"]
 
@@ -102,6 +104,13 @@ class ImportDialogueRequest(BaseModel):
     tree: DialogueTree
 
 
+class ImportDataRequest(BaseModel):
+    """Designer-written kit data (levels, arena, cards...) checked by that kit's validator."""
+    name: str = Field(min_length=1, max_length=100)
+    kind: DataKind
+    data: dict[str, Any]
+
+
 PNG_DATA_URI_PREFIX = "data:image/png;base64,"
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
@@ -161,13 +170,15 @@ class AssetOut(BaseModel):
     # Sprite
     url: Optional[str] = None
     style: Optional[ArtStyle] = None
-    kind: AssetKind = "sprite"  # legacy docs predate this field
+    kind: AssetKind | DataKind = "sprite"  # legacy docs predate this field; data assets: the data kind
     image_prompt: Optional[str] = None
     # Script
     code: Optional[str] = None
     script_type: Optional[ScriptType] = None
     # Dialogue
     tree: Optional[DialogueTree] = None
+    # Data (genre kit JSON)
+    data: Optional[dict[str, Any]] = None
 
 
 class AssetInDB(BaseModel):
@@ -183,11 +194,12 @@ class AssetInDB(BaseModel):
     disclosed: bool = False
     url: Optional[str] = None
     style: Optional[ArtStyle] = None
-    kind: AssetKind = "sprite"
+    kind: AssetKind | DataKind = "sprite"
     image_prompt: Optional[str] = None
     code: Optional[str] = None
     script_type: Optional[ScriptType] = None
     tree: Optional[dict[str, Any]] = None
+    data: Optional[dict[str, Any]] = None
 
 
 # ─── Suggestions (not persisted) ─────────────────────────────────────────────
