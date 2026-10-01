@@ -397,13 +397,15 @@ export type AgentStepCreate = {
   n: number
   jpegBase64: string
   pageUrl: string
-  screenWidth: number // the screenshot's pixel size (bridge width/height)
+  screenWidth: number // the screenshot's pixel size (bridge imageWidth/imageHeight)
   screenHeight: number
   viewportWidth: number // the viewport browser.open was asked for
   viewportHeight: number
 }
 /** x/y are viewport coordinates (the backend scales the model's screenshot coords). */
 export type AgentStep = { action: AgentAction; x?: number; y?: number; key?: string; note: string; stopReason?: string }
+/** Omit stopReason when the agent stopped itself or hit the step cap — the server works it out from the frames. */
+export type AgentFinishCreate = { stopReason?: string }
 
 export type AgentPlayReport = {
   _id: string

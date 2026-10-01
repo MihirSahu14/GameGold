@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
-import { runAgentPlaytest, VIEWPORT, WAIT_MS, type AgentPlaytestApi } from '../useAgentPlaytest'
+import { runAgentPlaytest, STOPPED_BY_YOU, VIEWPORT, WAIT_MS, type AgentPlaytestApi } from '../useAgentPlaytest'
 import type { AgentPersona, AgentPlayReport, AgentStep } from '@gamegold/types'
 
 const URL = 'http://localhost:7432/play/index.html'
-const shot = { success: true, message: '', data: { jpegBase64: '/9j/AA', width: 1024, height: 576, url: URL } }
+// The bridge's real shape: width/height = viewport (click coords), imageWidth/imageHeight = the scaled JPEG.
+const shot = {
+  success: true, message: '',
+  data: { jpegBase64: '/9j/AA', width: 1280, height: 720, imageWidth: 1024, imageHeight: 576, url: URL },
+}
 
-function fakeExec(screenshot: (n: number) => typeof shot | { success: false; message: string } = () => shot) {
+type Shot = { success: boolean; message: string; data?: Record<string, unknown> }
+
+function fakeExec(screenshot: (n: number) => Shot = () => shot) {
   let shots = 0
   return vi.fn(async (tool: string) => {
     if (tool === 'browser.open') return { success: true, message: '', data: { sessionId: 's1' } }
@@ -43,7 +49,7 @@ describe('runAgentPlaytest', () => {
       agent: 'first_timer', n: 1, jpegBase64: '/9j/AA', pageUrl: URL,
       screenWidth: 1024, screenHeight: 576, viewportWidth: 1280, viewportHeight: 720,
     })
-    expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer')
+    expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer', undefined) // the model stopped: no reason sent
     expect(calls(exec, 'browser.close')).toEqual([['browser.close', { sessionId: 's1' }]])
     expect(res.reports).toHaveLength(1)
   })
@@ -55,7 +61,7 @@ describe('runAgentPlaytest', () => {
     await runAgentPlaytest({ url: URL, personas: ['first_timer', 'impatient', 'poker'] }, { api, exec, wait })
     expect(api.step).toHaveBeenCalledTimes(15)
     expect(calls(exec, 'browser.open')).toHaveLength(1)
-    expect(api.finish).toHaveBeenCalledTimes(1)
+    expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer', undefined) // step cap: the server says so
   })
 
   it('runs every agent the server allowed, one browser each', async () => {
@@ -79,6 +85,7 @@ describe('runAgentPlaytest', () => {
     expect(calls(exec, 'browser.open')).toHaveLength(1) // the second agent never starts
     expect(calls(exec, 'browser.close')).toHaveLength(1)
     expect(res.reports).toHaveLength(1) // report from the steps it took
+    expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer', { stopReason: STOPPED_BY_YOU })
   })
 
   it('stops an agent that navigated off-site and moves on to the next', async () => {
@@ -87,7 +94,41 @@ describe('runAgentPlaytest', () => {
     const res = await runAgentPlaytest({ url: URL, personas: ['first_timer', 'poker'] }, { api, exec, wait })
     expect(res.messages[0]).toMatch(/navigated away/)
     expect(calls(exec, 'browser.close')).toHaveLength(2)
-    expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer')
+    expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer', { stopReason: 'The game navigated away to https://evil.example' })
+    expect(api.finish).toHaveBeenCalledWith('r1', 'poker', undefined) // played to the step cap
+  })
+
+  it('falls back to width/height when the bridge sends no image size', async () => {
+    const exec = fakeExec(() => ({ success: true, message: '', data: { jpegBase64: 'x', width: 1280, height: 720, url: URL } }))
+    const api = fakeApi(() => ({ action: 'stop', note: 'done' }))
+    await runAgentPlaytest({ url: URL, personas: ['first_timer'] }, { api, exec, wait })
+    expect(api.step).toHaveBeenCalledWith('r1', expect.objectContaining({ screenWidth: 1280, screenHeight: 720 }))
+  })
+
+  it('files a report with the backend error and moves on when a step fails', async () => {
+    const exec = fakeExec()
+    const api = fakeApi((n) => {
+      if (n === 3) throw { response: { status: 502, data: { detail: 'The model returned nothing.' } } }
+      return { action: 'wait', note: 'hm' }
+    }, { maxSteps: 40, agents: ['first_timer', 'poker'] })
+    const res = await runAgentPlaytest({ url: URL, personas: ['first_timer', 'poker'] }, { api, exec, wait })
+    expect(res.messages).toEqual(['The model returned nothing.', 'The model returned nothing.'])
+    expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer', { stopReason: 'The model returned nothing.' })
+    expect(calls(exec, 'browser.open')).toHaveLength(2)
+    expect(calls(exec, 'browser.close')).toHaveLength(2)
+  })
+
+  it('stops the remaining agents when the trial budget runs out mid-run', async () => {
+    const exec = fakeExec()
+    const api = fakeApi((n) => {
+      if (n === 2) throw { response: { status: 402, data: { detail: 'Free trial used up for today.' } } }
+      return { action: 'wait', note: 'hm' }
+    }, { maxSteps: 40, agents: ['first_timer', 'poker'] })
+    const res = await runAgentPlaytest({ url: URL, personas: ['first_timer', 'poker'] }, { api, exec, wait })
+    expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer', { stopReason: 'Free trial used up for today.' })
+    expect(calls(exec, 'browser.open')).toHaveLength(1)
+    expect(calls(exec, 'browser.close')).toHaveLength(1)
+    expect(res.reports).toHaveLength(1)
   })
 
   it('closes the browser when the backend fails mid-run', async () => {

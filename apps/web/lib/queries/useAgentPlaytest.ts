@@ -4,7 +4,7 @@ import { api, apiErrorMessage } from '../api'
 import { executeTool, type ToolResult } from './useUnity'
 import { useUnmountSignal } from './useProjectHome'
 import type {
-  AgentPersona, AgentPlayReport, AgentRun, AgentRunCreate, AgentStep, AgentStepCreate, PlaytestFrame,
+  AgentFinishCreate, AgentPersona, AgentPlayReport, AgentRun, AgentRunCreate, AgentStep, AgentStepCreate, PlaytestFrame,
 } from '@gamegold/types'
 
 type Exec = (tool: string, args: Record<string, unknown>) => Promise<ToolResult>
@@ -12,6 +12,7 @@ type Exec = (tool: string, args: Record<string, unknown>) => Promise<ToolResult>
 export const LOCAL_BUILD_URL = 'http://localhost:7432/play/index.html'
 export const VIEWPORT = { width: 1280, height: 720 }
 export const WAIT_MS = 1500
+export const STOPPED_BY_YOU = 'Stopped by you'
 // Mirrors the server's limits (it enforces them; these only drive the estimate + trial note).
 export const TRIAL_LIMITS = { agents: 1, steps: 15 }
 export const OWN_KEY_STEPS = 40
@@ -28,7 +29,7 @@ export const AGENT_LABELS: Record<AgentPersona, string> = {
 export type AgentPlaytestApi = {
   createRun: (body: AgentRunCreate) => Promise<AgentRun>
   step: (runId: string, body: AgentStepCreate) => Promise<AgentStep>
-  finish: (runId: string, agent: AgentPersona) => Promise<AgentPlayReport>
+  finish: (runId: string, agent: AgentPersona, body?: AgentFinishCreate) => Promise<AgentPlayReport>
 }
 
 export type AgentProgress = { agent: AgentPersona; n: number; maxSteps: number; jpegBase64?: string; note?: string }
@@ -40,15 +41,17 @@ export function agentPlaytestApi(projectId: string): AgentPlaytestApi {
   return {
     createRun: async (body) => (await api.post<AgentRun>(base, body)).data,
     step: async (runId, body) => (await api.post<AgentStep>(`${base}/${runId}/steps`, body)).data,
-    finish: async (runId, agent) => (await api.post<AgentPlayReport>(`${base}/${runId}/agents/${agent}/finish`)).data,
+    finish: async (runId, agent, body) => (await api.post<AgentPlayReport>(`${base}/${runId}/agents/${agent}/finish`, body)).data,
   }
 }
 
 /**
  * The whole agent playthrough: one run, then for each agent the server allowed:
  * browser.open → (screenshot → POST step → click/key/wait) until stop / step cap / abort / bridge error
- * (e.g. the game navigated off-site) → finish (report) → browser.close (always).
+ * (e.g. the game navigated off-site) / backend error → finish (report) → browser.close (always).
  * An abort (user Stop) stops the loop; the current agent still gets its report from the steps it took.
+ * finish gets the stop reason unless the model stopped itself or hit the step cap (the server knows those).
+ * A 402 (trial budget used up) also stops the agents after this one.
  */
 export async function runAgentPlaytest(
   body: AgentRunCreate,
@@ -75,23 +78,45 @@ export async function runAgentPlaytest(
       }
       const sessionId = (open.data as { sessionId: string }).sessionId
       let taken = 0
+      let stopReason: string | undefined
+      let outOfBudget = false
       try {
-        for (let n = 1; n <= run.maxSteps && !signal?.aborted; n++) {
+        for (let n = 1; n <= run.maxSteps; n++) {
+          if (signal?.aborted) {
+            stopReason = STOPPED_BY_YOU
+            break
+          }
           onProgress?.({ agent, n, maxSteps: run.maxSteps })
           const shot = await exec('browser.screenshot', { sessionId })
           if (!shot.success) {
+            stopReason = shot.message
             messages.push(`${AGENT_LABELS[agent]} stopped: ${shot.message}`)
             break
           }
-          const s = shot.data as { jpegBase64: string; width: number; height: number; url: string }
-          const step = await backend.step(run.runId, {
-            agent, n, jpegBase64: s.jpegBase64, pageUrl: s.url,
-            screenWidth: s.width, screenHeight: s.height,
-            viewportWidth: VIEWPORT.width, viewportHeight: VIEWPORT.height,
-          })
+          const s = shot.data as {
+            jpegBase64: string; width: number; height: number; imageWidth?: number; imageHeight?: number; url: string
+          }
+          let step: AgentStep
+          try {
+            step = await backend.step(run.runId, {
+              agent, n, jpegBase64: s.jpegBase64, pageUrl: s.url,
+              // the JPEG is scaled down from the viewport; the model sees (and answers in) image pixels
+              screenWidth: s.imageWidth ?? s.width, screenHeight: s.imageHeight ?? s.height,
+              viewportWidth: VIEWPORT.width, viewportHeight: VIEWPORT.height,
+            })
+          } catch (err) {
+            stopReason = apiErrorMessage(err, 'The agent step failed.')
+            messages.push(stopReason)
+            outOfBudget = (err as { response?: { status?: number } } | undefined)?.response?.status === 402
+            break
+          }
           taken = n
           onProgress?.({ agent, n, maxSteps: run.maxSteps, jpegBase64: s.jpegBase64, note: step.note })
-          if (step.action === 'stop' || signal?.aborted) break
+          if (step.action === 'stop') break
+          if (signal?.aborted) {
+            stopReason = STOPPED_BY_YOU
+            break
+          }
           if (step.action === 'wait') {
             await wait(WAIT_MS)
             continue
@@ -100,14 +125,18 @@ export async function runAgentPlaytest(
             ? await exec('browser.click', { sessionId, x: step.x, y: step.y })
             : await exec('browser.key', { sessionId, key: step.key })
           if (!act.success) {
+            stopReason = act.message
             messages.push(`${AGENT_LABELS[agent]} stopped: ${act.message}`)
             break
           }
         }
-        if (taken > 0) reports.push(await backend.finish(run.runId, agent))
+        if (taken > 0) {
+          reports.push(await backend.finish(run.runId, agent, stopReason ? { stopReason: stopReason.slice(0, 300) } : undefined))
+        }
       } finally {
         await exec('browser.close', { sessionId })
       }
+      if (outOfBudget) break
     }
   } catch (err) {
     messages.push(apiErrorMessage(err, 'The agent playtest failed.'))
