@@ -4,7 +4,7 @@ from pydantic.alias_generators import to_camel
 from typing import Annotated, Any, Literal, Optional, get_args
 from datetime import datetime
 
-from app.kits.registry import KitId
+from app.kits.registry import KitId, too_big
 
 GameGenre = Literal[
     "platformer", "rpg", "puzzle", "shooter", "strategy",
@@ -145,6 +145,13 @@ class ProjectUpdate(BaseModel):
     kit_settings: Optional[dict[KitId, dict[str, Any]]] = Field(default=None, max_length=10)
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    @field_validator("kit_settings")
+    @classmethod
+    def settings_size(cls, v: Optional[dict[str, dict[str, Any]]]) -> Optional[dict[str, dict[str, Any]]]:
+        if v is not None and too_big(v):
+            raise ValueError("kit settings are over 1 MB")
+        return v
 
 
 class ProjectOut(BaseModel):

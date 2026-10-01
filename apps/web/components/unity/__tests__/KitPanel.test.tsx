@@ -41,9 +41,15 @@ describe('KitPanel', () => {
     expect(p.onConnectEditor).toHaveBeenCalledWith('EmberHop')
   })
 
-  it('hides the editor choice with a single editor', () => {
-    setup({ editors: [{ port: 7432, projectName: 'RippleGG' }] })
+  it('hides the editor choice with a single editor it is connected to', () => {
+    const editors = [{ port: 7432, projectName: 'RippleGG' }]
+    setup({ editors, connectedTo: editors[0] })
     expect(screen.queryByRole('group', { name: 'Unity editors' })).toBeNull()
+  })
+
+  it("offers the editor that is open when the project's own editor is not", () => {
+    setup({ editors: [{ port: 7432, projectName: 'RippleGG' }], connectedTo: null, unityProjectName: 'Dockside' })
+    expect(screen.getByRole('button', { name: 'Connect this project to RippleGG' })).toBeInTheDocument()
   })
 
   it('saves and syncs the kit settings JSON', () => {

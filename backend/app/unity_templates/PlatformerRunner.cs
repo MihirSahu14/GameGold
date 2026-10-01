@@ -1,4 +1,4 @@
-// GameGold PlatformerRunner v1
+// GameGold PlatformerRunner v2
 // GameGold PlatformerRunner — plays a GameGold platformer levels JSON in Play mode (Editor and WebGL).
 // Setup: put this on any GameObject in an empty scene, save the levels as
 // Assets/Resources/GameGold/platformer_levels.json and (optional) the feel settings as
@@ -461,7 +461,7 @@ public class PlatformerRunner : MonoBehaviour
         {
             if (stepLeft <= 0f)
             {
-                bool go = Pressed(Btn.Any);
+                bool go = Pressed(Btn.Any) || Held(Btn.Any); // a tap buys one step; holding keeps re-triggering
                 stepText.gameObject.SetActive(!go);
                 if (!go) { Time.timeScale = 0f; FollowCamera(0f); return; }
                 stepLeft = cfg.stepSeconds;
@@ -917,12 +917,11 @@ public class PlatformerRunner : MonoBehaviour
     static bool Key(Btn b, bool held)
     {
         var kb = Keyboard.current;
-        bool K(KeyControl k) => held ? k.isPressed : k.wasPressedThisFrame;
+        bool K(ButtonControl k) => held ? k.isPressed : k.wasPressedThisFrame;
         if (b == Btn.Any)
         {
             var mouse = Mouse.current;
-            return (kb != null && kb.anyKey.wasPressedThisFrame && !kb.escapeKey.wasPressedThisFrame)
-                || (mouse != null && mouse.leftButton.wasPressedThisFrame);
+            return (kb != null && K(kb.anyKey) && !K(kb.escapeKey)) || (mouse != null && K(mouse.leftButton));
         }
         if (kb == null) return false;
         switch (b)
@@ -943,7 +942,7 @@ public class PlatformerRunner : MonoBehaviour
         bool K(KeyCode k) => held ? Input.GetKey(k) : Input.GetKeyDown(k);
         switch (b)
         {
-            case Btn.Any: return Input.anyKeyDown && !Input.GetKeyDown(KeyCode.Escape);
+            case Btn.Any: return held ? Input.anyKey && !Input.GetKey(KeyCode.Escape) : Input.anyKeyDown && !Input.GetKeyDown(KeyCode.Escape);
             case Btn.Left: return K(KeyCode.LeftArrow) || K(KeyCode.A);
             case Btn.Right: return K(KeyCode.RightArrow) || K(KeyCode.D);
             case Btn.Up: return K(KeyCode.UpArrow) || K(KeyCode.W);

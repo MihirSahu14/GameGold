@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, apiErrorMessage } from '../api'
-import { executeTool, type ToolResult } from './useUnity'
+import { MCP_PORTS, executeTool, type ToolResult } from './useUnity'
 import { useUnmountSignal } from './useProjectHome'
 import type {
   AgentFinishCreate, AgentInputAction, AgentPersona, AgentPlayReport, AgentRun, AgentRunCreate, AgentStep, AgentStepCreate, PlaytestFrame,
@@ -9,7 +9,10 @@ import type {
 
 type Exec = (tool: string, args: Record<string, unknown>) => Promise<ToolResult>
 
-export const LOCAL_BUILD_URL = 'http://localhost:7432/play/index.html'
+/** The WebGL build the bridge on `port` serves (the active editor's port; 7432 until one is found). */
+export const localBuildUrl = (port: number = MCP_PORTS[0]) => `http://localhost:${port}/play/index.html`
+// Any bridge port. Only these builds can be paused between turns: itch/Pages wrap the game in an iframe gg_step=1 can't reach.
+export const LOCAL_PLAY_URL = /^http:\/\/localhost:743[2-9]\/play\//
 export const VIEWPORT = { width: 1280, height: 720 }
 export const WAIT_MS = 1500
 // After each input, let text finish typing / animations land before the next screenshot (gap 73).
@@ -84,7 +87,7 @@ export async function runAgentPlaytest(
     const run = await backend.createRun(body)
     for (const agent of run.agents) {
       if (signal?.aborted) break
-      const open = await exec('browser.open', { url: body.url, ...VIEWPORT, stepMode: !!body.stepMode })
+      const open = await exec('browser.open', { url: body.url, ...VIEWPORT, stepMode: !!body.stepMode && LOCAL_PLAY_URL.test(body.url) })
       if (!open.success) {
         messages.push(`Couldn't open the game: ${open.message}`)
         break // same browser/URL for every agent — the next one would fail too

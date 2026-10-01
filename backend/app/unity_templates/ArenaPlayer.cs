@@ -22,7 +22,7 @@
 // WebGL: the mouse locks on "Click to play"; Esc (browser rule) unlocks and pauses; click Resume to re-lock.
 // Agent step mode: URL contains gg_step=1 (or settings.stepMode): the game is frozen (Time.timeScale = 0) until a
 // key/click, then runs stepSeconds (default 0.4) with the pressed keys held, then freezes again. No cursor lock
-// needed — Arrow keys aim. SendMessage("<object>", "AgentAdvance", "0.4") also advances one step.
+// needed — Arrow keys aim. SendMessage("GameGold FPS Arena", "AgentAdvance", "0.4") also advances one step.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -501,7 +501,7 @@ public class ArenaPlayer : MonoBehaviour
         Cursor.visible = true;
     }
 
-    /// <summary>Agent hook: SendMessage("GameGold Arena", "AgentAdvance", "0.4") runs one step in step mode.</summary>
+    /// <summary>Agent hook: SendMessage("GameGold FPS Arena", "AgentAdvance", "0.4") runs one step in step mode.</summary>
     public void AgentAdvance(string seconds)
     {
         if (!stepMode || state != State.Playing) return;

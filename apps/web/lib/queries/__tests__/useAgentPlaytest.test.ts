@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { runAgentPlaytest, SETTLE_MS, STOPPED_BY_YOU, VIEWPORT, WAIT_MS, type AgentPlaytestApi } from '../useAgentPlaytest'
+import { localBuildUrl, runAgentPlaytest, SETTLE_MS, STOPPED_BY_YOU, VIEWPORT, WAIT_MS, type AgentPlaytestApi } from '../useAgentPlaytest'
 import type { AgentPersona, AgentPlayReport, AgentStep } from '@gamegold/types'
 
 const URL = 'http://localhost:7432/play/index.html'
@@ -73,6 +73,18 @@ describe('runAgentPlaytest', () => {
     const api = fakeApi(() => ({ action: 'wait', note: 'hm' }), { maxSteps: 15, agents: ['first_timer'] })
     await runAgentPlaytest({ url: URL, personas: ['first_timer'] }, { api, exec, wait })
     expect(api.step).toHaveBeenCalledTimes(30)
+  })
+
+  it('builds the local build URL from the active bridge port', () => {
+    expect(localBuildUrl()).toBe('http://localhost:7432/play/index.html')
+    expect(localBuildUrl(7435)).toBe('http://localhost:7435/play/index.html')
+  })
+
+  it('never opens a hosted (iframe) build in step mode', async () => {
+    const exec = fakeExec()
+    const api = fakeApi(() => ({ action: 'stop', note: 'done' }))
+    await runAgentPlaytest({ url: 'https://me.itch.io/g', personas: ['first_timer'], stepMode: true }, { api, exec, wait })
+    expect(exec).toHaveBeenCalledWith('browser.open', { url: 'https://me.itch.io/g', ...VIEWPORT, stepMode: false })
   })
 
   it('sends act steps to browser.act without nulls, settles, and opens in step mode', async () => {

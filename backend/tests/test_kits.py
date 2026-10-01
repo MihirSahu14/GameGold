@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from bson import ObjectId
 
 from app.kits.registry import KITS, Kit, is_available, kit_for_data_kind, kit_for_project, load_validator, missing_parts
-from app.services.unity_service import kit_data_asset, runtime_plan
+from app.services.unity_service import LINK_XML, LINK_XML_PATH, kit_data_asset, runtime_plan
 from tests.conftest import TEST_PROJECT, TEST_PROJECT_ID, make_cursor
 
 GHOST = Kit("grid", "Ghost", "NoSuchRuntimeXyz", "levels", "Assets/Resources/GameGold/ghost.json", None,
@@ -222,19 +222,20 @@ def test_runtime_plan_steps():
         ("scene.new", {"name": "Game", "saveCurrent": True}),
         ("asset.createScript", {"className": "PlatformerRunner", "path": "Assets/Scripts/PlatformerRunner.cs"}),
         ("asset.createText", {"data": "Ember Hop", "path": kit.data_path}),
+        ("asset.createText", {"path": LINK_XML_PATH, "content": LINK_XML}),
         ("asset.importSprite", {"name": "crate/1", "path": "Assets/Resources/GameGold/Sprites/crate_1.png"}),
         ("gameobject.create", {"name": "GameGold Platformer"}),
         ("component.add", {"gameObjectName": "GameGold Platformer", "componentType": "PlatformerRunner"}),
         ("playmode.enter", {}),
     ]
-    assert [s.step_number for s in steps] == list(range(1, 8))
+    assert [s.step_number for s in steps] == list(range(1, 9))
 
 
 def test_runtime_plan_skips_settings_step_without_settings_path():
     kit = KITS["platformer"]  # settings live inside the levels file
     _, steps = runtime_plan(kit, [_data_doc(kind="platformer_levels")])
     assert not any("kitSettings" in s.args for s in steps)
-    assert len(steps) == 6
+    assert len(steps) == 7
 
 
 def test_runtime_plan_writes_settings_when_kit_has_settings_file():
@@ -273,3 +274,26 @@ def test_plan_endpoint_falls_back_to_llm_when_kit_unavailable(client, mock_db, m
     # no core loop → the LLM path's own 409, proving the kit path was skipped
     resp = client.post(f"/projects/{TEST_PROJECT_ID}/unity/plan/generate")
     assert resp.status_code == 409 and "core loop" in resp.json()["detail"]
+
+
+def test_data_and_kit_settings_over_1mb_are_rejected(client, mock_db, monkeypatch):
+    _fake_validator(monkeypatch)
+    mock_db.projects.find_one.return_value = TEST_PROJECT
+    big = {"levels": [], "pad": "x" * 1_000_001}
+    resp = client.post(f"/projects/{TEST_PROJECT_ID}/assets/data/import", json={"name": "D", "kind": "levels", "data": big})
+    assert resp.status_code == 413
+    doc = _data_doc()
+    mock_db.assets.find_one.return_value = doc
+    assert client.put(f"/projects/{TEST_PROJECT_ID}/assets/{doc['_id']}/data", json=big).status_code == 413
+    mock_db.assets.update_one.assert_not_called()
+    resp = client.patch(f"/projects/{TEST_PROJECT_ID}", json={"kitSettings": {"grid": {"pad": "x" * 1_000_001}}})
+    assert resp.status_code == 422
+
+
+def test_runtime_plan_link_xml_keeps_input_system_for_kits_not_narrative():
+    assert 'fullname="Unity.InputSystem" preserve="all"' in LINK_XML
+    for kit in KITS.values():
+        if kit.id == "narrative":
+            continue
+        _, steps = runtime_plan(kit, [_data_doc(kind=kit.data_kind)])
+        assert sum(s.args.get("path") == LINK_XML_PATH for s in steps) == 1, kit.id

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useLlmConfig } from '@/lib/queries/useLlm'
 import {
-  AGENT_LABELS, AGENT_PERSONAS, LOCAL_BUILD_URL, OWN_KEY_STEPS, TRIAL_LIMITS, useAgentEstimate, useAgentPlaytest,
+  AGENT_LABELS, AGENT_PERSONAS, LOCAL_PLAY_URL, OWN_KEY_STEPS, localBuildUrl, TRIAL_LIMITS, useAgentEstimate, useAgentPlaytest,
 } from '@/lib/queries/useAgentPlaytest'
 import type { AgentPersona } from '@gamegold/types'
 import { cn } from '@/lib/utils'
@@ -12,14 +12,16 @@ type AgentPlaytestCardProps = {
   projectId: string
   publishedUrl: string | null
   connected: boolean
+  bridgePort?: number // the active Unity editor's bridge, which serves the local build
 }
 
-export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentPlaytestCardProps) {
+export function AgentPlaytestCard({ projectId, publishedUrl, connected, bridgePort }: AgentPlaytestCardProps) {
   const { data: llm } = useLlmConfig()
   const trial = !llm?.usingOwnKey
   // null until the user edits the field, so a published URL that loads after mount is still adopted
   const [editedUrl, setUrl] = useState<string | null>(null)
-  const url = editedUrl ?? publishedUrl ?? LOCAL_BUILD_URL
+  const localUrl = localBuildUrl(bridgePort)
+  const url = editedUrl ?? publishedUrl ?? localUrl
   const [picked, setPicked] = useState<AgentPersona[]>(['first_timer', 'impatient', 'poker'])
   const [custom, setCustom] = useState('')
   const [stepMode, setStepMode] = useState(true)
@@ -28,7 +30,8 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentP
   const personas: AgentPersona[] = trial ? ['first_timer'] : [...picked, ...(custom.trim() ? ['custom' as const] : [])]
   const steps = trial ? TRIAL_LIMITS.steps : OWN_KEY_STEPS
   const { data: estimate } = useAgentEstimate(projectId, personas.length, steps)
-  const validUrl = url.startsWith('https://') || /^http:\/\/localhost:743[2-9]\/play\//.test(url) // any bridge port
+  const local = LOCAL_PLAY_URL.test(url)
+  const validUrl = url.startsWith('https://') || local
 
   function toggle(id: AgentPersona) {
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
@@ -45,7 +48,7 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentP
       </div>
 
       <label className="flex flex-col gap-1 text-xs text-zinc-500">
-        Game URL {url === LOCAL_BUILD_URL && <span className="text-zinc-400">· Local build (Builds/WebGL via Unity)</span>}
+        Game URL {local && <span className="text-zinc-400">· Local build (Builds/WebGL via Unity)</span>}
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value.trim())}
@@ -54,7 +57,7 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentP
         />
       </label>
       <div className="flex gap-2 text-xs">
-        <button onClick={() => setUrl(LOCAL_BUILD_URL)} disabled={running} className="text-zinc-500 hover:text-zinc-300">
+        <button onClick={() => setUrl(localUrl)} disabled={running} className="text-zinc-500 hover:text-zinc-300">
           Use local build
         </button>
         {publishedUrl && (
@@ -93,9 +96,11 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentP
       )}
 
       <label className="flex items-center gap-1.5 text-xs text-zinc-400">
-        <input type="checkbox" checked={stepMode} disabled={running} onChange={(e) => setStepMode(e.target.checked)} />
+        <input type="checkbox" checked={stepMode && local} disabled={running || !local} onChange={(e) => setStepMode(e.target.checked)} />
         Pause between turns
-        <span className="text-zinc-600">· real-time games freeze while the agent thinks</span>
+        <span className="text-zinc-600">
+          {local ? '· real-time games freeze while the agent thinks' : '· Pause only works for local builds (itch/Pages run in an iframe)'}
+        </span>
       </label>
 
       <p className="text-xs text-zinc-500">
@@ -114,7 +119,7 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentP
         ) : (
           <button
             onClick={() => void start({
-              url, personas, stepMode, ...(personas.includes('custom') ? { custom: custom.trim() } : {}),
+              url, personas, stepMode: stepMode && local, ...(personas.includes('custom') ? { custom: custom.trim() } : {}),
             })}
             disabled={!connected || !validUrl || personas.length === 0}
             className="rounded-lg bg-yellow-400 px-5 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-yellow-300 disabled:opacity-40"

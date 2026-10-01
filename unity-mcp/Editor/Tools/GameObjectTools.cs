@@ -89,8 +89,8 @@ namespace GameGold.MCP
         private static Vector3 ReadVector(SimpleJson v, float fallback)
             => new Vector3(v.GetFloat("x", fallback), v.GetFloat("y", fallback), v.GetFloat("z", fallback));
 
-        /// <summary>One saved material per color under Assets/GameGold/Materials, on the first shader the project has:
-        /// URP Lit, then Standard (built-in pipeline), then Sprites/Default.</summary>
+        /// <summary>One saved material per color under Assets/GameGold/Materials: URP Lit when a render pipeline is
+        /// active (the shader can exist unused in built-in projects, where it renders pink), else Standard, else Sprites/Default.</summary>
         private static Material SharedMaterial(Color color, out string warning)
         {
             warning = null;
@@ -99,7 +99,8 @@ namespace GameGold.MCP
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (existing != null) return existing;
 
-            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard") ?? Shader.Find("Sprites/Default");
+            var urp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null ? Shader.Find("Universal Render Pipeline/Lit") : null;
+            var shader = urp ?? Shader.Find("Standard") ?? Shader.Find("Sprites/Default");
             if (shader == null) { warning = "no URP Lit, Standard or Sprites/Default shader found, color ignored"; return null; }
             var mat = new Material(shader) { name = $"GameGold_{hex}" };
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color); // URP

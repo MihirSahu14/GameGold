@@ -32,6 +32,8 @@ def _set(rows, **extra):
     ("open edge", _set(["#####", "#@$. ", "#####"]), "not enclosed"),
     ("ragged hole", _set(["#####", "#@$.", "#####"]), "not enclosed"),
     ("bad par", _set(OK, par=0), "par must be"),
+    ("too big", _set(["#" * 65, "#@$.#", "#####"]), "larger than 64x64"),
+    ("too many levels", {"levels": [{"rows": OK}] * 101}, "too many levels"),
     ("dup id", {"levels": [{"id": "a", "rows": OK}, {"id": "a", "rows": OK}]}, "duplicate id"),
 ])
 def test_validate(label, data, needle):
