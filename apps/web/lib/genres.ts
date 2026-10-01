@@ -12,5 +12,7 @@ export const GENRES: { value: GameGenre; label: string }[] = [
   { value: 'fighting',   label: 'Fighting' },
   { value: 'narrative',  label: 'Narrative' },
   { value: 'visual-novel', label: 'Visual Novel' },
+  { value: 'card-battler', label: 'Card Game' },
+  { value: 'fps',        label: 'FPS' },
   { value: 'other',      label: 'Other' },
 ]

@@ -8,14 +8,15 @@ namespace GameGold.MCP
     /// <summary>
     /// Minimal JSON parser for MCP tool arguments. Handles nested objects with
     /// string/number/bool/null values — sufficient for all MCP tool args.
-    /// Arrays are skipped (no tool takes one). Avoids shipping a full JSON library
-    /// as a Unity Editor dependency.
+    /// Arrays keep only their string items (build.scenes); other items are skipped.
+    /// Avoids shipping a full JSON library as a Unity Editor dependency.
     /// </summary>
     internal class SimpleJson
     {
         // A JSON null is stored as a null value: Has(key) is true, getters return their default.
         private readonly Dictionary<string, string> _values = new();
         private readonly Dictionary<string, SimpleJson> _objects = new();
+        private readonly Dictionary<string, List<string>> _arrays = new();
 
         internal static SimpleJson Parse(string json)
         {
@@ -51,7 +52,7 @@ namespace GameGold.MCP
                 char c = json[i];
                 if (c == '"') result._values[key] = ReadString(json, ref i);
                 else if (c == '{') result._objects[key] = ParseObject(json, ref i);
-                else if (c == '[') SkipArray(json, ref i);
+                else if (c == '[') result._arrays[key] = ParseStringArray(json, ref i);
                 else
                 {
                     // number, bool, null
@@ -66,6 +67,25 @@ namespace GameGold.MCP
         private static void SkipWs(string json, ref int i)
         {
             while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
+        }
+
+        // Top-level string items only; nested objects/arrays and scalars are skipped.
+        private static List<string> ParseStringArray(string json, ref int i)
+        {
+            var items = new List<string>();
+            i++; // '['
+            while (true)
+            {
+                SkipWs(json, ref i);
+                if (i >= json.Length) throw new FormatException("Unterminated array");
+                char c = json[i];
+                if (c == ']') { i++; return items; }
+                if (c == ',') { i++; continue; }
+                if (c == '"') items.Add(ReadString(json, ref i));
+                else if (c == '{') ParseObject(json, ref i);
+                else if (c == '[') SkipArray(json, ref i);
+                else while (i < json.Length && json[i] != ',' && json[i] != ']' && !char.IsWhiteSpace(json[i])) i++;
+            }
         }
 
         private static void SkipArray(string json, ref int i)
@@ -122,7 +142,12 @@ namespace GameGold.MCP
             return sb.ToString();
         }
 
-        internal bool Has(string key) => _values.ContainsKey(key) || _objects.ContainsKey(key);
+        internal bool Has(string key) => _values.ContainsKey(key) || _objects.ContainsKey(key) || _arrays.ContainsKey(key);
+
+        internal bool HasObject(string key) => _objects.ContainsKey(key);
+
+        /// <summary>String items of an array value, or null if the key isn't an array.</summary>
+        internal List<string> GetStringArray(string key) => _arrays.TryGetValue(key, out var a) ? a : null;
 
         internal string GetString(string key, string defaultValue = "")
             => _values.TryGetValue(key, out var v) && v != null ? v : defaultValue;

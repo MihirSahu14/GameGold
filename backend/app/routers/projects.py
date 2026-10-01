@@ -154,7 +154,12 @@ async def update_project(
         raise HTTPException(status_code=404, detail="Project not found")
     check_project_ownership(project, current_user["_id"])
 
-    update_data = data.model_dump(exclude_none=True, exclude={"home"})
+    update_data = data.model_dump(exclude_none=True, exclude={"home", "kit_settings"})
+    for key in ("kit", "unity_project_name"):
+        if key in data.model_fields_set:  # explicit null = back to auto
+            update_data[key] = getattr(data, key)
+    for kit_id, settings in (data.kit_settings or {}).items():
+        update_data[f"kit_settings.{kit_id}"] = settings  # per kit, so other kits' settings survive
     if data.home is not None:
         # Merge field-by-field so a PATCH with only publishTarget keeps repoUrl.
         for key, value in data.home.model_dump(exclude_unset=True).items():

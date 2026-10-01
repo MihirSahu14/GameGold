@@ -1,3 +1,4 @@
+import re
 import base64
 import binascii
 from urllib.parse import urlsplit
@@ -135,7 +136,8 @@ class AgentPlayReportInDB(BaseModel):
 
 # ─── Agent playthroughs of the live build ────────────────────────────────────
 
-LOCAL_PLAY_PREFIX = "http://localhost:7432/play/"
+# The local WebGL build on any GameGold bridge port: a second Unity editor serves its build on 7433–7439.
+LOCAL_PLAY_URL = re.compile(r"http://localhost:743[2-9]/play/")
 MAX_FRAME_BYTES = 400 * 1024
 
 
@@ -153,7 +155,7 @@ class AgentRunCreate(BaseModel):
     def playable_url(cls, v: str) -> str:
         if any(c.isspace() for c in v):
             raise ValueError("url must not contain spaces")
-        if v.startswith(LOCAL_PLAY_PREFIX):
+        if LOCAL_PLAY_URL.match(v):
             return v
         parts = urlsplit(v)
         if parts.scheme != "https" or not parts.hostname or "@" in parts.netloc:

@@ -11,7 +11,9 @@ Lets the GameGold web app drive your open Unity Editor (create scenes, GameObjec
 3. Open the project. The Console shows `[GameGold MCP] Server started on http://localhost:7432`.
 4. Start/stop manually via **Window > GameGold MCP**.
 
-The server only listens on `localhost:7432`. Tool calls must be `POST` with `Content-Type: application/json` from an allowlisted Origin (`https://gamegold.vercel.app`, `http://localhost:3000`).
+**Several Unity editors at once:** each editor's bridge takes the first free port in `7432`–`7439` and logs which one. The web app scans that range, reads each bridge's `GET /status` (`projectName`), and talks to the editor whose project matches the GameGold project's "Connect this project to <name>" choice (Unity page), else the first one found.
+
+The server only listens on `localhost` (`7432`–`7439`). Tool calls must be `POST` with `Content-Type: application/json` from an allowlisted Origin (`https://gamegold.vercel.app`, `http://localhost:3000`).
 
 ## Tools
 
@@ -20,8 +22,12 @@ The server only listens on `localhost:7432`. Tool calls must be `POST` with `Con
 | Tool | Args | Does |
 |------|------|------|
 | `scene.list` / `scene.new` / `scene.snapshot` | `scene.new`: `{ name?, saveCurrent?, force? }` | List root objects, create a scene, read back the scene + GameGold files |
-| `gameobject.create` / `.delete` / `.find` | | GameObjects in the active scene |
-| `component.add` / `component.setField` | | Components and serialized fields |
+| `gameobject.create` | `{ name, primitive?: cube\|sphere\|capsule\|cylinder\|plane\|quad, position?, rotation? (euler), scale?: {x,y,z}, parent? (name), color? ("#rrggbb"), tag?, layer? }` | Creates an empty GameObject or a primitive (with mesh + collider). Transforms are local to `parent`. `color` assigns a shared material saved as `Assets/GameGold/Materials/GameGold_<RRGGBB>.mat` (URP Lit, else Standard, else Sprites/Default). An unknown tag/layer is reported as a warning in the message instead of silently skipped |
+| `gameobject.delete` / `.find` | `{ name }` | GameObjects in the active scene |
+| `component.add` | `{ gameObjectName, componentType }` | Adds a component |
+| `component.setField` | `{ gameObjectName, componentType, field, value }` | Sets a serialized field or public field/property. `value`: a scalar (`"1.5"`, `"true"`, `"x,y,z"`, enum name), a Color (`"#rrggbb[aa]"` or `{r,g,b,a}` 0–1), or an object reference: `{"asset": "Assets/…"}`, `{"sprite": "Assets/….png"}` (the Sprite inside the texture) or `{"gameObject": "Name"}` (the object, or its component when the field holds one) |
+| `editor.compileErrors` | | `{ errors: [{file, line, message}], isCompiling }` from the last compile of each assembly (errors present before the Editor opened show after the next recompile) |
+| `build.scenes` | `{ scenes: ["Assets/…/Level1.unity", …] }` | Replaces Build Settings' scene list (in order, all enabled); fails if a path isn't a scene |
 | `asset.createScript` / `.importSprite` / `.createText` / `.readFile` | | Files under `Assets/` |
 | `playmode.enter` / `playmode.exit` | | Play mode |
 | `build.webgl` | `{ outputPath? = "Builds/WebGL" }` (inside the project, not under `Assets/`) | Starts a WebGL build (uncompressed, for itch.io / static hosting) of the enabled Build Settings scenes, or the active scene if none. Refuses in Play mode, during a build, or with an unsaved scene. Returns `{ state: "building" }` at once |

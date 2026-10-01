@@ -49,11 +49,11 @@ You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
 Available tools and their args:
 - scene.new          { name?: string } — creates and saves a new scene (saved under Assets/Scenes)
 - scene.list         {} — returns current scene hierarchy
-- gameobject.create  { name: string, tag?: string, layer?: string, position?: {x,y,z} }
+- gameobject.create  { name: string, primitive?: "cube"|"sphere"|"capsule"|"cylinder"|"plane"|"quad", position?: {x,y,z}, rotation?: {x,y,z} (euler degrees), scale?: {x,y,z}, parent?: string (GameObject name), color?: "#rrggbb", tag?: string, layer?: string }
 - gameobject.delete  { name: string }
 - gameobject.find    { name: string }
 - component.add      { gameObjectName: string, componentType: string }
-- component.setField { gameObjectName: string, componentType: string, field: string, value: string|number|boolean }
+- component.setField { gameObjectName: string, componentType: string, field: string, value: string|number|boolean | {"sprite": "Assets/....png"} | {"asset": "Assets/..."} | {"gameObject": "Name"} | "#rrggbb" (Color fields) }
 - asset.createScript { className: string, path: string }
 - asset.importSprite { name: string, path: string, pixelsPerUnit?: number }
 - playmode.enter     {}
@@ -77,8 +77,10 @@ Rules:
   "script". className must be EXACTLY that asset's name; args are ONLY
   {className, path} — never include "code" (the stored script is injected
   client-side). Never create a script that is not in the ASSETS list.
-- component.setField "value" must be a single scalar (string, number, or
-  boolean) — never an object or array.
+- component.setField "value" is a single scalar, a "#rrggbb" color, or one
+  object reference ({"sprite"|"asset": path} or {"gameObject": name}) — never an array.
+- Placeholders use gameobject.create with a primitive, scale and color so they are
+  visible; sprites go on a SpriteRenderer via setField sprite {"sprite": path}.
 - Reference exact asset names from the provided asset list in asset steps.
 - asset.importSprite steps must reference sprites by "name" EXACTLY as given in the
   ASSETS list, and must NOT include a "base64" arg — the image data is injected

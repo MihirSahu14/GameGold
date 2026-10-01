@@ -16,6 +16,8 @@ import { AssetCard } from '@/components/assets/AssetCard'
 import { StyleToggle } from '@/components/assets/StyleToggle'
 import { KindToggle } from '@/components/assets/KindToggle'
 import { DialogueImportPanel } from '@/components/assets/DialogueJson'
+import { KitDataImportPanel } from '@/components/assets/KitDataJson'
+import { useProjectKit } from '@/lib/queries/useUnity'
 import { BatchSpritePanel } from '@/components/assets/BatchSpritePanel'
 import { UploadSpritePanel } from '@/components/assets/UploadSpritePanel'
 import { ProposalsPanel, proposalKey } from '@/components/assets/ProposalsPanel'
@@ -30,6 +32,8 @@ const TABS: { key: AssetType; label: string; icon: string }[] = [
   { key: 'script', label: 'C# Scripts', icon: '📜' },
   { key: 'dialogue', label: 'Dialogue', icon: '💬' },
 ]
+// Shown when the project's genre kit plays a data file (every kit but narrative, which uses Dialogue).
+const DATA_TAB = { key: 'data' as const, label: 'Game data', icon: '🧩' }
 
 const SCRIPT_TYPES: ScriptType[] = [
   'PlayerController2D',
@@ -48,6 +52,9 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
   const { data: project } = useProject(id)
   const { data: assets, isLoading } = useAssets(id)
   const { data: summary } = useProjectSummary(id)
+  const kit = useProjectKit(id).data?.kit ?? null
+  const dataKit = kit && kit.id !== 'narrative' ? kit : null
+  const tabs = dataKit || (assets ?? []).some((a) => a.type === 'data') ? [...TABS, DATA_TAB] : TABS
 
   const generateSprite = useGenerateSprite(id)
   const generateScript = useGenerateScript(id)
@@ -105,7 +112,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
         })
         setScriptName('')
         setScriptDesc('')
-      } else {
+      } else if (activeTab === 'dialogue') {
         if (!npcName.trim() || !personality.trim()) return
         await generateDialogue.mutateAsync({
           npcName: npcName.trim(),
@@ -185,7 +192,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
       ? !!spriteName.trim() && !!spriteDesc.trim()
       : activeTab === 'script'
       ? !!scriptName.trim()
-      : !!npcName.trim() && !!personality.trim()
+      : activeTab === 'dialogue' && !!npcName.trim() && !!personality.trim()
 
   const inputClass =
     'bg-zinc-900 border border-zinc-800 px-3 py-2 text-zinc-50 text-sm placeholder:text-zinc-600 focus:outline-none'
@@ -216,7 +223,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
               {suggestAssets.isPending ? '💡 Reading your GDD…' : '💡 Suggest from GDD'}
             </button>
             <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 gap-0.5">
-            {TABS.map((tab) => (
+            {tabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
@@ -293,6 +300,9 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
         {activeTab === 'sprite' && <BatchSpritePanel projectId={id} style={spriteStyle} />}
         {activeTab === 'sprite' && <UploadSpritePanel projectId={id} />}
         {activeTab === 'dialogue' && <DialogueImportPanel projectId={id} />}
+        {activeTab === 'data' && (dataKit
+          ? <KitDataImportPanel projectId={id} kit={dataKit} />
+          : <p className="text-zinc-500 text-xs">This project&apos;s genre has no game-data kit. Pick one on the Unity page to import data.</p>)}
 
         {activeTab === 'script' && (
           <div className="flex flex-wrap items-end gap-3">
@@ -354,7 +364,7 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
           </div>
         )}
 
-        <div className="flex items-center gap-3 mt-3">
+        <div className={cn('flex items-center gap-3 mt-3', activeTab === 'data' && 'hidden')}>
           <button
             onClick={handleGenerate}
             disabled={!canGenerate || isGenerating}
@@ -383,16 +393,18 @@ export default function AssetsPage({ params }: { params: Promise<{ id: string }>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-16">
             <div className="text-5xl mb-4">
-              {TABS.find((t) => t.key === activeTab)?.icon}
+              {tabs.find((t) => t.key === activeTab)?.icon}
             </div>
             <h3 className="text-zinc-300 font-semibold text-lg mb-2">
-              No {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()} yet
+              No {tabs.find((t) => t.key === activeTab)?.label.toLowerCase()} yet
             </h3>
             <p className="text-zinc-500 text-sm max-w-sm">
               {activeTab === 'sprite'
                 ? 'Describe a sprite and AI will generate the image plus step-by-step Unity import instructions.'
                 : activeTab === 'script'
                 ? 'Pick a script type and AI will write production-ready C# tailored to your GDD, with attachment steps.'
+                : activeTab === 'data'
+                ? 'Import the JSON your kit plays (levels, arena, cards…). GameGold checks it before saving.'
                 : 'Describe an NPC and AI will write a branching dialogue tree you can export as JSON.'}
             </p>
           </div>

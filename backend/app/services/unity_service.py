@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from app.kits.registry import RESOURCES, Kit
 from app.models.project import PlayerSettings
 from app.models.unity import UnityBuildStep
 from app.prompts.unity_prompt import UNITY_PLAN_SYSTEM_PROMPT, build_unity_plan_prompt
@@ -160,6 +161,63 @@ def narrative_plan(assets: list[dict]) -> tuple[str, list[UnityBuildStep]]:
         for i, (d, t, args, c) in enumerate(raw, start=1)
     ]
     return f"Play '{dialogue['name']}' in Unity with GameGold's DialoguePlayer", steps
+
+
+KIT_SPRITES = f"{RESOURCES}/Sprites"
+
+
+def kit_data_asset(kit: Kit, assets: list[dict]) -> dict | None:
+    """The data file the kit's runtime plays: designer-written first, then the newest."""
+    if kit.id == "narrative":
+        return pick_dialogue(assets)
+    data = [a for a in assets if a.get("type") == "data" and a.get("kind") == kit.data_kind]
+    if not data:
+        return None
+    return max(data, key=lambda a: (a.get("placeholder") is False, a.get("created_at") or datetime.min))
+
+
+def runtime_plan(kit: Kit, assets: list[dict]) -> tuple[str, list[UnityBuildStep]]:
+    """Fixed, no-LLM plan on a GameGold kit runtime. Caller guarantees kit_data_asset() exists.
+    The web injects file contents: {data: name} → the data asset's JSON, {kitSettings: id} →
+    project.kitSettings[id] (or {} so the runtime keeps its defaults)."""
+    if kit.id == "narrative":
+        return narrative_plan(assets)  # predates kits; keeps its Backgrounds/Portraits folders
+    data = kit_data_asset(kit, assets)
+    assert data is not None
+    obj = kit.object_name
+    raw: list[tuple[str, str, dict, str]] = [
+        ("Create and save a new scene named Game", "scene.new", {"name": "Game", "saveCurrent": True}, "scene"),
+        (f"Add GameGold's {kit.runtime_class} script (builds the game from JSON at runtime)", "asset.createScript",
+         {"className": kit.runtime_class, "path": kit.runtime_path}, "asset"),
+        (f"Save the '{data['name']}' {kit.data_kind} JSON to Resources so {kit.runtime_class} can load it",
+         "asset.createText", {"data": data["name"], "path": kit.data_path}, "asset"),
+    ]
+    if kit.settings_path:
+        raw.append((f"Save the {kit.title} settings JSON to Resources", "asset.createText",
+                    {"kitSettings": kit.id, "path": kit.settings_path}, "asset"))
+    for a in assets:
+        if a.get("type") == "sprite":
+            raw.append((
+                f"Import the sprite '{a.get('name')}' into Resources/GameGold/Sprites",
+                "asset.importSprite",
+                {"name": a.get("name"), "path": f"{KIT_SPRITES}/{_sprite_file(a)}.png"},
+                "asset",
+            ))
+    raw += [
+        (f"Create an empty GameObject named {obj}", "gameobject.create", {"name": obj}, "gameobject"),
+        (f"Add the {kit.runtime_class} component to {obj}", "component.add",
+         {"gameObjectName": obj, "componentType": kit.runtime_class}, "component"),
+        ("Enter Play mode and play it", "playmode.enter", {}, "playmode"),
+    ]
+    steps = [
+        UnityBuildStep(step_number=i, description=d, tool=t, args=args, category=c)
+        for i, (d, t, args, c) in enumerate(raw, start=1)
+    ]
+    return f"Play '{data['name']}' in Unity with GameGold's {kit.runtime_class}", steps
+
+
+def _sprite_file(asset: dict) -> str:
+    return re.sub(r"[^\w\- ]", "_", str(asset.get("name", "")))
 
 
 def _summarize_assets(assets: list[dict]) -> str:

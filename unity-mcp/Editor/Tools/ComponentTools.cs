@@ -1,8 +1,10 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace GameGold.MCP
 {
@@ -39,7 +41,9 @@ namespace GameGold.MCP
             return GameGoldMCP.Ok($"Added {type.Name} to '{goName}'");
         }
 
-        /// <summary>args: { gameObjectName, componentType, field, value }</summary>
+        /// <summary>args: { gameObjectName, componentType, field, value }. value is a scalar ("1.5", "true", "x,y,z",
+        /// enum name), a Color ("#rrggbb[aa]" or {r,g,b,a} 0–1), or an object reference: {"asset": "Assets/…"},
+        /// {"sprite": "Assets/….png"} (the Sprite inside a texture) or {"gameObject": "Name"} (or one of its components).</summary>
         internal static string SetField(string body)
         {
             if (EditorApplication.isPlaying) return GameGoldMCP.Error(GameGoldMCP.PlayModeBlockedMessage);
@@ -48,7 +52,9 @@ namespace GameGold.MCP
             var goName      = args.GetString("gameObjectName");
             var compTypeName = args.GetString("componentType");
             var fieldName   = args.GetString("field");
+            var valueObj    = args.HasObject("value") ? args.GetObject("value") : null;
             var valueStr    = args.GetString("value");
+            var shown       = valueObj != null ? DescribeRef(valueObj) : valueStr;
 
             var go = GameObject.Find(goName);
             if (go == null) return GameGoldMCP.Error($"GameObject '{goName}' not found");
@@ -71,10 +77,10 @@ namespace GameGold.MCP
             if (prop != null)
             {
                 so.Update();
-                var err = SetSerializedProperty(prop, valueStr);
+                var err = SetSerializedProperty(prop, valueStr, valueObj);
                 if (err != null) return GameGoldMCP.Error($"{fieldName}: {err}");
                 so.ApplyModifiedProperties();
-                return GameGoldMCP.Ok($"Set {fieldName} = {valueStr} on {compTypeName}");
+                return GameGoldMCP.Ok($"Set {fieldName} = {shown} on {compTypeName}");
             }
 
             // Fall back to reflection: public fields, then writable public properties
@@ -86,19 +92,46 @@ namespace GameGold.MCP
                 return GameGoldMCP.Error($"Field '{fieldName}' not found on {compTypeName}");
 
             var targetType = field?.FieldType ?? property.PropertyType;
-            if (!TryConvert(valueStr, targetType, out var value))
-                return GameGoldMCP.Error($"{fieldName}: cannot set '{valueStr}' on a field of type {targetType.Name}");
+            object value;
+            if (typeof(Object).IsAssignableFrom(targetType))
+            {
+                value = ResolveObject(valueStr, valueObj, targetType, out var refErr);
+                if (refErr != null) return GameGoldMCP.Error($"{fieldName}: {refErr}");
+            }
+            else if (targetType == typeof(Color))
+            {
+                if (!TryParseColor(valueStr, valueObj, out var color))
+                    return GameGoldMCP.Error($"{fieldName}: '{shown}' is not a color (use \"#rrggbb\" or {{r,g,b,a}})");
+                value = color;
+            }
+            else if (!TryConvert(valueStr, targetType, out value))
+                return GameGoldMCP.Error($"{fieldName}: cannot set '{shown}' on a field of type {targetType.Name}");
 
             Undo.RecordObject(comp, $"GameGold: Set {fieldName}");
             if (field != null) field.SetValue(comp, value);
             else property.SetValue(comp, value);
             EditorUtility.SetDirty(comp);
-            return GameGoldMCP.Ok($"Set {fieldName} = {valueStr} on {compTypeName}");
+            return GameGoldMCP.Ok($"Set {fieldName} = {shown} on {compTypeName}");
         }
 
         /// <summary>Returns null on success, or an error message.</summary>
-        private static string SetSerializedProperty(SerializedProperty prop, string value)
+        private static string SetSerializedProperty(SerializedProperty prop, string value, SimpleJson valueObj)
         {
+            if (prop.propertyType == SerializedPropertyType.ObjectReference)
+            {
+                var obj = ResolveObject(value, valueObj, PPtrType(prop.type), out var err);
+                if (err != null) return err;
+                prop.objectReferenceValue = obj;
+                return null;
+            }
+            if (prop.propertyType == SerializedPropertyType.Color)
+            {
+                if (!TryParseColor(value, valueObj, out var color)) return $"'{value}' is not a color (use \"#rrggbb\" or {{r,g,b,a}})";
+                prop.colorValue = color;
+                return null;
+            }
+            if (valueObj != null) return "an object value only fits object-reference or Color fields";
+
             if (prop.propertyType == SerializedPropertyType.Enum)
             {
                 int idx = Array.FindIndex(prop.enumNames, n => string.Equals(n, value, StringComparison.OrdinalIgnoreCase));
@@ -158,6 +191,85 @@ namespace GameGold.MCP
                 return true;
             }
             return false;
+        }
+
+        /// <summary>"#rrggbb[aa]" (or a Unity color name), or {r,g,b,a} with 0–1 channels (a defaults to 1).</summary>
+        internal static bool TryParseColor(string s, SimpleJson obj, out Color color)
+        {
+            if (obj != null)
+            {
+                color = new Color(obj.GetFloat("r"), obj.GetFloat("g"), obj.GetFloat("b"), obj.GetFloat("a", 1f));
+                return obj.Has("r") || obj.Has("g") || obj.Has("b");
+            }
+            return ColorUtility.TryParseHtmlString(s ?? "", out color);
+        }
+
+        private static string DescribeRef(SimpleJson v)
+        {
+            foreach (var key in new[] { "sprite", "asset", "gameObject" })
+                if (v.Has(key)) return $"{key} {v.GetString(key)}";
+            return v.Has("r") ? "color" : "{…}";
+        }
+
+        // SerializedProperty.type is "PPtr<Sprite>" for built-ins, "PPtr<$Sprite>" for script fields.
+        private static Type PPtrType(string pptr)
+        {
+            int open = pptr.IndexOf('<'), close = pptr.LastIndexOf('>');
+            if (open < 0 || close <= open) return typeof(Object);
+            var name = pptr.Substring(open + 1, close - open - 1).TrimStart('$');
+            Type byName = null;
+            foreach (var t in TypeCache.GetTypesDerivedFrom<Object>())
+                if (t.Name == name && (byName == null || t.Namespace == "UnityEngine")) byName = t;
+            return byName ?? typeof(Object);
+        }
+
+        /// <summary>The object a reference value points at, cast to what the field holds. error is null on success.</summary>
+        private static Object ResolveObject(string str, SimpleJson obj, Type wanted, out string error)
+        {
+            error = null;
+            if (obj != null && obj.Has("gameObject"))
+            {
+                var name = obj.GetString("gameObject");
+                var go = GameObject.Find(name);
+                if (go == null) { error = $"GameObject '{name}' not found in the scene"; return null; }
+                return FromGameObject(go, wanted, name, out error);
+            }
+
+            bool wantsSprite = (obj != null && obj.Has("sprite")) || wanted == typeof(Sprite);
+            var path = obj != null ? obj.GetString(obj.Has("sprite") ? "sprite" : "asset") : str;
+            if (string.IsNullOrEmpty(path) || !path.StartsWith("Assets/"))
+            {
+                error = "use {\"asset\": \"Assets/…\"}, {\"sprite\": \"Assets/….png\"} or {\"gameObject\": \"Name\"}";
+                return null;
+            }
+            var all = AssetDatabase.LoadAllAssetsAtPath(path);
+            if (all == null || all.Length == 0) { error = $"no asset at {path}"; return null; }
+            if (wantsSprite)
+            {
+                var sprite = all.OfType<Sprite>().FirstOrDefault();
+                if (sprite == null) error = $"{path} has no Sprite — set its Texture Type to Sprite (2D and UI) and Apply";
+                return sprite;
+            }
+            var main = AssetDatabase.LoadMainAssetAtPath(path);
+            if (main is GameObject prefab && wanted != typeof(GameObject) && typeof(Component).IsAssignableFrom(wanted))
+                return FromGameObject(prefab, wanted, path, out error);
+            var match = wanted.IsInstanceOfType(main) ? main : all.FirstOrDefault(wanted.IsInstanceOfType);
+            if (match == null) error = $"{path} holds no {wanted.Name}";
+            return match;
+        }
+
+        private static Object FromGameObject(GameObject go, Type wanted, string label, out string error)
+        {
+            error = null;
+            if (wanted == typeof(Object) || wanted == typeof(GameObject)) return go;
+            if (typeof(Component).IsAssignableFrom(wanted))
+            {
+                var c = go.GetComponent(wanted);
+                if (c == null) error = $"'{label}' has no {wanted.Name} component";
+                return c;
+            }
+            error = $"a GameObject can't go in a {wanted.Name} field";
+            return null;
         }
 
         private static Type FindType(string typeName)

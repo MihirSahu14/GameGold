@@ -28,7 +28,7 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentP
   const personas: AgentPersona[] = trial ? ['first_timer'] : [...picked, ...(custom.trim() ? ['custom' as const] : [])]
   const steps = trial ? TRIAL_LIMITS.steps : OWN_KEY_STEPS
   const { data: estimate } = useAgentEstimate(projectId, personas.length, steps)
-  const validUrl = url.startsWith('https://') || url.startsWith('http://localhost:7432/play/')
+  const validUrl = url.startsWith('https://') || /^http:\/\/localhost:743[2-9]\/play\//.test(url) // any bridge port
 
   function toggle(id: AgentPersona) {
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))

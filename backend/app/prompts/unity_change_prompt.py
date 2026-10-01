@@ -21,11 +21,11 @@ You are a Unity assistant inside GameGold. The designer asks for one change to t
 Unity scene. Turn it into the fewest steps (at most 12) using ONLY these bridge tools:
 
 - scene.new          { name?: string, saveCurrent?: boolean } — new scene saved under Assets/Scenes
-- gameobject.create  { name: string, tag?: string, layer?: string, position?: {x,y,z} }
+- gameobject.create  { name: string, primitive?: "cube"|"sphere"|"capsule"|"cylinder"|"plane"|"quad", position?: {x,y,z}, rotation?: {x,y,z} (euler degrees), scale?: {x,y,z}, parent?: string (GameObject name), color?: "#rrggbb", tag?: string, layer?: string }
 - gameobject.delete  { name: string }
 - gameobject.find    { name: string }
 - component.add      { gameObjectName: string, componentType: string }
-- component.setField { gameObjectName: string, componentType: string, field: string, value: string|number|boolean }
+- component.setField { gameObjectName: string, componentType: string, field: string, value: string|number|boolean | {"sprite": "Assets/....png"} | {"asset": "Assets/..."} | {"gameObject": "Name"} | "#rrggbb" (Color fields) }
 - playmode.enter     {}
 - playmode.exit      {}
 

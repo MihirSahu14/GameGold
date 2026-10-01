@@ -48,7 +48,7 @@ namespace GameGold.MCP
             var args = SimpleJson.Parse(body);
             var url = args.GetString("url");
             if (!IsAllowedUrl(url, out var uri))
-                return GameGoldMCP.Error("url must be https://… or http://localhost:7432/play/…");
+                return GameGoldMCP.Error($"url must be https://… or http://localhost:{GameGoldMCP.Port}/play/…");
             if (args.GetBool("stepMode")) url = WithStepParam(url);
             int w = Clamp(args.GetInt("width", 1280), 320, 1920), h = Clamp(args.GetInt("height", 720), 240, 1080);
             var exe = FindBrowser();
@@ -268,7 +268,7 @@ namespace GameGold.MCP
         {
             if (!Uri.TryCreate(url ?? "", UriKind.Absolute, out uri) || uri.UserInfo != "") return false;
             if (uri.Scheme == "https") return uri.Host != "";
-            return uri.Scheme == "http" && uri.Host == "localhost" && uri.Port == 7432 && uri.AbsolutePath.StartsWith("/play/");
+            return uri.Scheme == "http" && uri.Host == "localhost" && uri.Port == GameGoldMCP.Port && uri.AbsolutePath.StartsWith("/play/");
         }
 
         internal static string[] LaunchArgs(string profile, int w, int h) => new[]

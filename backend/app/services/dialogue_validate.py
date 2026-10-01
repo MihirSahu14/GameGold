@@ -82,3 +82,12 @@ def validate_tree(tree: DialogueTree) -> tuple[list[str], list[str]]:
                 stack.append(n.next)
         warnings = [f"node '{n.id}' is unreachable from '{start}'" for n in tree.nodes if n.id not in seen]
     return errors, warnings
+
+
+def validate(data: dict) -> list[str]:
+    """Kit-registry entry point (same shape as every kit validator): errors only, empty = OK."""
+    try:
+        tree = DialogueTree.model_validate(data)
+    except ValueError as exc:
+        return [str(exc)]
+    return validate_tree(tree)[0]

@@ -4,11 +4,13 @@ import { useState } from 'react'
 import type { Asset } from '@gamegold/types'
 import { UnityGuide } from './UnityGuide'
 import { DialogueJsonEditor } from './DialogueJson'
+import { KitDataJson } from './KitDataJson'
 import { downloadBlob, downloadHref, cn } from '@/lib/utils'
 import { toastError } from '@/lib/api'
 import { svgToPngBlob } from '@/lib/rasterize'
 import { useToastStore } from '@/store/toastStore'
-import { useUnityConnection, useSyncToUnity, syncCall } from '@/lib/queries/useUnity'
+import { useUnityConnection, useSyncToUnity, syncCall, useProjectKit } from '@/lib/queries/useUnity'
+import { useProject } from '@/lib/queries/useProjects'
 import {
   useApproveAsset,
   useGenerateSprite,
@@ -28,6 +30,7 @@ const TYPE_META: Record<Asset['type'], { icon: string; label: string; badge: str
   sprite: { icon: '🎨', label: 'Sprite', badge: 'bg-blue-900/40 text-blue-400' },
   script: { icon: '📜', label: 'C# Script', badge: 'bg-green-900/40 text-green-400' },
   dialogue: { icon: '💬', label: 'Dialogue', badge: 'bg-purple-900/40 text-purple-400' },
+  data: { icon: '🧩', label: 'Game data', badge: 'bg-amber-900/40 text-amber-400' },
 }
 
 function download(filename: string, content: string, mime: string) {
@@ -51,9 +54,12 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
   const regenerateSprite = useGenerateSprite(projectId)
   const regenerateScript = useGenerateScript(projectId)
   const regenerateDialogue = useGenerateDialogue(projectId)
-  const unity = useUnityConnection()
-  const syncToUnity = useSyncToUnity(projectId)
-  const canSync = syncCall(asset) !== null
+  const { data: project } = useProject(projectId)
+  const kit = useProjectKit(projectId).data?.kit ?? null
+  const unity = useUnityConnection(project?.unityProjectName)
+  const syncToUnity = useSyncToUnity(projectId, kit)
+  // data assets sync from their JSON editor (Save first, then Sync)
+  const canSync = asset.type !== 'data' && syncCall(asset, kit) !== null
   const isRegenerating =
     regenerateSprite.isPending || regenerateScript.isPending || regenerateDialogue.isPending
 
@@ -105,6 +111,8 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
   function handleDownload() {
     if (asset.type === 'script' && asset.code) {
       download(`${asset.name}.cs`, asset.code, 'text/plain')
+    } else if (asset.type === 'data' && asset.data) {
+      download(`${asset.name.replace(/\s+/g, '_')}_${asset.kind ?? 'data'}.json`, JSON.stringify(asset.data, null, 2), 'application/json')
     } else if (asset.type === 'dialogue' && asset.tree) {
       download(`${asset.name.replace(/\s+/g, '_')}_dialogue.json`, JSON.stringify(asset.tree, null, 2), 'application/json')
     } else if (asset.type === 'sprite' && asset.url) {
@@ -246,7 +254,7 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
           onClick={handleDownload}
           className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors"
         >
-          Download {asset.type === 'script' ? '.cs' : asset.type === 'dialogue' ? '.json' : isSvgSprite ? '.svg' : '.png'}
+          Download {asset.type === 'script' ? '.cs' : asset.type === 'dialogue' || asset.type === 'data' ? '.json' : isSvgSprite ? '.svg' : '.png'}
         </button>
         {isSvgSprite && (
           <button
@@ -266,13 +274,15 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
             {syncToUnity.isPending ? 'Syncing…' : 'Sync to Unity'}
           </button>
         )}
-        <button
-          onClick={() => setShowRegenerate((v) => !v)}
-          disabled={isRegenerating}
-          className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {isRegenerating ? '✨ Regenerating…' : '↻ Regenerate'}
-        </button>
+        {asset.type !== 'data' && (
+          <button
+            onClick={() => setShowRegenerate((v) => !v)}
+            disabled={isRegenerating}
+            className="flex-1 bg-zinc-800 text-zinc-300 text-xs font-medium py-1.5 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isRegenerating ? '✨ Regenerating…' : '↻ Regenerate'}
+          </button>
+        )}
       </div>
 
       {/* Regenerate note */}
@@ -296,6 +306,9 @@ export function AssetCard({ asset, projectId, onToggleStep, onDelete, isSavingGu
       )}
 
       {asset.type === 'dialogue' && <DialogueJsonEditor projectId={projectId} asset={asset} />}
+      {asset.type === 'data' && (
+        <KitDataJson projectId={projectId} asset={asset} kit={kit} unityProjectName={project?.unityProjectName} />
+      )}
 
       {/* Unity guide */}
       <UnityGuide

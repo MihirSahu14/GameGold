@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from bson import ObjectId
@@ -15,6 +16,7 @@ from app.models.assets import (
     BatchSpriteOut,
     BatchSpriteRequest,
     DialogueTree,
+    ImportDataRequest,
     ImportDialogueRequest,
     UnityGuide,
     GenerateSpriteRequest,
@@ -24,6 +26,7 @@ from app.models.assets import (
     UpdateGuideRequest,
     UploadSpriteRequest,
 )
+from app.kits.registry import kit_for_data_kind, load_validator
 from app.prompts.asset_prompts import build_regen_block
 from app.routers.auth import get_current_user
 from app.services.asset_service import (
@@ -464,6 +467,78 @@ async def update_dialogue_tree(
     if not doc or doc.get("type") != "dialogue":
         raise HTTPException(status_code=404, detail="Dialogue asset not found")
     await db.assets.update_one({"_id": doc["_id"]}, {"$set": {"tree": _checked_tree(body)}})
+    doc = await db.assets.find_one({"_id": doc["_id"]})
+    return AssetOut(**serialize_asset(doc))
+
+
+# ─── Genre-kit data (levels, arena, cards… — designer JSON, no LLM) ──────────
+
+def _checked_data(kind: str, data: dict) -> dict:
+    """422 with the kit validator's error list; 409 if that kit has no validator yet."""
+    kit = kit_for_data_kind(kind)
+    validate = load_validator(kit) if kit else None
+    if validate is None:
+        raise HTTPException(status_code=409, detail=f"No validator for '{kind}' data yet")
+    try:
+        errors = validate(data)
+    except Exception as exc:  # a validator tripping on malformed JSON is still the user's 422, not a 500
+        errors = [f"Could not check this {kind} data: {exc}"]
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+    return data
+
+
+def _data_guide(kind: str) -> list[str]:
+    kit = kit_for_data_kind(kind)
+    assert kit is not None
+    return [
+        f"Unity page → Generate build plan: it writes this JSON to {kit.data_path}",
+        f"The plan also creates {kit.runtime_path} and adds {kit.runtime_class} to a GameObject named '{kit.object_name}'",
+        "Edit the JSON here and use Sync to Unity to send changes without re-running the plan",
+        "Press Play (Edit → Play) to play it",
+    ]
+
+
+@router.post(
+    "/data/import",
+    response_model=AssetOut,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_data(
+    project_id: str,
+    body: ImportDataRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    data = _checked_data(body.kind, body.data)
+    guide = _data_guide(body.kind)
+    return await insert_and_return(db, AssetInDB(
+        project_id=project_id,
+        type="data",
+        name=body.name,
+        description=f"{body.kind} data",
+        unity_guide=UnityGuide(steps=guide, completed=[False] * len(guide)).model_dump(),
+        kind=body.kind,
+        data=data,
+        placeholder=False,
+    ))
+
+
+@router.put("/{asset_id}/data", response_model=AssetOut, response_model_by_alias=True)
+async def update_data(
+    project_id: str,
+    asset_id: str,
+    body: dict[str, Any],
+    current_user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    doc = await db.assets.find_one({"_id": to_object_id(asset_id), "project_id": project_id})
+    if not doc or doc.get("type") != "data":
+        raise HTTPException(status_code=404, detail="Data asset not found")
+    await db.assets.update_one({"_id": doc["_id"]}, {"$set": {"data": _checked_data(doc.get("kind", ""), body)}})
     doc = await db.assets.find_one({"_id": doc["_id"]})
     return AssetOut(**serialize_asset(doc))
 

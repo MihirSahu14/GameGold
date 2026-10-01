@@ -4,7 +4,7 @@ import { api } from '../api'
 import { downloadBlob } from '../utils'
 import { svgToPngDataUri } from '../rasterize'
 import type {
-  Asset, AssetKind, PlayerSettings, StageSide, UnityBuildPlan, UnityDiffItem, UnityDiffStatus, UnitySnapshot,
+  Asset, AssetKind, Kit, KitId, Project, ProjectKit, PlayerSettings, StageSide, UnityBuildPlan, UnityDiffItem, UnityDiffStatus, UnitySnapshot,
   UnitySnapshotFile, UnitySyncRecord, UnityChangePlan,
 } from '@gamegold/types'
 
@@ -14,16 +14,30 @@ export type ToolResult = { success: boolean; message: string; data?: unknown }
 
 // DialoguePlayer (the built-in narrative runtime) loads Resources/GameGold/dialogue.
 export const DIALOGUE_JSON_PATH = 'Assets/Resources/GameGold/dialogue.json'
-// Runtime scripts GameGold ships itself (served by GET /unity/templates/<name>).
-const BUILT_IN_SCRIPTS = ['DialoguePlayer']
 
-// The plan never carries file contents — inject them from the stored assets.
+type KitSettings = Project['kitSettings']
+
+// The plan never carries file contents — inject them from the stored assets (and the project's kit settings).
 // Returns the args to send, or an error message to fail the step with.
 export function resolveToolArgs(
   tool: string,
   args: Record<string, unknown>,
   assets: Asset[],
+  kitSettings?: KitSettings,
 ): { args: Record<string, unknown> } | { error: string } {
+  if (tool === 'asset.createText' && typeof args.data === 'string') {
+    const { data, ...rest } = args
+    const asset = assets.find((a) => a.type === 'data' && a.name === data)
+    if (!asset?.data) {
+      return { error: `No game data asset named "${data}" found — import it on the Assets page (Game data tab) first.` }
+    }
+    return { args: { ...rest, content: JSON.stringify(asset.data, null, 2) } }
+  }
+  if (tool === 'asset.createText' && typeof args.kitSettings === 'string') {
+    const { kitSettings: kitId, ...rest } = args
+    // {} = no settings saved yet; the runtime keeps its defaults
+    return { args: { ...rest, content: JSON.stringify(kitSettings?.[kitId as KitId] ?? {}, null, 2) } }
+  }
   if (tool === 'asset.importSprite') {
     const sprite = assets.find((a) => a.type === 'sprite' && a.name === args.name)
     if (!sprite?.url) {
@@ -56,12 +70,14 @@ export async function prepareToolArgs(
   tool: string,
   args: Record<string, unknown>,
   assets: Asset[],
+  kitSettings?: KitSettings,
 ): Promise<{ args: Record<string, unknown> } | { error: string }> {
-  if (tool === 'asset.createScript' && BUILT_IN_SCRIPTS.includes(String(args.className)) && !findScriptAsset(args, assets)?.code) {
-    const res = await api.get<{ code: string }>(`/unity/templates/${String(args.className)}`)
-    return { args: { ...args, code: res.data.code } }
+  if (tool === 'asset.createScript' && !findScriptAsset(args, assets)?.code) {
+    // No stored script: maybe a runtime GameGold ships (any kit's, served by GET /unity/templates/<name>).
+    const code = await templateCode(String(args.className))
+    if (code !== null) return { args: { ...args, code } }
   }
-  const resolved = resolveToolArgs(tool, args, assets)
+  const resolved = resolveToolArgs(tool, args, assets, kitSettings)
   if ('error' in resolved) return resolved
   const b64 = resolved.args.base64
   if (tool === 'asset.importSprite' && typeof b64 === 'string' && b64.startsWith('data:image/svg')) {
@@ -74,9 +90,50 @@ export function findScriptAsset(args: Record<string, unknown>, assets: Asset[]):
   return assets.find((a) => a.type === 'script' && a.name === args.className)
 }
 
-// ─── MCP server default port ──────────────────────────────────────────────────
+// Built-in runtime source, or null when GameGold ships no template by that name (404).
+async function templateCode(className: string): Promise<string | null> {
+  try {
+    return (await api.get<{ code: string }>(`/unity/templates/${className}`)).data.code
+  } catch (err) {
+    if ((err as { response?: { status?: number } })?.response?.status === 404) return null
+    throw err
+  }
+}
 
-const MCP_PORT = 7432
+// ─── Genre kits ───────────────────────────────────────────────────────────────
+
+export function useProjectKit(projectId: string) {
+  return useQuery({
+    queryKey: ['unity-kit', projectId],
+    queryFn: async () => (await api.get<ProjectKit>(`/projects/${projectId}/unity/kit`)).data,
+    enabled: !!projectId,
+  })
+}
+
+export function useKits() {
+  return useQuery({
+    queryKey: ['unity-kits'],
+    queryFn: async () => (await api.get<Kit[]>('/unity/kits')).data,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useKitSample(kitId: KitId | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['unity-kit-sample', kitId],
+    queryFn: async () => (await api.get<Record<string, unknown>>(`/unity/kits/${kitId}/sample`)).data,
+    enabled: !!kitId && enabled,
+    staleTime: Infinity,
+    retry: false,
+  })
+}
+
+// ─── Bridge ports: each Unity editor's bridge takes the first free port in 7432–7439 ──
+
+export const MCP_PORTS = [7432, 7433, 7434, 7435, 7436, 7437, 7438, 7439]
+// ponytail: one active bridge per tab, set by useUnityConnection; executeTool and friends read it.
+let activePort = MCP_PORTS[0]
+export const bridgeUrl = (path: string) => `http://localhost:${activePort}${path}`
 
 // ─── Build plan (backend) ─────────────────────────────────────────────────────
 
@@ -142,21 +199,34 @@ export function useExportBuildPack(projectId: string) {
 // ─── Local Unity MCP connection (browser → localhost:7432) ───────────────────
 
 export type ConnectionStatus = 'idle' | 'checking' | 'connected' | 'disconnected'
-type UnityInfo = { version?: string; projectPath?: string }
+export type UnityEditor = { port: number; version?: string; projectPath?: string; projectName?: string }
 
-// One cached status check shared by every page/card (Unity page, Assets page).
-export function useUnityConnection() {
+// Every running editor's bridge, in port order; null = none (keeps the fast reconnect poll below).
+export async function scanEditors(): Promise<UnityEditor[] | null> {
+  const found = await Promise.all(MCP_PORTS.map(async (port): Promise<UnityEditor | null> => {
+    try {
+      const res = await fetch(`http://localhost:${port}/status`, { method: 'GET', signal: AbortSignal.timeout(3000) })
+      if (res.ok) return { ...(await res.json() as Omit<UnityEditor, 'port'>), port }
+    } catch {
+      /* nothing on this port (Unity not running or MCP package not installed) */
+    }
+    return null
+  }))
+  const editors = found.filter((e): e is UnityEditor => e !== null)
+  return editors.length ? editors : null
+}
+
+// The editor whose project matches this GameGold project's unityProjectName, else the first found.
+export function pickEditor(editors: UnityEditor[], unityProjectName?: string | null): UnityEditor | null {
+  return editors.find((e) => !!unityProjectName && e.projectName === unityProjectName) ?? editors[0] ?? null
+}
+
+// One cached scan shared by every page/card (Unity page, Assets page). Pass the project's unityProjectName
+// so tools go to that editor when several are open.
+export function useUnityConnection(unityProjectName?: string | null) {
   const q = useQuery({
     queryKey: ['unity-mcp-status'],
-    queryFn: async (): Promise<UnityInfo | null> => {
-      try {
-        const res = await fetch(`http://localhost:${MCP_PORT}/status`, { method: 'GET', signal: AbortSignal.timeout(3000) })
-        if (res.ok) return await res.json() as UnityInfo
-      } catch {
-        /* Unity not running or MCP package not installed */
-      }
-      return null
-    },
+    queryFn: scanEditors,
     retry: false,
     staleTime: 30_000,
     // Unity restarts the bridge on every script reload — keep polling so GameGold reconnects by itself
@@ -168,12 +238,16 @@ export function useUnityConnection() {
   const status: ConnectionStatus = q.data ? 'connected' : q.isFetching ? 'checking' : q.isFetched ? 'disconnected' : 'idle'
   const { refetch } = q
   const check = useCallback(async () => !!(await refetch()).data, [refetch])
-  return { status, unityInfo: q.data ?? null, check }
+  const editors = q.data ?? []
+  const chosen = pickEditor(editors, unityProjectName)
+  const chosenPort = chosen?.port
+  useEffect(() => { if (chosenPort) activePort = chosenPort }, [chosenPort])
+  return { status, unityInfo: chosen, editors, check }
 }
 
 export async function executeTool(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
   try {
-    const res = await fetch(`http://localhost:${MCP_PORT}/tool/${tool}`, {
+    const res = await fetch(bridgeUrl(`/tool/${tool}`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(args),
@@ -185,20 +259,24 @@ export async function executeTool(tool: string, args: Record<string, unknown>): 
   }
 }
 
-export function useUnityMCP() {
-  return { ...useUnityConnection(), executeTool }
+export function useUnityMCP(unityProjectName?: string | null) {
+  return { ...useUnityConnection(unityProjectName), executeTool }
 }
 
 // ─── Sync one asset to Unity (Assets page) ────────────────────────────────────
 
 const SPRITE_FOLDERS: Partial<Record<string, string>> = { background: 'Backgrounds', portrait: 'Portraits' }
 
-// Where DialoguePlayer expects this asset; null = nothing it would load. Mirrors unity_service.narrative_plan.
-export function syncCall(asset: Asset): { tool: string; args: Record<string, unknown> } | null {
+// Where the project's runtime expects this asset; null = nothing it would load. Mirrors unity_service.runtime_plan:
+// narrative (or no kit) sorts sprites into Backgrounds/Portraits, other kits load every sprite from Sprites/.
+export function syncCall(asset: Asset, kit?: Kit | null): { tool: string; args: Record<string, unknown> } | null {
   if (asset.type === 'dialogue' && asset.tree) {
     return { tool: 'asset.createText', args: { path: DIALOGUE_JSON_PATH, content: JSON.stringify(asset.tree, null, 2) } }
   }
-  const folder = SPRITE_FOLDERS[asset.kind ?? 'sprite']
+  if (asset.type === 'data' && asset.data && kit && kit.dataKind === asset.kind) {
+    return { tool: 'asset.createText', args: { path: kit.dataPath, content: JSON.stringify(asset.data, null, 2) } }
+  }
+  const folder = kit && kit.id !== 'narrative' ? 'Sprites' : SPRITE_FOLDERS[asset.kind ?? 'sprite']
   if (asset.type === 'sprite' && asset.url && folder) {
     const file = asset.name.replace(/[^\w\- ]/g, '_')
     return { tool: 'asset.importSprite', args: { name: asset.name, path: `Assets/Resources/GameGold/${folder}/${file}.png`, base64: asset.url } }
@@ -206,11 +284,11 @@ export function syncCall(asset: Asset): { tool: string; args: Record<string, unk
   return null
 }
 
-export function useSyncToUnity(projectId: string) {
+export function useSyncToUnity(projectId: string, kit?: Kit | null) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (asset: Asset) => {
-      const call = syncCall(asset)
+      const call = syncCall(asset, kit)
       if (!call) throw new Error(`Nothing to sync for "${asset.name}".`)
       const b64 = call.args.base64 // the bridge only takes PNG — rasterize SVG sprites first
       const args = typeof b64 === 'string' && b64.startsWith('data:image/svg')
@@ -260,7 +338,7 @@ export async function runQueue<T extends { completed: boolean }>(
 // ─── Read-back from Unity (edit through GameGold §4) ─────────────────────────
 
 export const GAMEGOLD_FOLDER = 'Assets/Resources/GameGold'
-const RUNTIME_HEADER = /^\/\/ GameGold DialoguePlayer v(\d+)/
+const RUNTIME_HEADER = /^\/\/ GameGold \w+ v(\d+)/ // every built-in runtime's first line
 
 export function runtimeVersion(code: string): number | null {
   const m = RUNTIME_HEADER.exec(code)
@@ -302,6 +380,10 @@ export function stepSource(tool: string, args: Record<string, unknown>, assets: 
   if (tool === 'asset.createText' && typeof args.dialogue === 'string') {
     return assets.find((a) => a.type === 'dialogue' && a.name === args.dialogue)?._id ?? 'plan'
   }
+  if (tool === 'asset.createText' && typeof args.data === 'string') {
+    return assets.find((a) => a.type === 'data' && a.name === args.data)?._id ?? 'plan'
+  }
+  if (tool === 'asset.createText' && typeof args.kitSettings === 'string') return 'kit-settings'
   if (tool === 'asset.importSprite') return assets.find((a) => a.type === 'sprite' && a.name === args.name)?._id ?? 'plan'
   if (tool === 'asset.createScript') return 'runtime'
   return 'plan'
@@ -324,9 +406,9 @@ export function diffUnity(files: UnitySnapshotFile[], records: UnitySyncRecord[]
 }
 
 // What "Overwrite from GameGold" re-sends for this path: the settings, the asset that syncs there, or nothing.
-export function overwriteTarget(path: string, assets: Asset[], record: UnitySyncRecord | undefined): Asset | 'settings' | null {
+export function overwriteTarget(path: string, assets: Asset[], record: UnitySyncRecord | undefined, kit?: Kit | null): Asset | 'settings' | null {
   if (path === PLAYER_SETTINGS_PATH) return 'settings'
-  const matches = assets.filter((a) => syncCall(a)?.args.path === path)
+  const matches = assets.filter((a) => syncCall(a, kit)?.args.path === path)
   return matches.find((a) => a._id === record?.source) ?? matches[0] ?? null
 }
 
@@ -418,31 +500,35 @@ export function usePullFromUnity(projectId: string) {
   })
 }
 
-// ─── Update runtime (gap 40): re-send GameGold's DialoguePlayer without touching plan steps ──
+// ─── Update runtime (gap 40): re-send the project's kit runtime without touching plan steps ──
 
-export const RUNTIME_PATH = 'Assets/Scripts/DialoguePlayer.cs'
+export const DEFAULT_RUNTIME = 'DialoguePlayer'
+export const runtimePath = (runtimeClass: string) => `Assets/Scripts/${runtimeClass}.cs`
+export const RUNTIME_PATH = runtimePath(DEFAULT_RUNTIME)
 
-export function useRuntimeTemplate() {
+export function useRuntimeTemplate(runtimeClass: string = DEFAULT_RUNTIME) {
   return useQuery({
-    queryKey: ['unity-template', 'DialoguePlayer'],
-    queryFn: async () => (await api.get<{ code: string; version: number | null }>('/unity/templates/DialoguePlayer')).data,
+    queryKey: ['unity-template', runtimeClass],
+    queryFn: async () => (await api.get<{ code: string; version: number | null }>(`/unity/templates/${runtimeClass}`)).data,
     staleTime: 5 * 60_000,
   })
 }
 
-// true = Unity has an older (or unknown) DialoguePlayer than the one GameGold serves now.
-export function runtimeOutdated(records: UnitySyncRecord[], served: number | null | undefined, planSentRuntime: boolean): boolean {
+// true = Unity has an older (or unknown) copy of the runtime at `path` than the one GameGold serves now.
+export function runtimeOutdated(
+  records: UnitySyncRecord[], served: number | null | undefined, planSentRuntime: boolean, path: string = RUNTIME_PATH,
+): boolean {
   if (served == null) return false
-  const record = records.find((r) => r.path === RUNTIME_PATH)
+  const record = records.find((r) => r.path === path)
   return record ? record.version !== served : planSentRuntime
 }
 
-export function useUpdateRuntime(projectId: string) {
+export function useUpdateRuntime(projectId: string, runtimeClass: string = DEFAULT_RUNTIME) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const { code } = (await api.get<{ code: string }>('/unity/templates/DialoguePlayer')).data
-      const args = { className: 'DialoguePlayer', path: RUNTIME_PATH, code }
+      const { code } = (await api.get<{ code: string }>(`/unity/templates/${runtimeClass}`)).data
+      const args = { className: runtimeClass, path: runtimePath(runtimeClass), code }
       const result = await executeTool('asset.createScript', args)
       if (!result.success) throw new Error(result.message)
       await recordWrite(projectId, 'asset.createScript', args, 'runtime')

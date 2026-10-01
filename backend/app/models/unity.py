@@ -98,3 +98,28 @@ class UnityChangeOut(BaseModel):
     summary: str
     steps: list[UnityBuildStep]
     settings_patch: Optional[dict[str, Any]] = None  # Player Settings keys only (gap 45)
+
+
+# ─── Genre kits (kits/registry.py) ───────────────────────────────────────────
+
+class KitOut(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    id: str
+    title: str
+    runtime_class: str
+    runtime_path: str
+    object_name: str
+    data_kind: str
+    data_path: str
+    settings_path: Optional[str] = None
+    genres: list[str]
+    available: bool
+    missing: list[str] = []  # parts not on disk yet (template / validator / sample)
+
+
+class ProjectKitOut(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    kit: Optional[KitOut] = None  # None = no kit for this genre (LLM plan)
+    overridden: bool = False      # project.kit set explicitly
