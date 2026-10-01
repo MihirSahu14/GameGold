@@ -112,6 +112,17 @@ def mock_db():
     db.playtests.insert_one = AsyncMock()
     db.playtests.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
 
+    db.agent_runs = MagicMock()
+    db.agent_runs.find_one = AsyncMock(return_value=None)
+    db.agent_runs.insert_one = AsyncMock()
+    db.agent_runs.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+
+    db.playtest_frames = MagicMock()
+    db.playtest_frames.find = MagicMock(return_value=make_cursor([]))
+    db.playtest_frames.insert_one = AsyncMock()
+    db.playtest_frames.update_many = AsyncMock()
+    db.playtest_frames.delete_many = AsyncMock()
+
     db.bugs = MagicMock()
     db.bugs.find = MagicMock(return_value=make_cursor([]))
     db.bugs.find_one = AsyncMock(return_value=None)
