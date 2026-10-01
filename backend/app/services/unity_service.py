@@ -166,7 +166,9 @@ def narrative_plan(assets: list[dict]) -> tuple[str, list[UnityBuildStep]]:
 KIT_SPRITES = f"{RESOURCES}/Sprites"
 # IL2CPP/WebGL builds can strip Input System types the kit runtimes only reach via Keyboard.current/Mouse.current.
 LINK_XML_PATH = "Assets/GameGold/link.xml"
-LINK_XML = '<linker>\n  <assembly fullname="Unity.InputSystem" preserve="all" ignoreIfMissing="1"/>\n</linker>\n'
+# PhysicsModule: kits add colliders at runtime (CreatePrimitive), which engine-code stripping can't see.
+LINK_XML = ('<linker>\n  <assembly fullname="Unity.InputSystem" preserve="all" ignoreIfMissing="1"/>\n'
+            '  <assembly fullname="UnityEngine.PhysicsModule" preserve="all"/>\n</linker>\n')
 
 
 def kit_data_asset(kit: Kit, assets: list[dict]) -> dict | None:

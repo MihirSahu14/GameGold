@@ -296,6 +296,7 @@ def test_data_and_kit_settings_over_1mb_are_rejected(client, mock_db, monkeypatc
 
 def test_runtime_plan_link_xml_keeps_input_system_for_kits_not_narrative():
     assert 'fullname="Unity.InputSystem" preserve="all"' in LINK_XML
+    assert 'fullname="UnityEngine.PhysicsModule" preserve="all"' in LINK_XML
     for kit in KITS.values():
         if kit.id == "narrative":
             continue
