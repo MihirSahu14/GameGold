@@ -383,7 +383,53 @@ export type PlaytestSession = {
   createdAt: string
 }
 
-export type PlaytestEntry = PlaytestReport | PlaytestSession
+// ─── Agent playtests of the live build (agents play the web build through the bridge) ──
+
+export type AgentPersona = 'first_timer' | 'impatient' | 'poker' | 'custom'
+export type AgentAction = 'click' | 'key' | 'wait' | 'stop'
+
+export type AgentRunCreate = { url: string; personas: AgentPersona[]; custom?: string }
+/** The server enforces trial limits — always use these maxSteps/agents, not what was asked for. */
+export type AgentRun = { runId: string; maxSteps: number; agents: AgentPersona[]; usingOwnKey: boolean }
+
+export type AgentStepCreate = {
+  agent: AgentPersona
+  n: number
+  jpegBase64: string
+  pageUrl: string
+  screenWidth: number // the screenshot's pixel size (bridge imageWidth/imageHeight)
+  screenHeight: number
+  viewportWidth: number // the viewport browser.open was asked for
+  viewportHeight: number
+}
+/** x/y are viewport coordinates (the backend scales the model's screenshot coords). */
+export type AgentStep = { action: AgentAction; x?: number; y?: number; key?: string; note: string; stopReason?: string }
+/** Omit stopReason when the agent stopped itself or hit the step cap — the server works it out from the frames. */
+export type AgentFinishCreate = { stopReason?: string }
+
+export type AgentPlayReport = {
+  _id: string
+  projectId: string
+  kind: 'agent_play'
+  agentPersona: AgentPersona
+  gameUrl: string
+  steps: { n: number; action: string; note: string }[]
+  stopReason: string | null
+  felt: string
+  summary: string
+  confusions: string[]
+  bugs: string[]
+  choices: string[]
+  wouldKeepPlaying: boolean | null
+  funHighlights: string[]
+  softlocks: string[]
+  pacingIssues: string[]
+  createdAt: string
+}
+
+export type PlaytestFrame = { n: number; jpegBase64: string }
+
+export type PlaytestEntry = PlaytestReport | PlaytestSession | AgentPlayReport
 
 export type PlaytestSessionCreate = {
   testers: number

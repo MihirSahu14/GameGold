@@ -277,6 +277,11 @@ async def delete_project(project_id: str, current_user: dict = Depends(get_curre
         raise HTTPException(status_code=404, detail="Project not found")
     check_project_ownership(project, current_user["_id"])
     await db.projects.delete_one({"_id": oid})
+    # Agent screenshots are keyed by run id (unfinished) or report id (finished).
+    keys = [str(d["_id"]) for d in await db.agent_runs.find({"project_id": project_id}, {"_id": 1}).to_list(None)]
+    keys += [str(d["_id"]) for d in await db.playtests.find({"project_id": project_id}, {"_id": 1}).to_list(None)]
+    if keys:
+        await db.playtest_frames.delete_many({"report_or_run_id": {"$in": keys}})
     # Cascade: delete everything scoped to this project
-    for coll in (db.gdds, db.systems, db.assets, db.playtests, db.bugs, db.deployments, db.unity_plans, db.unity_syncs):
+    for coll in (db.gdds, db.systems, db.assets, db.playtests, db.bugs, db.deployments, db.unity_plans, db.unity_syncs, db.agent_runs):
         await coll.delete_many({"project_id": project_id})
