@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -66,6 +67,18 @@ namespace GameGold.MCP
             ["job.status"]           = VcsTools.JobStatus,
         };
 
+        // Tools that never touch Unity APIs: run straight on the HTTP thread, so a build or compile hogging
+        // the main thread can't stall them, and they get their own (longer) time limit.
+        private const int ThreadSafeTimeoutSeconds = 20;
+        private static readonly Dictionary<string, Func<string, string>> _threadSafeTools = new()
+        {
+            ["browser.open"]         = BrowserTools.Open,
+            ["browser.screenshot"]   = BrowserTools.Screenshot,
+            ["browser.click"]        = BrowserTools.Click,
+            ["browser.key"]          = BrowserTools.Key,
+            ["browser.close"]        = BrowserTools.Close,
+        };
+
         static GameGoldMCP()
         {
             _unityVersion = Application.unityVersion;
@@ -76,6 +89,9 @@ namespace GameGold.MCP
             // Release the port before a domain reload, or the next Start() fails with "address in use"
             AssemblyReloadEvents.beforeAssemblyReload += Stop;
             EditorApplication.quitting += Stop;
+            // Headless browsers must not outlive the session table that tracks them
+            AssemblyReloadEvents.beforeAssemblyReload += BrowserTools.CloseAll;
+            EditorApplication.quitting += BrowserTools.CloseAll;
             // Start right away: delayCall alone never fired after a reload in an unfocused Editor,
             // leaving GameGold disconnected. The watchdog below restarts it if a start fails.
             Start();
@@ -177,6 +193,14 @@ namespace GameGold.MCP
 
         private static void HandleRequest(HttpListenerContext ctx)
         {
+            // The local WebGL build, for agent playtests. The page and its own fetches are same-origin
+            // (no Origin header), so no Origin is required; read-only and confined to Builds/WebGL.
+            if (ctx.Request.Url.AbsolutePath.StartsWith("/play/"))
+            {
+                ServePlay(ctx);
+                return;
+            }
+
             var origin = ctx.Request.Headers["Origin"];
             bool browserRequest = !string.IsNullOrEmpty(origin);
             bool originAllowed = !browserRequest || Array.IndexOf(AllowedOrigins, origin) >= 0;
@@ -239,7 +263,16 @@ namespace GameGold.MCP
                     var toolName = path.Substring("tool/".Length);
                     var body = ReadBody(ctx.Request);
 
-                    if (_tools.TryGetValue(toolName, out var handler))
+                    if (_threadSafeTools.TryGetValue(toolName, out var direct))
+                    {
+                        var task = Task.Run(() =>
+                        {
+                            try { return direct(body); }
+                            catch (Exception ex) { return Error(ex.Message); }
+                        });
+                        responseJson = task.Wait(TimeSpan.FromSeconds(ThreadSafeTimeoutSeconds)) ? task.Result : Error("Tool timed out");
+                    }
+                    else if (_tools.TryGetValue(toolName, out var handler))
                     {
                         // All Unity API calls must run on the main thread
                         string result = null;
@@ -280,6 +313,41 @@ namespace GameGold.MCP
             {
                 ctx.Response.Close();
             }
+        }
+
+        private static readonly Dictionary<string, string> PlayMimeTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            [".html"] = "text/html", [".js"] = "application/javascript", [".wasm"] = "application/wasm",
+            [".data"] = "application/octet-stream", [".json"] = "application/json", [".png"] = "image/png",
+            [".ico"] = "image/x-icon", [".css"] = "text/css",
+        };
+
+        // ponytail: serves the uncompressed build build.webgl makes; .gz/.br builds would need Content-Encoding.
+        private static void ServePlay(HttpListenerContext ctx)
+        {
+            try
+            {
+                var root = System.IO.Path.GetFullPath(System.IO.Path.Combine(_projectPath, "Builds", "WebGL"));
+                var rel = Uri.UnescapeDataString(ctx.Request.Url.AbsolutePath.Substring("/play/".Length));
+                if (rel == "") rel = "index.html";
+                var file = System.IO.Path.GetFullPath(System.IO.Path.Combine(root, rel));
+                var ext = System.IO.Path.GetExtension(file);
+                if (ctx.Request.HttpMethod != "GET")
+                    ctx.Response.StatusCode = 405;
+                else if (!file.StartsWith(root + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                         !System.IO.File.Exists(file))
+                    ctx.Response.StatusCode = 404;
+                else
+                {
+                    using var fs = System.IO.File.OpenRead(file);
+                    ctx.Response.ContentType = PlayMimeTypes.TryGetValue(ext, out var mime) ? mime : "application/octet-stream"; // e.g. StreamingAssets
+                    ctx.Response.Headers.Add("Cache-Control", "no-cache"); // a rebuild must show up on the next run
+                    ctx.Response.ContentLength64 = fs.Length;
+                    fs.CopyTo(ctx.Response.OutputStream);
+                }
+            }
+            catch (Exception) { try { ctx.Response.StatusCode = 404; } catch { /* headers already sent */ } }
+            finally { ctx.Response.Close(); }
         }
 
         internal static string ReadBody(HttpListenerRequest req)
