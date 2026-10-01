@@ -1,4 +1,4 @@
-// GameGold ArenaShooter v4
+// GameGold ArenaShooter v5
 // GameGold ArenaShooter — a top-down twin-stick arena shooter driven entirely by data.
 // Setup: put this on any GameObject, save the arena JSON as Assets/Resources/GameGold/arena.json, press Play.
 // Everything (camera, floor, walls, player, enemies, bullets, pickups, HUD, screens, sound) is built in code:
@@ -17,7 +17,7 @@
 // Controls: WASD move · mouse aim + hold left button to fire · OR arrow keys aim + fire (8 directions, keyboard only)
 // · Esc/P pause · Space/Enter/click start and retry · R restart from pause.
 // Agent step mode: ?gg_step=1 in the page URL (or settings.stepMode) freezes the game (Time.timeScale = 0) until a
-// gameplay input arrives, then runs stepSeconds (default 0.4) and freezes again — LLM latency never decides a fight.
+// gameplay input arrives, then runs stepSeconds (default 0.8) and freezes again — LLM latency never decides a fight.
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -67,7 +67,7 @@ public class ArenaShooter : MonoBehaviour
             enemyBullet = "#ff6b6b", text = "#f2efe6", accent = "#ffd27a";
     }
     [Serializable] public class SoundsDef { public bool enabled = true; public float volume = 0.5f; }
-    [Serializable] public class SettingsDef { public bool stepMode; public float stepSeconds = 0.4f; public string aimMode = "both"; }
+    [Serializable] public class SettingsDef { public bool stepMode; public float stepSeconds = 0.8f; public string aimMode = "both"; }
     [Serializable]
     public class ArenaData
     {
@@ -88,7 +88,7 @@ public class ArenaShooter : MonoBehaviour
     public string arenaPath = "GameGold/arena";
     [Tooltip("Freeze between inputs and run stepSeconds per input (agent playtests). Also on with ?gg_step=1 or settings.stepMode.")]
     public bool stepMode;
-    public float stepSeconds = 0.4f;
+    public float stepSeconds = 0.8f;
 
     // ─── Runtime entities (pooled: deactivated, never destroyed) ───
 

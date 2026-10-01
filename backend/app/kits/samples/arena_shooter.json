@@ -95,5 +95,5 @@
     "accent": "#ffd27a"
   },
   "sounds": {"enabled": true, "volume": 0.5},
-  "settings": {"stepMode": false, "stepSeconds": 0.4, "aimMode": "both"}
+  "settings": {"stepMode": false, "stepSeconds": 0.8, "aimMode": "both"}
 }

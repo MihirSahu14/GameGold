@@ -104,7 +104,7 @@ def test_curve_counts_split_children_and_warns_on_spikes(data):
 # ─── Runtime template ───
 
 def test_runtime_header_and_data_contract():
-    assert CODE.startswith("// GameGold ArenaShooter v4\n")
+    assert CODE.startswith("// GameGold ArenaShooter v5\n")
     assert "public class ArenaShooter : MonoBehaviour" in CODE
     assert '"GameGold/arena"' in CODE and "JsonUtility.FromJson<ArenaData>" in CODE
     # every behaviour/effect/spawn side the validator accepts is handled by the runtime

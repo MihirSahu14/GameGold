@@ -64,7 +64,8 @@ STEP_MODE_NOTE = (
     "The game is paused between your turns: time only moves while your inputs run, "
     "so take your time deciding. A 'STEP MODE' banner on screen comes from this test setup, "
     "not the game — ignore it and don't report it. Time also freezes the moment your inputs end, so you may "
-    "see yourself mid-air or mid-move: that's the pause, not a glitch."
+    "see yourself mid-air or mid-move: that's the pause, not a glitch. Waiting does NOT move time here — "
+    "to let things happen (enemies approach, timers run), press or hold a key."
 )
 
 AGENT_REPORT_SYSTEM_PROMPT = """\
