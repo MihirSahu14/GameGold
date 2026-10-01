@@ -41,4 +41,4 @@ Each game was built end to end through GameGold's UI, agent-playtested on the li
 | Ember Ledger | Card battler | https://mihirsahu14.itch.io/ember-ledger | https://github.com/MihirSahu14/EmberLedger |
 | Core Breach | FPS arena | https://mihirsahu14.itch.io/core-breach | https://github.com/MihirSahu14/CoreBreach |
 
-What the loop found and fixed is in `docs/dogfood/ripple-gamegold-gaps.md`, rows 75–98.
+What the loop found and fixed is in `docs/dogfood/ripple-gamegold-gaps.md`, rows 75–99.
