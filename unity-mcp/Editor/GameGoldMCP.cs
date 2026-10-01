@@ -380,7 +380,7 @@ namespace GameGold.MCP
         // It isn't documented as thread-safe and we call it from a ThreadPool thread (HandleRequest runs
         // off the listener thread), so this is a best-effort nudge, not a verified fix — wrapped so a
         // failure here can never break the tool call itself. Not exercised against a live Editor.
-        private static void NudgeEditorLoop()
+        internal static void NudgeEditorLoop()
         {
             try { EditorApplication.QueuePlayerLoopUpdate(); } catch { /* best-effort only */ }
         }

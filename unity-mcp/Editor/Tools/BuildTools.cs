@@ -14,7 +14,7 @@ namespace GameGold.MCP
     internal static class BuildTools
     {
         private const string Key = "GameGold.MCP.Build.";
-        private static bool _scheduled; // static on purpose: a reload drops a pending delayCall too
+        private static bool _scheduled; // static on purpose: a reload drops a pending update hook too
         private static readonly string[] ReservedFolders = { "Library", "ProjectSettings", "Packages", "Temp", "Logs", "UserSettings" };
 
         /// <summary>args: { outputPath? = "Builds/WebGL" } — inside the project, not under Assets/.
@@ -49,7 +49,11 @@ namespace GameGold.MCP
 
             _scheduled = true;
             Save("building", $"Building for WebGL — starts in '{active.name}'…", output, 0, 0);
-            EditorApplication.delayCall += () => Run(scenes, output, compression);
+            // One-shot update hook, not delayCall: delayCall never fires while the Editor is unfocused (gap 71).
+            EditorApplication.CallbackFunction once = null;
+            once = () => { EditorApplication.update -= once; Run(scenes, output, compression); };
+            EditorApplication.update += once;
+            GameGoldMCP.NudgeEditorLoop();
             return GameGoldMCP.Ok("Build started", "{\"state\":\"building\"}");
         }
 
