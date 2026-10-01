@@ -62,3 +62,9 @@ def test_dialogue_player_v4_original_backgrounds(client):
     assert body["version"] >= 6  # gap 61: designer art skips the print + tint; v5: art cards; v6: cover fit
     assert "originalBackgrounds.Exists(" in body["code"] and "artCard: true" in body["code"]
     assert "AspectMode.EnvelopeParent" in body["code"]
+
+
+def test_dialogue_player_v7_card_prompt(client):
+    body = client.get("/unity/templates/DialoguePlayer").json()
+    assert body["version"] >= 7  # gap 70: title/art cards show a "Click or press Space" prompt
+    assert "Click or press Space to continue" in body["code"] and "cardTime" in body["code"]
