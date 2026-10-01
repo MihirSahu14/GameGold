@@ -7,6 +7,16 @@ import { UnityGuideSection } from '@/components/landing/UnityGuideSection'
 
 const REGISTER = '/register'
 
+// Built, AI-playtested and published to itch.io through GameGold on 2026-10-01.
+const SHIPPED_GAMES = [
+  { title: 'RIPPLE', genre: 'Narrative / visual novel', slug: 'ripple' },
+  { title: 'DOCKSIDE', genre: 'Grid puzzle', slug: 'dockside' },
+  { title: 'EMBER HOP', genre: '2D platformer', slug: 'ember-hop' },
+  { title: 'LAST LIGHT', genre: 'Top-down shooter', slug: 'last-light' },
+  { title: 'EMBER LEDGER', genre: 'Deck-building card battler', slug: 'ember-ledger' },
+  { title: 'CORE BREACH', genre: 'First-person shooter', slug: 'core-breach' },
+]
+
 const WHAT_CARDS = [
   {
     icon: '📋',
@@ -126,6 +136,41 @@ export default function LandingPage() {
               </div>
               <div style={{ fontSize: '13px', color: '#6b7787', lineHeight: 1.6 }}>{card.desc}</div>
             </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── SHIPPED WITH GAMEGOLD ── */}
+      <section
+        id="gg-shipped"
+        className="px-4 pb-20 md:px-7 md:pb-[120px]"
+        style={{ position: 'relative', zIndex: 2, maxWidth: '1040px', margin: '0 auto' }}
+      >
+        <div style={{ fontSize: '12px', letterSpacing: '3px', color: '#f4c20d', marginBottom: '28px' }}>
+          {'// SHIPPED WITH GAMEGOLD'}
+        </div>
+        <h2 style={{ ...pixel, fontSize: 'clamp(18px, 3.4vw, 34px)', lineHeight: 1.5, color: '#eaf2ff', margin: '0 0 24px' }}>
+          6 PROTOTYPES. <span style={{ color: '#f4c20d' }}>LIVE IN ONE DAY.</span>
+        </h2>
+        <p style={{ fontSize: '16px', maxWidth: '640px', color: '#8b97a7', margin: '0 0 40px', lineHeight: 1.7 }}>
+          Six games in six genres &mdash; each built in Unity through GameGold, playtested by AI agents on the live
+          build, saved to GitHub and published to itch.io. Play them in your browser.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '16px' }}>
+          {SHIPPED_GAMES.map((game) => (
+            <a
+              key={game.slug}
+              href={`https://mihirsahu14.itch.io/${game.slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className="gg-sprite-card"
+              data-cursor="hover"
+              style={{ border: '1px solid #1b2533', background: '#0b1018', padding: '24px', textDecoration: 'none', display: 'block' }}
+            >
+              <div style={{ ...pixel, fontSize: '11px', color: '#eaf2ff', lineHeight: 1.6, marginBottom: '10px' }}>{game.title}</div>
+              <div style={{ fontSize: '13px', color: '#6b7787', lineHeight: 1.6 }}>{game.genre}</div>
+              <div style={{ fontSize: '12px', color: '#4ea8ff', marginTop: '14px' }}>&#9654; PLAY ON ITCH.IO</div>
+            </a>
           ))}
         </div>
       </section>

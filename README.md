@@ -4,21 +4,40 @@
 
 Named after the industry term *"gone gold"* — the moment a game is finished, approved, and ready to ship. GameGold is the platform that gets you there.
 
-**Live:** [gamegold.vercel.app](https://gamegold.vercel.app) · **Stack:** Next.js 16, FastAPI, MongoDB, LiteLLM (Claude in prod) · **Unity:** in-Editor MCP server (C#) · **Tests:** 135 backend pytest tests
+**Live:** [gamegold.vercel.app](https://gamegold.vercel.app) · **Stack:** Next.js 16, FastAPI, MongoDB, LiteLLM (Claude in prod, or bring your own key) · **Unity:** in-Editor bridge (C#) · **Tests:** 666 backend + 356 web
+
+---
+
+## 🏆 6 prototypes, live in one day
+
+On **October 1, 2026**, six games in six genres were built in Unity through GameGold, playtested by AI agents on the live web build, saved to their own GitHub repos and published to itch.io — all in a single day. Play them in your browser:
+
+| Game | Genre | Play | Source |
+|---|---|---|---|
+| Ripple | Narrative / visual novel | [itch.io](https://mihirsahu14.itch.io/ripple) | [GitHub](https://github.com/MihirSahu14/RippleGG) |
+| Dockside | Grid puzzle | [itch.io](https://mihirsahu14.itch.io/dockside) | [GitHub](https://github.com/MihirSahu14/Dockside) |
+| Ember Hop | 2D platformer | [itch.io](https://mihirsahu14.itch.io/ember-hop) | [GitHub](https://github.com/MihirSahu14/EmberHop) |
+| Last Light | Top-down shooter | [itch.io](https://mihirsahu14.itch.io/last-light) | [GitHub](https://github.com/MihirSahu14/LastLight) |
+| Ember Ledger | Deck-building card battler | [itch.io](https://mihirsahu14.itch.io/ember-ledger) | [GitHub](https://github.com/MihirSahu14/EmberLedger) |
+| Core Breach | First-person shooter | [itch.io](https://mihirsahu14.itch.io/core-breach) | [GitHub](https://github.com/MihirSahu14/CoreBreach) |
+
+Every problem GameGold hit along the way was fixed in GameGold and logged in [`docs/dogfood/ripple-gamegold-gaps.md`](docs/dogfood/ripple-gamegold-gaps.md).
 
 ---
 
 ## What is GameGold?
 
-GameGold bridges the gap between **game design** and **software engineering** using AI. It's an all-in-one workspace for indie developers and game designers — not just a tool, but a complete pipeline from your first idea to a shipped product.
+GameGold bridges the gap between **game design** and **software engineering** using AI. It takes a game from a pitch to a playable build on the web — and the developer stays in charge of the craft.
 
-**AI at every step:**
-- 📋 Generate a full **Game Design Document** from your concept
-- ⚖️ Model your **game systems** visually and let AI find exploits before players do
-- 🎨 Generate **sprites and assets** (pixel art or 2D illustrated)
-- 🧠 Build **NPC dialogue trees** from personality descriptions
-- 🧪 **Simulate playthroughs** to catch softlocks and pacing issues
-- 🚀 Generate your **store page, press kit, and export bundle**
+**What it can do today:**
+- 🎯 **Pitch & design** — an AI interviewer turns your idea into a pitch, pillars and a design doc; you edit everything.
+- 🧩 **Six genre kits** — Dialogue/visual novel, Grid puzzle, 2D platformer, Top-down shooter, Card battler, FPS arena. You design the levels, cards, enemies, waves and text as validated data (start from a sample); GameGold supplies a tested Unity runtime that plays it.
+- 🔌 **Builds it in Unity for you** — a C# bridge inside the Unity Editor runs a step-by-step build plan (scene, packages, scripts, data, Build Settings). Works with an open Editor or a headless one.
+- 🌐 **Build for web** — one click makes a WebGL build you can share.
+- 🤖 **AI agent playtests** — agents with no context play your real build from screenshots alone and report confusions, bugs, softlocks and fun moments. Human playtest sessions and a bug tracker sit alongside.
+- 💾 **Save version & publish** — commit to your own GitHub/GitLab repo and publish to itch.io (butler) or GitHub Pages, using this machine's sign-in. GameGold never holds your tokens.
+- 🎨 **Assets** — sprite generation, C# scripts and dialogue trees, each with a step-by-step Unity guide; edit game data in GameGold and sync it to Unity.
+- 🔑 **Bring your own key** — Anthropic, OpenAI, Gemini, Groq or OpenRouter (encrypted at rest), or a free trial on GameGold's key.
 
 ---
 
@@ -42,21 +61,21 @@ Every generated artifact — sprites, scripts, dialogue trees, architecture docs
 
 > *Dragging assets into Unity, wiring up components, building scenes — that's the craft. GameGold handles the generation and guidance. You handle the creation.*
 
-**Unity MCP integration:** a C# MCP server (`unity-mcp/`) runs inside the Unity Editor on `localhost:7432`. From the Unity Integration stage, the browser calls its tools directly: create GameObjects, import sprites, add components and set fields, enter Play mode. Scene composition, gameplay feel, and creative decisions always stay entirely in your hands.
+**Unity bridge:** a C# package (`unity-mcp/`) runs inside the Unity Editor (first free port from `localhost:7432`). From the Unity page, the browser runs build plans, syncs game data, builds for web, saves versions and publishes. Scene composition, gameplay feel, and creative decisions always stay entirely in your hands.
 
 ---
 
-## The 7 Stages
+## The 5 Stages
 
-| Stage | Description | Status |
-|---|---|---|
-| **1. Concept** | Concept Card: title, genre, tone, core loop, unique hook | ✅ Live |
-| **2. GDD** | AI-generated 8-section Game Design Document, edited in-browser (TipTap), per-section AI refine | ✅ Live |
-| **3. Systems** | Visual node graph for game entities (ReactFlow) + AI balance analyzer | ✅ Live |
-| **4. Assets** | Sprite generator + C# scaffolding + dialogue trees, each with a step-by-step Unity guide | ✅ Live |
-| **5. Unity Integration** | In-Editor MCP server: the browser creates GameObjects, imports sprites, sets component fields, enters Play mode | ✅ Live (needs Unity open locally) |
-| **6. Playtesting** | AI playtest simulator (4 player personas) + bug tracker with Unity-specific tweak instructions | ✅ Live |
-| **7. Deployment** | Store page generator, press kit, Unity build instructions, full export bundle | ✅ Live |
+Evidence-gated: each stage unlocks when the previous one has proof, not just paperwork.
+
+| Stage | What happens |
+|---|---|
+| **1. Pitch** | AI interview → pitch & pillars, riskiest assumption |
+| **2. Prototype** | Pick a genre kit, build it in Unity through the bridge, Build for web, playtest with humans and AI agents |
+| **3. Vertical slice** | Tune systems, write the store page, resolve comprehension issues |
+| **4. Production** | Content, dialogue and assets |
+| **5. Ship** | Press kit, build and export; publish to itch.io or GitHub Pages |
 
 ---
 
@@ -396,7 +415,7 @@ CS Graduate, University of Wisconsin-Madison. Full-stack engineer and game devel
 
 ---
 
-*GameGold is actively in development. All 7 stages are live.*
+*GameGold is actively in development. All 5 stages and 6 genre kits are live.*
 
 ---
 
