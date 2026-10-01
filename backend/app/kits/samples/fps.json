@@ -10,7 +10,7 @@
     "floorColor": "#3a3f47",
     "wallColor": "#5b6270",
     "blocks": [
-      {"name": "Reactor Core", "pos": [0, 1.5, 0], "size": [4, 3, 4], "color": "#ff7a1a"},
+      {"name": "Reactor Core", "pos": [0, 1.5, 0], "size": [4, 3, 4], "color": "#2fb8a8"},
       {"name": "Cover NE", "pos": [8, 0.75, 8], "size": [3, 1.5, 1], "color": "#c77d3a"},
       {"name": "Cover NW", "pos": [-8, 0.75, 8], "size": [3, 1.5, 1], "color": "#c77d3a"},
       {"name": "Cover SE", "pos": [8, 0.75, -8], "size": [1, 1.5, 3], "color": "#c77d3a"},

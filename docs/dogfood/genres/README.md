@@ -28,3 +28,17 @@ Ripple worked because GameGold ships a **runtime that reads data** (DialoguePlay
 6. **FPS arena** — 3D primitives, pointer lock, hardest for agents.
 
 Each game: build through GameGold's UI in its own Unity project → agent + human playtests → itch.io page (mihirsahu14.itch.io) → its own public GitHub repo.
+
+## Shipped (2026-10-01)
+
+Each game was built end to end through GameGold's UI, agent-playtested on the live web build, saved to its own public repo with Save version, and published to itch.io with GameGold's butler publish.
+
+| Game | Kit | itch.io | Repo |
+|---|---|---|---|
+| Dockside | Grid puzzle | https://mihirsahu14.itch.io/dockside | https://github.com/MihirSahu14/Dockside |
+| Ember Hop | Platformer | https://mihirsahu14.itch.io/ember-hop | https://github.com/MihirSahu14/EmberHop |
+| Last Light | Top-down shooter | https://mihirsahu14.itch.io/last-light | https://github.com/MihirSahu14/LastLight |
+| Ember Ledger | Card battler | https://mihirsahu14.itch.io/ember-ledger | https://github.com/MihirSahu14/EmberLedger |
+| Core Breach | FPS arena | https://mihirsahu14.itch.io/core-breach | https://github.com/MihirSahu14/CoreBreach |
+
+What the loop found and fixed is in `docs/dogfood/ripple-gamegold-gaps.md`, rows 75–98.
