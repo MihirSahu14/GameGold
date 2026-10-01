@@ -44,7 +44,8 @@ describe('multi-editor port selection', () => {
   it('picks the editor matching the project (never another project), else the first found', () => {
     expect(pickEditor(editors, 'Dockside')?.port).toBe(7433)
     expect(pickEditor(editors, 'Nope')).toBeNull()
-    expect(pickEditor(editors, null)?.port).toBe(7432)
+    expect(pickEditor(editors, null)).toBeNull() // several open, none chosen: never guess
+    expect(pickEditor(editors.slice(0, 1), null)?.port).toBe(7432)
     expect(pickEditor([], 'Dockside')).toBeNull()
   })
 

@@ -245,10 +245,14 @@ describe('AssetCard Sync to Unity', () => {
   })
 
   it('writes the story JSON via asset.createText and toasts success', async () => {
-    const fetchMock = vi.fn(async (url: string) => ({
+    // One editor open (on 7432): several open with no project name set would pick none.
+    const fetchMock = vi.fn(async (url: string) => {
+      if (!url.includes(':7432/')) throw new TypeError('refused')
+      return {
       ok: true,
       json: async () => (url.endsWith('/status') ? { version: '6000.5' } : { success: true, message: 'Wrote dialogue.json' }),
-    }))
+      }
+    })
     vi.stubGlobal('fetch', fetchMock)
     const { useToastStore } = await import('@/store/toastStore')
     renderCard(DIALOGUE)

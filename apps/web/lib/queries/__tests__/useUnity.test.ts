@@ -140,7 +140,10 @@ describe('syncCall', () => {
 
 describe('useUnityConnection', () => {
   it('shares one status check between components', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ version: '6000.5' }) })
+    const fetchMock = vi.fn(async (url: string) => {
+      if (!url.includes(':7432/')) throw new TypeError('refused') // one editor open
+      return { ok: true, json: async () => ({ version: '6000.5' }) }
+    })
     vi.stubGlobal('fetch', fetchMock)
     const qc = new QueryClient()
     const wrapper = ({ children }: { children: React.ReactNode }) =>

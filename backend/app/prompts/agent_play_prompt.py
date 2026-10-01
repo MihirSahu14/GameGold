@@ -63,7 +63,8 @@ Every answer, whatever its action, also has "note": one first-person sentence �
 STEP_MODE_NOTE = (
     "The game is paused between your turns: time only moves while your inputs run, "
     "so take your time deciding. A 'STEP MODE' banner on screen comes from this test setup, "
-    "not the game — ignore it and don't report it."
+    "not the game — ignore it and don't report it. Time also freezes the moment your inputs end, so you may "
+    "see yourself mid-air or mid-move: that's the pause, not a glitch."
 )
 
 AGENT_REPORT_SYSTEM_PROMPT = """\

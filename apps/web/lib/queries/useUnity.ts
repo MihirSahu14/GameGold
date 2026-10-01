@@ -228,10 +228,12 @@ export async function scanEditors(): Promise<UnityEditor[] | null> {
 }
 
 // The editor whose project matches this GameGold project's unityProjectName (null if that one isn't running —
-// never silently another project's), else the first found when no name is set.
+// never silently another project's), else the only one open when no name is set. With several open and no
+// name, nothing is picked: the page asks which editor is this project's (Save version could otherwise
+// commit another game's project).
 export function pickEditor(editors: UnityEditor[], unityProjectName?: string | null): UnityEditor | null {
   if (unityProjectName) return editors.find((e) => e.projectName === unityProjectName) ?? null
-  return editors[0] ?? null
+  return editors.length === 1 ? editors[0] : null
 }
 
 // One cached scan shared by every page/card (Unity page, Assets page). Pass the project's unityProjectName
@@ -288,7 +290,9 @@ export async function executeStepTool(tool: string, args: Record<string, unknown
 
 export async function executeTool(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
   const port = activePort()
-  if (port === null) return { success: false, message: `Open ${wantedProject} in Unity — its editor isn't running` }
+  if (port === null) return { success: false, message: wantedProject
+    ? `Open ${wantedProject} in Unity — its editor isn't running`
+    : 'Several Unity editors are open — connect this project to its editor first' }
   try {
     const res = await fetch(`http://localhost:${port}/tool/${tool}`, {
       method: 'POST',
