@@ -50,6 +50,7 @@ namespace GameGold.MCP
         {
             ["scene.list"]           = SceneTools.List,
             ["scene.new"]            = SceneTools.New,
+            ["scene.save"]           = SceneTools.Save,
             ["scene.snapshot"]       = SceneTools.Snapshot,
             ["gameobject.create"]    = GameObjectTools.Create,
             ["gameobject.delete"]    = GameObjectTools.Delete,

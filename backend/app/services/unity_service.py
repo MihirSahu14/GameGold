@@ -218,6 +218,7 @@ def runtime_plan(kit: Kit, assets: list[dict]) -> tuple[str, list[UnityBuildStep
         (f"Create an empty GameObject named {obj}", "gameobject.create", {"name": obj}, "gameobject"),
         (f"Add the {kit.runtime_class} component to {obj}", "component.add",
          {"gameObjectName": obj, "componentType": kit.runtime_class}, "component"),
+        ("Save the scene (Build for web needs it saved)", "scene.save", {}, "scene"),
         ("Enter Play mode and play it", "playmode.enter", {}, "playmode"),
     ]
     steps = [
