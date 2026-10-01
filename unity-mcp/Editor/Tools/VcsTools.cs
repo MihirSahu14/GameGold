@@ -38,12 +38,19 @@ namespace GameGold.MCP
         // ── Pure helpers ────────────────────────────────────────────────────────────────
 
         // butler on PATH, else its usual install folders (manual unzip to %LOCALAPPDATA%utler, or the itch app).
+        // Unity's runtime doesn't reliably resolve Environment.SpecialFolder.LocalApplicationData, so read the
+        // env vars first and fall back to the profile path (gap 74).
+        internal static string[] ButlerCandidates()
+        {
+            var profile = Environment.GetEnvironmentVariable("USERPROFILE") ?? "";
+            var local = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? Path.Combine(profile, "AppData", "Local");
+            var roaming = Environment.GetEnvironmentVariable("APPDATA") ?? Path.Combine(profile, "AppData", "Roaming");
+            return new[] { Path.Combine(local, "butler", "butler.exe"), Path.Combine(roaming, "itch", "apps", "butler", "butler.exe") };
+        }
+
         static string ButlerExe()
         {
-            var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            foreach (var p in new[] { Path.Combine(local, "butler", "butler.exe"), Path.Combine(roaming, "itch", "apps", "butler", "butler.exe") })
-                if (File.Exists(p)) return p;
+            foreach (var p in ButlerCandidates()) if (File.Exists(p)) return p;
             return "butler";
         }
 
@@ -196,10 +203,12 @@ namespace GameGold.MCP
                 var l1 = Probe(root, "git", "log", "-1", "--format=%h %s");
                 if (l1.code == 0 && l1.output.Trim().Length > 0) last = Scrub(l1.output.Trim());
             }
+            var butlerError = butler ? null
+                : Scrub(butlerProbe.output).Trim() + " — looked in PATH, " + string.Join(", ", ButlerCandidates());
             var data = $"{{\"gitInstalled\":{Bool(git)},\"butlerInstalled\":{Bool(butler)},\"isRepo\":{Bool(isRepo)}," +
                        $"\"remoteUrl\":{Str(remote)},\"branch\":{Str(branch)},\"dirtyFiles\":{dirty},\"lastCommit\":{Str(last)}," +
                        // where butler was looked for and why it failed — "not installed" alone hid a real problem once
-                       $"\"butlerPath\":{Str(butlerExe)},\"butlerError\":{Str(butler ? null : Scrub(butlerProbe.output).Trim())}}}";
+                       $"\"butlerPath\":{Str(butlerExe)},\"butlerError\":{Str(butlerError)}}}";
             return GameGoldMCP.Ok(isRepo ? "Repo found" : git ? "Not a git repo yet" : "git isn't installed", data);
         }
 
