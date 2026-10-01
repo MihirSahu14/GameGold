@@ -201,7 +201,7 @@ def test_sample_greedy_win_rate_in_band():
 # ─── runtime template ─────────────────────────────────────────────────────────
 
 def test_runtime_header_and_contract():
-    assert CS.splitlines()[0] == "// GameGold CardBattlePlayer v2"
+    assert CS.splitlines()[0] == "// GameGold CardBattlePlayer v3"
     for needle in ("public partial class CardBattlePlayer : MonoBehaviour", "GameGold/cardgame", "JsonUtility.FromJson",
                    "GameGold/Sprites/card_", "#if ENABLE_INPUT_SYSTEM", "#elif ENABLE_LEGACY_INPUT_MANAGER",
                    "InputSystemUIInputModule", "LegacyRuntime.ttf", "AudioClip.Create", "End Turn", "Play again"):
@@ -213,4 +213,4 @@ def test_runtime_header_and_contract():
 def test_runtime_template_served(client):
     body = client.get("/unity/templates/CardBattlePlayer").json()
     assert body["className"] == "CardBattlePlayer"
-    assert body["version"] == 2
+    assert body["version"] == 3

@@ -116,6 +116,9 @@ def _loose_fields(text: str) -> Optional[dict]:
         f = re.search(rf'"{field}"\s*:\s*(-?\d+(?:\.\d+)?)', text)
         if f:
             data[field] = float(f.group(1))
+    pair = re.search(r'"x"\s*:\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,', text)
+    if pair and "y" not in data:  # '"x": 517, 281' — the model dropped the "y" key
+        data["y"] = float(pair.group(2))
     note = re.search(r'"note"\s*:\s*"(.*?)"\s*(?:,\s*"\w+"\s*:|\}\s*$)', text, re.S)
     data["note"] = note.group(1) if note else ""
     return data

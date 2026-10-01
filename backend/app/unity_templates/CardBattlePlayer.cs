@@ -1,4 +1,4 @@
-// GameGold CardBattlePlayer v2
+// GameGold CardBattlePlayer v3
 // GameGold CardBattlePlayer — plays a GameGold card-battler JSON (roguelite deckbuilder-lite) in Play mode.
 // Setup: put this on any GameObject, save the game as Assets/Resources/GameGold/cardgame.json, press Play.
 // It builds its own UI (legacy uGUI Text, no shaders, no external assets) and its own sounds.
@@ -715,6 +715,11 @@ public partial class CardBattlePlayer : MonoBehaviour
             var b = MakeCard(handRow, engine.hand[i], i + 1, engine.CanPlay(i));
             b.onClick.AddListener(() => PlayCard(index));
         }
+        // Nothing left to play: say so and light up End Turn (first-time players kept clicking grey cards).
+        bool stuck = engine.result == null;
+        for (int i = 0; i < engine.hand.Count && stuck; i++) stuck = !engine.CanPlay(i);
+        endTurnButton.image.color = stuck ? FocusColor : ButtonColor;
+        if (stuck && !logText.text.Contains("End Turn")) logText.text += "\nNo playable cards left — End Turn (E)";
     }
 
     void SetBar(Image fill, Text label, Unit u)

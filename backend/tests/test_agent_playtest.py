@@ -555,3 +555,9 @@ def test_note_only_answer_is_a_wait():
     from app.services.agent_play_service import parse_step
     step = parse_step('```json\n{"action": "note", "note": "I see a cube."}\n```', 100, 100, 100, 100)
     assert step.action == "wait" and step.note == "I see a cube."
+
+
+def test_missing_y_key_is_salvaged():
+    from app.services.agent_play_service import parse_step
+    step = parse_step('{"action": "click", "x": 50, 70, "note": "the orange enemy"}', 100, 100, 100, 100)
+    assert (step.action, step.x, step.y) == ("click", 50, 70)

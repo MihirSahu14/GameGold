@@ -41,7 +41,10 @@ export function ProjectHomeCard({ projectId, project, connected, run = executeTo
     setOriginDiffers(false)
     const r = await run('vcs.connect', replace ? { repoUrl: url, replace: true } : { repoUrl: url })
     setConnecting(false)
-    if (!r.success) {
+    // A slow git init can outlast the request yet still finish: trust the repo's actual remote over the timeout.
+    const landed = !r.success && /Failed to reach|timed out/i.test(r.message)
+      && ((await run('vcs.status', {})).data as { remoteUrl?: string } | undefined)?.remoteUrl === url
+    if (!r.success && !landed) {
       setError(r.message)
       setOriginDiffers(!replace && /already points to/i.test(r.message))
       return
