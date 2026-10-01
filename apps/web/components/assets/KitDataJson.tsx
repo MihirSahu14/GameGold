@@ -58,7 +58,16 @@ export function KitDataImportPanel({ projectId, kit }: ImportProps) {
           className="w-64 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200"
         />
         {sample.data && (
-          <button type="button" onClick={() => setText(JSON.stringify(sample.data, null, 2))} className={buttonClass}>
+          <button
+            type="button"
+            onClick={() => {
+              setText(JSON.stringify(sample.data, null, 2))
+              // Import needs a name: default to the sample's title so the button isn't silently disabled.
+              const title = sample.data?.title
+              setName((n) => n || (typeof title === 'string' ? title : kit.title))
+            }}
+            className={buttonClass}
+          >
             Start from sample
           </button>
         )}
