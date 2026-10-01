@@ -17,6 +17,17 @@ namespace GameGold.MCP
         private static bool _scheduled; // static on purpose: a reload drops a pending update hook too
         private static readonly string[] ReservedFolders = { "Library", "ProjectSettings", "Packages", "Temp", "Logs", "UserSettings" };
 
+        /// <summary>args: { scenes: ["Assets/…/Level1.unity", …] } — replaces Build Settings' scene list, in order, all enabled.</summary>
+        internal static string Scenes(string body)
+        {
+            var paths = SimpleJson.Parse(body).GetStringArray("scenes");
+            if (paths == null || paths.Count == 0) return GameGoldMCP.Error("'scenes' must be a non-empty array of scene paths");
+            var missing = paths.Where(p => AssetDatabase.LoadAssetAtPath<SceneAsset>(p) == null).ToList();
+            if (missing.Count > 0) return GameGoldMCP.Error($"No scene at: {string.Join(", ", missing)}");
+            EditorBuildSettings.scenes = paths.Distinct().Select(p => new EditorBuildSettingsScene(p, true)).ToArray();
+            return GameGoldMCP.Ok($"Build Settings now lists {EditorBuildSettings.scenes.Length} scene(s)");
+        }
+
         /// <summary>args: { outputPath? = "Builds/WebGL" } — inside the project, not under Assets/.
         /// Schedules the build and returns { state: "building" } right away.</summary>
         internal static string WebGL(string body)
