@@ -32,7 +32,14 @@ The server only listens on `localhost:7432`. Tool calls must be `POST` with `Con
 | `publish.itch` | `{ itchTarget: "user/game", buildPath? = "Builds/WebGL" }` | Background job: `butler push <build> user/game:html5` (run `butler login` once first). Returns `{ jobId }` |
 | `publish.pages` | `{ buildPath? = "Builds/WebGL" }` | Background job: force-pushes the build as a single commit to `gh-pages` (github.com remotes only); your branch and index are untouched. Returns `{ jobId }` |
 | `job.status` | `{ jobId }` | `{ state: running\|succeeded\|failed, output, result: { commit, url } }` |
+| `browser.open` | `{ url, width? = 1280, height? = 720 }` (`https://…` or `http://localhost:7432/play/…`) | Starts your installed Edge (else Chrome) headless with a throwaway profile and opens the game. Returns `{ sessionId, width, height }` |
+| `browser.screenshot` | `{ sessionId, maxWidth? = 1024 }` | `{ jpegBase64, width, height, url }` — width/height are the viewport size click coordinates refer to. Fails with "The game navigated away to <origin>" if the page left the game's origin |
+| `browser.click` | `{ sessionId, x, y }` (viewport pixels) | Left click. Returns `{ url }` |
+| `browser.key` | `{ sessionId, key }` (`Space`, `Enter`, `ArrowUp/Down/Left/Right`, `Escape`, `1`-`9`, `a`-`z`) | Key press. Returns `{ url }` |
+| `browser.close` | `{ sessionId }` | Closes the browser and deletes its profile (also after 10 min idle, on script reload and on Editor quit) |
 
 While a build runs the Editor's main thread is busy, so `build.status` calls may time out until it finishes; keep polling.
+
+The `browser.*` tools never touch Unity, so they run off the main thread (20 s limit) and keep working during builds. `GET /play/<path>` serves the local WebGL build from `Builds/WebGL/` (read-only, no Origin needed) so agents can play it at `http://localhost:7432/play/index.html`.
 
 git and butler run as local processes with this machine's own sign-in (Git Credential Manager, `gh auth login`, `butler login`); GameGold never sees a token. Arguments are passed directly (no shell), prompts are disabled, and credentials are scrubbed from any output returned.
