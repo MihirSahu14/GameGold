@@ -1,0 +1,73 @@
+{
+  "title": "Ember Ledger",
+  "subtitle": "Cross the dark city. Keep the lamps lit.",
+  "seed": 0,
+  "player": {
+    "hp": 60,
+    "energy": 3,
+    "handSize": 5,
+    "deck": ["strike", "strike", "strike", "strike", "strike", "guard", "guard", "guard", "guard", "spark"]
+  },
+  "cards": [
+    { "id": "strike", "name": "Strike", "cost": 1, "rarity": "starter", "text": "", "effects": ["damage 6"] },
+    { "id": "guard", "name": "Guard", "cost": 1, "rarity": "starter", "text": "", "effects": ["block 5"] },
+    { "id": "spark", "name": "Spark", "cost": 1, "rarity": "starter", "text": "", "effects": ["damage 4", "draw 1"] },
+
+    { "id": "flare", "name": "Flare", "cost": 1, "rarity": "common", "text": "", "effects": ["damage 8"] },
+    { "id": "kindle", "name": "Kindle", "cost": 1, "rarity": "common", "text": "", "effects": ["status poison 4"] },
+    { "id": "sidestep", "name": "Sidestep", "cost": 1, "rarity": "common", "text": "", "effects": ["block 7", "draw 1"] },
+    { "id": "soot", "name": "Soot Cloud", "cost": 1, "rarity": "common", "text": "", "effects": ["status weak 2", "block 3"] },
+    { "id": "wick", "name": "Quick Wick", "cost": 0, "rarity": "common", "text": "", "effects": ["damage 4"] },
+    { "id": "tally", "name": "Tally", "cost": 1, "rarity": "common", "text": "", "effects": ["damage 5", "draw 1"] },
+    { "id": "lamp_swing", "name": "Lamp Swing", "cost": 2, "rarity": "common", "text": "", "effects": ["damage 12"] },
+    { "id": "shutters", "name": "Shutters", "cost": 2, "rarity": "common", "text": "", "effects": ["block 14"] },
+
+    { "id": "brand", "name": "Brand", "cost": 2, "rarity": "uncommon", "text": "", "effects": ["damage 8", "status vulnerable 2"] },
+    { "id": "twin_flame", "name": "Twin Flame", "cost": 2, "rarity": "uncommon", "text": "", "effects": ["damage 5", "damage 5"] },
+    { "id": "ember_ward", "name": "Ember Ward", "cost": 1, "rarity": "uncommon", "text": "", "effects": ["block 6", "status poison 2"] },
+    { "id": "second_wind", "name": "Second Wind", "cost": 1, "rarity": "uncommon", "text": "", "effects": ["heal 6", "block 4"] },
+    { "id": "focus", "name": "Steady Hand", "cost": 1, "rarity": "uncommon", "text": "", "effects": ["status strength 2", "draw 1"] },
+    { "id": "ledger", "name": "Read the Ledger", "cost": 0, "rarity": "uncommon", "text": "", "effects": ["draw 2"] },
+
+    { "id": "inferno", "name": "Inferno", "cost": 3, "rarity": "rare", "text": "", "effects": ["damage 18", "status poison 4"] },
+    { "id": "midnight_oil", "name": "Midnight Oil", "cost": 0, "rarity": "rare", "text": "", "effects": ["energy 2", "draw 1"] },
+    { "id": "oath", "name": "Lamplighter's Oath", "cost": 2, "rarity": "rare", "text": "", "effects": ["status strength 3", "block 6"] }
+  ],
+  "enemies": [
+    { "id": "thug", "name": "Alley Thug", "hp": 36, "moves": [
+      { "name": "Swing", "effects": ["damage 8"] },
+      { "name": "Duck", "effects": ["block 6", "damage 4"] },
+      { "name": "Haymaker", "effects": ["damage 11"] }
+    ] },
+    { "id": "rats", "name": "Rat Pack", "hp": 44, "moves": [
+      { "name": "Swarm", "effects": ["damage 3", "damage 3", "damage 3"] },
+      { "name": "Gnaw", "effects": ["damage 5", "status weak 1"] },
+      { "name": "Swarm", "effects": ["damage 3", "damage 3", "damage 3"] },
+      { "name": "Scatter", "effects": ["block 8"] }
+    ] },
+    { "id": "wraith", "name": "Ash Wraith", "hp": 44, "moves": [
+      { "name": "Choking Ash", "effects": ["status poison 4"] },
+      { "name": "Claw", "effects": ["damage 9"] },
+      { "name": "Fade", "effects": ["block 10", "status strength 1"] }
+    ] },
+    { "id": "warden", "name": "Night Warden", "hp": 72, "moves": [
+      { "name": "Lock Down", "effects": ["block 10", "status strength 2"] },
+      { "name": "Baton", "effects": ["damage 13"] },
+      { "name": "Pin", "effects": ["damage 5", "status vulnerable 2"] },
+      { "name": "Double Strike", "effects": ["damage 6", "damage 6"] }
+    ] },
+    { "id": "gatekeeper", "name": "The Gatekeeper", "hp": 75, "moves": [
+      { "name": "Toll", "effects": ["damage 14"] },
+      { "name": "Iron Gate", "effects": ["block 12", "status strength 2"] },
+      { "name": "Chains", "effects": ["damage 6", "damage 6", "damage 6"] },
+      { "name": "Douse", "effects": ["status weak 2", "status vulnerable 2"] },
+      { "name": "Final Bell", "effects": ["damage 18"] }
+    ] }
+  ],
+  "run": {
+    "fights": ["thug", "rats", "wraith", "warden", "gatekeeper"],
+    "rewardChoices": 3,
+    "rewardPool": [],
+    "healBetweenFights": 12
+  }
+}
