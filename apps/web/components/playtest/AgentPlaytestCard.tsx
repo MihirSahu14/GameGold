@@ -17,7 +17,9 @@ type AgentPlaytestCardProps = {
 export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentPlaytestCardProps) {
   const { data: llm } = useLlmConfig()
   const trial = !llm?.usingOwnKey
-  const [url, setUrl] = useState(publishedUrl ?? LOCAL_BUILD_URL)
+  // null until the user edits the field, so a published URL that loads after mount is still adopted
+  const [editedUrl, setUrl] = useState<string | null>(null)
+  const url = editedUrl ?? publishedUrl ?? LOCAL_BUILD_URL
   const [picked, setPicked] = useState<AgentPersona[]>(['first_timer', 'impatient', 'poker'])
   const [custom, setCustom] = useState('')
   const { start, stop, running, progress, result } = useAgentPlaytest(projectId)

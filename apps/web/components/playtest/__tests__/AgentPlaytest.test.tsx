@@ -61,6 +61,16 @@ describe('AgentPlaytestCard', () => {
       url: 'https://me.itch.io/ripple', personas: ['first_timer', 'impatient', 'poker', 'custom'], custom: 'A kid',
     })
   })
+
+  it('adopts a published link that loads after mount, unless the user edited the field', () => {
+    const { rerender } = render(<AgentPlaytestCard projectId="p1" publishedUrl={null} connected />)
+    rerender(<AgentPlaytestCard projectId="p1" publishedUrl="https://me.itch.io/ripple" connected />)
+    expect(screen.getByDisplayValue('https://me.itch.io/ripple')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByDisplayValue('https://me.itch.io/ripple'), { target: { value: 'https://mine.io/g' } })
+    rerender(<AgentPlaytestCard projectId="p1" publishedUrl="https://me.itch.io/other" connected />)
+    expect(screen.getByDisplayValue('https://mine.io/g')).toBeInTheDocument()
+  })
 })
 
 const REPORT: AgentPlayReport = {
