@@ -41,33 +41,34 @@ def _ms(v) -> Optional[int]:
 
 
 def parse_act(raw, scale) -> Optional[list[AgentInputAction]]:
-    """The model's "actions" list -> bridge browser.act inputs. Unknown types/keys or bad coords -> None.
+    """The model's "actions" list -> bridge browser.act inputs. Bad items are skipped; None only when nothing usable is left.
     Lenient on sizes: extra actions are dropped, holds/waits clamped, and anything past the 3 s total trimmed."""
     if not isinstance(raw, list) or not raw:
         return None
     out: list[AgentInputAction] = []
     total = 0
     for item in raw[:ACT_MAX_ACTIONS]:
+        # ponytail: a bad item is skipped, not fatal — one odd key shouldn't cost the agent its turn
         if not isinstance(item, dict):
-            return None
+            continue
         kind = item.get("type")
         if kind in ("key", "keys"):
             keys = [item.get("key")] if kind == "key" else item.get("keys")
             if not isinstance(keys, list) or not keys:
-                return None
-            keys = [normalize_key(k) for k in keys]
-            if any(k is None for k in keys):
-                return None
+                continue
+            keys = [k for k in (normalize_key(k) for k in keys) if k]
+            if not keys:
+                continue
             hold = _ms(item.get("holdMs", 100))
             if hold is None:
-                return None
+                hold = 100
             hold = min(hold, ACT_MAX_TOTAL_MS - total)
             total += hold
             out.append(AgentInputAction(type=kind, hold_ms=hold, **({"key": keys[0]} if kind == "key" else {"keys": list(dict.fromkeys(keys))})))
         elif kind == "wait":
             ms = _ms(item.get("ms"))
             if ms is None:
-                return None
+                continue
             ms = min(ms, ACT_MAX_TOTAL_MS - total)
             total += ms
             out.append(AgentInputAction(type="wait", ms=ms))
@@ -77,12 +78,10 @@ def parse_act(raw, scale) -> Optional[list[AgentInputAction]]:
                 out.append(AgentInputAction(type=kind))  # press/release where the mouse is
                 continue
             if not (_num(x) and _num(y)):
-                return None
+                continue
             vx, vy = scale(x, y)
             out.append(AgentInputAction(type=kind, x=vx, y=vy))
-        else:
-            return None
-    return out
+    return out or None
 
 
 log = logging.getLogger(__name__)
@@ -129,7 +128,6 @@ def parse_step(text: str, sw: int, sh: int, vw: int, vh: int) -> Optional[AgentS
     except ValueError:
         data = _loose_fields(text)
         if data is None:
-            log.warning("agent step: unusable model answer: %r", text[:300])
             return None
     action = data.get("action")
     note = str(data.get("note") or "")[:300]
@@ -150,7 +148,6 @@ def parse_step(text: str, sw: int, sh: int, vw: int, vh: int) -> Optional[AgentS
     if action == "key":
         key = normalize_key(data.get("key"))
         if key is None:
-            log.warning("agent step: key not allowed: %r", data.get("key"))
             return None
         return AgentStepOut(action="key", key=key, note=note)
     if action == "wait":
@@ -165,7 +162,10 @@ async def agent_step(agent: str, custom: str, actions_used: int, max_steps: int,
                      step_mode: bool = False) -> Optional[AgentStepOut]:
     prompt = build_step_prompt(agent, custom, actions_used, max_steps, sw, sh, recent_notes, step_mode)
     text = await complete_vision(AGENT_STEP_SYSTEM_PROMPT, prompt, jpeg_b64, max_tokens=300)
-    return parse_step(text, sw, sh, vw, vh)
+    step = parse_step(text, sw, sh, vw, vh)
+    if step is None:
+        log.warning("agent step: unusable model answer: %r", text[:500])
+    return step
 
 
 def _strs(value) -> list[str]:

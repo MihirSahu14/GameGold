@@ -197,9 +197,9 @@ def test_act_caps_count_holds_and_total_time(client, mock_db, project, llm):
 
 
 @pytest.mark.parametrize("actions", [
-    [], "Space", [{"type": "key", "key": "F5"}], [{"type": "keys", "keys": ["w", "Tab"]}],
+    [], "Space", [{"type": "key", "key": "F5"}], [{"type": "keys", "keys": ["Tab"]}],
     [{"type": "teleport"}], [{"type": "click", "x": "here", "y": 2}], [{"type": "mouseMove"}],
-    [{"type": "wait"}], [{"type": "key", "key": "d", "holdMs": "long"}],
+    [{"type": "wait"}],
 ])
 def test_bad_act_is_unreadable(client, mock_db, project, llm, actions):
     mock_db.agent_runs.find_one.return_value = _run_doc()
@@ -542,3 +542,10 @@ def test_parse_step_tolerates_unescaped_quotes_and_key_spellings():
     assert parse_step('{"action": "key", "key": "F12", "note": "x"}', 1024, 576, 1280, 720) is None
     click = parse_step('{"action": "click", "x": 512, "y": 288, "note": "the "Play" button"}', 1024, 576, 1280, 720)
     assert (click.x, click.y) == (640, 360)
+
+
+def test_act_skips_bad_items():
+    from app.services.agent_play_service import parse_act
+    acts = parse_act([{"type": "teleport"}, {"type": "keys", "keys": ["w", "Tab"]},
+                      {"type": "key", "key": "d", "holdMs": "long"}], lambda x, y: (x, y))
+    assert [(a.type, a.keys or a.key, a.hold_ms) for a in acts] == [("keys", ["w"], 100), ("key", "d", 100)]

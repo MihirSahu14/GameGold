@@ -37,6 +37,9 @@ namespace GameGold.MCP
                 return GameGoldMCP.Error(GameGoldMCP.PlayModeBlockedMessage);
             if (_scheduled || BuildPipeline.isBuildingPlayer)
                 return GameGoldMCP.Error("A build is already running");
+            // Building mid-compile ships the old scripts (and a domain reload drops the scheduled build).
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+                return GameGoldMCP.Error("Unity is still compiling scripts — try again when it finishes");
             if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL))
                 return GameGoldMCP.Error("Web Build Support isn't installed — add it to this Unity version in Unity Hub (Installs > ⚙ > Add modules)");
 
