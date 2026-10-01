@@ -43,15 +43,23 @@ namespace GameGold.MCP
             if (output == null) return GameGoldMCP.Error(pathError);
 
             var active = SceneManager.GetActiveScene();
-            if (active.isDirty)
-                return GameGoldMCP.Error($"Save scene '{active.name}' first (File > Save) — the build uses the saved file");
+            var listed = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
+            string[] scenes;
             if (string.IsNullOrEmpty(active.path))
-                return GameGoldMCP.Error("The active scene has never been saved — save it first (File > Save As)");
-            // The game starts in the scene you're working in (Build Settings often still lists the
-            // template's SampleScene first); other enabled Build Settings scenes are kept after it.
-            var scenes = new[] { active.path }
-                .Concat(EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path))
-                .Distinct().ToArray();
+            {
+                // A freshly started (e.g. headless) Editor opens an untitled scene — build what Build Settings lists.
+                if (listed.Length == 0)
+                    return GameGoldMCP.Error("The active scene has never been saved and Build Settings has no scenes — save it first (File > Save As)");
+                scenes = listed;
+            }
+            else
+            {
+                if (active.isDirty)
+                    return GameGoldMCP.Error($"Save scene '{active.name}' first (File > Save) — the build uses the saved file");
+                // The game starts in the scene you're working in (Build Settings often still lists the
+                // template's SampleScene first); other enabled Build Settings scenes are kept after it.
+                scenes = new[] { active.path }.Concat(listed).Distinct().ToArray();
+            }
 
             // Plain files: works on itch.io and any static host without Content-Encoding headers.
             // Restored after the build so the developer's own setting survives.
@@ -59,7 +67,7 @@ namespace GameGold.MCP
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
 
             _scheduled = true;
-            Save("building", $"Building for WebGL — starts in '{active.name}'…", output, 0, 0);
+            Save("building", $"Building for WebGL — starts in '{Path.GetFileNameWithoutExtension(scenes[0])}'…", output, 0, 0);
             // One-shot update hook, not delayCall: delayCall never fires while the Editor is unfocused (gap 71).
             EditorApplication.CallbackFunction once = null;
             var development = SimpleJson.Parse(body).GetBool("development");

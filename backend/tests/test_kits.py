@@ -229,16 +229,17 @@ def test_runtime_plan_steps():
         ("gameobject.create", {"name": "GameGold Platformer"}),
         ("component.add", {"gameObjectName": "GameGold Platformer", "componentType": "PlatformerRunner"}),
         ("scene.save", {}),
+        ("build.scenes", {"scenes": ["Assets/Scenes/Game.unity"]}),
         ("playmode.enter", {}),
     ]
-    assert [s.step_number for s in steps] == list(range(1, 12))
+    assert [s.step_number for s in steps] == list(range(1, 13))
 
 
 def test_runtime_plan_skips_settings_step_without_settings_path():
     kit = KITS["platformer"]  # settings live inside the levels file
     _, steps = runtime_plan(kit, [_data_doc(kind="platformer_levels")])
     assert not any("kitSettings" in s.args for s in steps)
-    assert len(steps) == 10
+    assert len(steps) == 11
 
 
 def test_runtime_plan_writes_settings_when_kit_has_settings_file():
