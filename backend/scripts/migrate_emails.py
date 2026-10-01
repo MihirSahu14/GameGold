@@ -41,4 +41,10 @@ async def migrate(db) -> dict[str, int]:
         await db.oauth_codes.create_index("expires_at", expireAfterSeconds=0)
     except OperationFailure:
         logger.exception("Could not create TTL index on oauth_codes.expires_at")
+    try:
+        # Screenshots of agent runs that never filed a report expire after 7 days
+        # (finish unsets expires_at when it re-keys frames to the report).
+        await db.playtest_frames.create_index("expires_at", expireAfterSeconds=0)
+    except OperationFailure:
+        logger.exception("Could not create TTL index on playtest_frames.expires_at")
     return counts

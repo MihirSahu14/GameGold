@@ -44,6 +44,7 @@ def _db(docs):
     db.users.update_one = AsyncMock()
     db.users.create_index = AsyncMock()
     db.oauth_codes.create_index = AsyncMock()
+    db.playtest_frames.create_index = AsyncMock()
     return db
 
 
@@ -64,6 +65,7 @@ def test_migration_lowercases_emails_skips_collisions_and_indexes():
     assert indexed == ["email", "username"]
     assert all(c.kwargs == {"unique": True} for c in db.users.create_index.await_args_list)
     db.oauth_codes.create_index.assert_awaited_once_with("expires_at", expireAfterSeconds=0)
+    db.playtest_frames.create_index.assert_awaited_once_with("expires_at", expireAfterSeconds=0)
 
 
 def test_migration_survives_index_failures():
