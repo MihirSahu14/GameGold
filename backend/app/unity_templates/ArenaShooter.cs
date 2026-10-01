@@ -1,4 +1,4 @@
-// GameGold ArenaShooter v3
+// GameGold ArenaShooter v4
 // GameGold ArenaShooter — a top-down twin-stick arena shooter driven entirely by data.
 // Setup: put this on any GameObject, save the arena JSON as Assets/Resources/GameGold/arena.json, press Play.
 // Everything (camera, floor, walls, player, enemies, bullets, pickups, HUD, screens, sound) is built in code:
@@ -589,6 +589,10 @@ public class ArenaShooter : MonoBehaviour
         b.color = color;
         b.hit.Clear();
         SetLook(b, null, b.radius * 2f, circle);
+        // A streak along the flight path, so a shot (even one frozen by step mode) never reads as a tiny enemy.
+        var t = b.go.transform;
+        t.localScale = new Vector3(t.localScale.x * 2.6f, t.localScale.y * 0.8f, 1f);
+        t.rotation = Quaternion.FromToRotation(Vector3.right, vel);
     }
 
     void TickBullets(float dt)
