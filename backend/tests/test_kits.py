@@ -222,20 +222,25 @@ def test_runtime_plan_steps():
         ("scene.new", {"name": "Game", "saveCurrent": True}),
         ("asset.createScript", {"className": "PlatformerRunner", "path": "Assets/Scripts/PlatformerRunner.cs"}),
         ("asset.createText", {"data": "Ember Hop", "path": kit.data_path}),
-        ("asset.createText", {"kitSettings": "platformer", "path": kit.settings_path}),
         ("asset.importSprite", {"name": "crate/1", "path": "Assets/Resources/GameGold/Sprites/crate_1.png"}),
         ("gameobject.create", {"name": "GameGold Platformer"}),
         ("component.add", {"gameObjectName": "GameGold Platformer", "componentType": "PlatformerRunner"}),
         ("playmode.enter", {}),
     ]
-    assert [s.step_number for s in steps] == list(range(1, 9))
+    assert [s.step_number for s in steps] == list(range(1, 8))
 
 
 def test_runtime_plan_skips_settings_step_without_settings_path():
-    kit = KITS["grid"]
-    _, steps = runtime_plan(kit, [_data_doc()])
+    kit = KITS["platformer"]  # settings live inside the levels file
+    _, steps = runtime_plan(kit, [_data_doc(kind="platformer_levels")])
     assert not any("kitSettings" in s.args for s in steps)
     assert len(steps) == 6
+
+
+def test_runtime_plan_writes_settings_when_kit_has_settings_file():
+    kit = KITS["grid"]
+    _, steps = runtime_plan(kit, [_data_doc()])
+    assert ("asset.createText", {"kitSettings": "grid", "path": kit.settings_path}) in [(s.tool, s.args) for s in steps]
 
 
 def test_plan_endpoint_uses_runtime_plan_when_kit_available(client, mock_db, monkeypatch):
