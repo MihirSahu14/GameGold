@@ -1,4 +1,4 @@
-// GameGold ArenaPlayer v3
+// GameGold ArenaPlayer v4
 // GameGold ArenaPlayer — a complete 3D arena first-person shooter built at runtime from one JSON file.
 // Setup: put this on an empty GameObject in an empty scene, save the arena JSON as
 // Assets/Resources/GameGold/fps_arena.json and press Play. It builds the floor, walls, cover, light,
@@ -245,11 +245,16 @@ public class ArenaPlayer : MonoBehaviour
     // ─── Level (primitives + flat-colour materials) ───────────────────────────
 
     readonly Dictionary<string, Material> matCache = new Dictionary<string, Material>();
+    Material lit;
+    bool litLoaded;
+
     Material NewMaterial(Renderer r, Color c)
     {
         // Always the primitive's own default material: looking up "Standard" by name still returns a shader in web builds
         // whose variants were stripped, and the whole arena rendered missing-shader pink (Core Breach).
-        var m = new Material(r.sharedMaterial);
+        // The plan's Resources/GameGold/ArenaLit material keeps the Standard shader in built-in-pipeline builds.
+        if (!litLoaded) { litLoaded = true; lit = GraphicsSettings.currentRenderPipeline == null ? Resources.Load<Material>("GameGold/ArenaLit") : null; }
+        var m = new Material(lit != null ? lit : r.sharedMaterial);
         if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
         if (m.HasProperty("_Color")) m.SetColor("_Color", c);
         if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.15f);

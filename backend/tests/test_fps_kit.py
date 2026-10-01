@@ -76,12 +76,12 @@ def test_validate_cases(label, patch, expected):
 
 def test_arena_player_template():
     code = UNITY_TEMPLATES["ArenaPlayer"]
-    assert code.startswith("// GameGold ArenaPlayer v3") and template_version(code) == 3
+    assert code.startswith("// GameGold ArenaPlayer v4") and template_version(code) == 4
     assert "public class ArenaPlayer : MonoBehaviour" in code
     for needle in ("GameGold/fps_arena", "JsonUtility.FromJson<ArenaData>", "#if ENABLE_INPUT_SYSTEM", "#elif ENABLE_LEGACY_INPUT_MANAGER",
                    "GameObject.CreatePrimitive", "CharacterController", "Physics.RaycastAll", "CursorLockMode.Locked",
                    "gg_step=1", "stepSeconds", "Time.timeScale = 0f", "AgentAdvance", "PlayerPrefs", "AudioClip.Create",
-                   "new Material(r.sharedMaterial)", "LegacyRuntime.ttf", "InputSystemUIInputModule"):
+                   "Resources.Load<Material>(\"GameGold/ArenaLit\")", "LegacyRuntime.ttf", "InputSystemUIInputModule"):
         assert needle in code, needle
     for banned in ("NavMeshAgent", "UnityEngine.AI", "void OnAudioFilterRead", "System.Linq", "GetInstanceID", "LayerMask.NameToLayer", "Shader.Find"):
         assert banned not in code, banned
@@ -103,3 +103,12 @@ def test_template_fields_cover_sample_keys():
     missing = sorted({k for k in keys(SAMPLE) if not any(f" {k} " in line or f" {k};" in line or f" {k} =" in line or f", {k}" in line
                                                        for line in code.splitlines() if "public " in line)})
     assert missing == []
+
+
+def test_fps_plan_ships_a_standard_shader_material():
+    from app.kits.registry import KITS
+    from app.services.unity_service import LIT_MATERIAL, LIT_MATERIAL_PATH, runtime_plan
+    asset = {"name": "Core", "type": "data", "kind": "fps_arena", "data": {}}
+    _, steps = runtime_plan(KITS["fps"], [asset])
+    assert any(s.args.get("path") == LIT_MATERIAL_PATH for s in steps)
+    assert "fileID: 46, guid: 0000000000000000f000000000000000" in LIT_MATERIAL  # built-in Standard

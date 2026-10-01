@@ -170,6 +170,39 @@ LINK_XML_PATH = "Assets/GameGold/link.xml"
 LINK_XML = ('<linker>\n  <assembly fullname="Unity.InputSystem" preserve="all" ignoreIfMissing="1"/>\n'
             '  <assembly fullname="UnityEngine.PhysicsModule" preserve="all"/>\n</linker>\n')
 
+# A Standard-shader material in Resources: nothing in a kit scene uses the shader, so web builds strip it and
+# runtime-made 3D meshes render pink (Core Breach, gap 97). Loading this material keeps the shader in the build.
+LIT_MATERIAL_PATH = "Assets/Resources/GameGold/ArenaLit.mat"
+LIT_MATERIAL = """%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: ArenaLit
+  m_Shader: {fileID: 46, guid: 0000000000000000f000000000000000, type: 0}
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _Glossiness: 0.15
+    m_Colors:
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+  m_BuildTextureStacks: []
+"""
+
 
 def kit_data_asset(kit: Kit, assets: list[dict]) -> dict | None:
     """The data file the kit's runtime plays: designer-written first, then the newest."""
@@ -204,6 +237,9 @@ def runtime_plan(kit: Kit, assets: list[dict]) -> tuple[str, list[UnityBuildStep
         ("Add a link.xml so player builds keep the Input System the runtime reads", "asset.createText",
          {"path": LINK_XML_PATH, "content": LINK_XML}, "asset"),
     ]
+    if kit.id == "fps":  # ponytail: the only 3D kit; make it a Kit field when a second one needs it
+        raw.append(("Add a lit material so web builds keep the Standard shader", "asset.createText",
+                    {"path": LIT_MATERIAL_PATH, "content": LIT_MATERIAL}, "asset"))
     if kit.settings_path:
         raw.append((f"Save the {kit.title} settings JSON to Resources", "asset.createText",
                     {"kitSettings": kit.id, "path": kit.settings_path}, "asset"))
