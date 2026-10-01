@@ -20,6 +20,7 @@ import {
   PLAYER_SETTINGS_PATH, runQueue, useUnitySyncs, usePullFromUnity, useSyncToUnity, snapshotUnity, diffUnity, overwriteTarget,
   recordWrite, stepSource, useRuntimeTemplate, useUpdateRuntime, runtimeOutdated, runtimePath, useProposeChange,
   useProjectKit, useKits, DEFAULT_RUNTIME,
+  executeStepTool,
 } from '@/lib/queries/useUnity'
 import type { ToolResult } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
@@ -297,7 +298,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
         setStepResults(prev => ({ ...prev, [stepNumber]: { success: false, message: resolved.error } }))
         return false
       }
-      const result = await executeTool(tool, resolved.args)
+      const result = await executeStepTool(tool, resolved.args, executeTool)
       setStepResults(prev => ({ ...prev, [stepNumber]: result }))
       if (!result.success) return false
       await recordWrite(id, tool, resolved.args, stepSource(tool, args, assets ?? [])).catch(() => {})

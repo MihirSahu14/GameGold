@@ -220,21 +220,23 @@ def test_runtime_plan_steps():
     assert "Ember Hop" in summary
     assert [(s.tool, s.args) for s in steps] == [
         ("scene.new", {"name": "Game", "saveCurrent": True}),
+        ("packages.ensure", {"names": ["com.unity.ugui"]}),
         ("asset.createScript", {"className": "PlatformerRunner", "path": "Assets/Scripts/PlatformerRunner.cs"}),
         ("asset.createText", {"data": "Ember Hop", "path": kit.data_path}),
         ("asset.importSprite", {"name": "crate/1", "path": "Assets/Resources/GameGold/Sprites/crate_1.png"}),
+        ("editor.awaitCompile", {}),
         ("gameobject.create", {"name": "GameGold Platformer"}),
         ("component.add", {"gameObjectName": "GameGold Platformer", "componentType": "PlatformerRunner"}),
         ("playmode.enter", {}),
     ]
-    assert [s.step_number for s in steps] == list(range(1, 8))
+    assert [s.step_number for s in steps] == list(range(1, 10))
 
 
 def test_runtime_plan_skips_settings_step_without_settings_path():
     kit = KITS["platformer"]  # settings live inside the levels file
     _, steps = runtime_plan(kit, [_data_doc(kind="platformer_levels")])
     assert not any("kitSettings" in s.args for s in steps)
-    assert len(steps) == 6
+    assert len(steps) == 8
 
 
 def test_runtime_plan_writes_settings_when_kit_has_settings_file():
@@ -255,7 +257,7 @@ def test_plan_endpoint_uses_runtime_plan_when_kit_available(client, mock_db, mon
     resp = client.post(f"/projects/{TEST_PROJECT_ID}/unity/plan/generate")
     assert resp.status_code == 201, resp.text
     llm.assert_not_called()
-    assert resp.json()["steps"][1]["args"]["className"] == "GridPlayer"
+    assert resp.json()["steps"][2]["args"]["className"] == "GridPlayer"
 
 
 def test_plan_endpoint_409_when_kit_has_no_data(client, mock_db, monkeypatch):

@@ -245,6 +245,23 @@ export function useUnityConnection(unityProjectName?: string | null) {
   return { status, unityInfo: chosen, editors, check }
 }
 
+const COMPILE_WAIT_MS = 180_000
+const COMPILE_POLL_MS = 3_000
+
+/** Runs a plan step's tool. editor.awaitCompile is retried while Unity reports "Still compiling" (or is busy
+ *  reloading) so a component can be added right after its script was written. */
+export async function executeStepTool(tool: string, args: Record<string, unknown>,
+  exec: typeof executeTool = executeTool, wait = (ms: number) => new Promise((r) => setTimeout(r, ms))): Promise<ToolResult> {
+  if (tool !== 'editor.awaitCompile') return exec(tool, args)
+  const deadline = Date.now() + COMPILE_WAIT_MS
+  for (;;) {
+    const r = await exec(tool, args)
+    const retry = !r.success && (/^Still compiling/.test(r.message) || r.message === BRIDGE_BUSY || /Failed to reach/.test(r.message))
+    if (!retry || Date.now() > deadline) return r
+    await wait(COMPILE_POLL_MS)
+  }
+}
+
 export async function executeTool(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
   try {
     const res = await fetch(bridgeUrl(`/tool/${tool}`), {

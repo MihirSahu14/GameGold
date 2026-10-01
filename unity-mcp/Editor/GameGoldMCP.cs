@@ -66,6 +66,8 @@ namespace GameGold.MCP
             ["build.status"]         = BuildTools.Status,
             ["build.scenes"]         = BuildTools.Scenes,
             ["editor.compileErrors"] = EditorTools.CompileErrors,
+            ["packages.ensure"]     = EditorTools.EnsurePackages,
+            ["editor.awaitCompile"] = EditorTools.AwaitCompile,
             ["vcs.status"]           = VcsTools.Status,
             ["vcs.connect"]          = VcsTools.Connect,
             ["vcs.save"]             = VcsTools.Save,

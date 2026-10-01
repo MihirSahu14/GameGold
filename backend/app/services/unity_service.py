@@ -176,6 +176,9 @@ def kit_data_asset(kit: Kit, assets: list[dict]) -> dict | None:
     return max(data, key=lambda a: (a.get("placeholder") is False, a.get("created_at") or datetime.min))
 
 
+KIT_PACKAGES = ("com.unity.ugui",)
+
+
 def runtime_plan(kit: Kit, assets: list[dict]) -> tuple[str, list[UnityBuildStep]]:
     """Fixed, no-LLM plan on a GameGold kit runtime. Caller guarantees kit_data_asset() exists.
     The web injects file contents: {data: name} → the data asset's JSON, {kitSettings: id} →
@@ -187,6 +190,8 @@ def runtime_plan(kit: Kit, assets: list[dict]) -> tuple[str, list[UnityBuildStep
     obj = kit.object_name
     raw: list[tuple[str, str, dict, str]] = [
         ("Create and save a new scene named Game", "scene.new", {"name": "Game", "saveCurrent": True}, "scene"),
+        # Unity's default template has no uGUI package, and every kit runtime builds its UI with it (gap 75).
+        ("Make sure the Unity UI package is installed", "packages.ensure", {"names": list(KIT_PACKAGES)}, "asset"),
         (f"Add GameGold's {kit.runtime_class} script (builds the game from JSON at runtime)", "asset.createScript",
          {"className": kit.runtime_class, "path": kit.runtime_path}, "asset"),
         (f"Save the '{data['name']}' {kit.data_kind} JSON to Resources so {kit.runtime_class} can load it",
@@ -204,6 +209,7 @@ def runtime_plan(kit: Kit, assets: list[dict]) -> tuple[str, list[UnityBuildStep
                 "asset",
             ))
     raw += [
+        ("Wait for Unity to finish compiling the scripts", "editor.awaitCompile", {}, "asset"),
         (f"Create an empty GameObject named {obj}", "gameobject.create", {"name": obj}, "gameobject"),
         (f"Add the {kit.runtime_class} component to {obj}", "component.add",
          {"gameObjectName": obj, "componentType": kit.runtime_class}, "component"),
