@@ -529,3 +529,16 @@ def test_complete_vision_uses_own_key_unmetered(mock_db, llm, monkeypatch):
     assert llm.call_args.kwargs["api_key"] == "sk-own-1234567890"
     assert llm.call_args.kwargs["model"] == "openai/gpt-4o"
     mock_db.llm_budget.update_one.assert_not_called()
+
+
+def test_parse_step_tolerates_unescaped_quotes_and_key_spellings():
+    from app.services.agent_play_service import parse_step
+    broken = '{"action": "key", "key": "Return", "note": "It says "Enter or Space to start" so I press Enter"}'
+    step = parse_step(broken, 1024, 576, 1280, 720)
+    assert step is not None and step.action == "key" and step.key == "Enter"
+    assert "Enter or Space" in step.note
+    assert parse_step('{"action": "key", "key": "space", "note": "go"}', 1024, 576, 1280, 720).key == "Space"
+    assert parse_step('{"action": "key", "key": "Right", "note": "go"}', 1024, 576, 1280, 720).key == "ArrowRight"
+    assert parse_step('{"action": "key", "key": "F12", "note": "x"}', 1024, 576, 1280, 720) is None
+    click = parse_step('{"action": "click", "x": 512, "y": 288, "note": "the "Play" button"}', 1024, 576, 1280, 720)
+    assert (click.x, click.y) == (640, 360)

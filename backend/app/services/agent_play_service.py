@@ -1,4 +1,6 @@
 """Agent playthroughs of the live build: one vision call per step, one report call per agent."""
+import logging
+import re
 from typing import Optional
 
 import litellm
@@ -51,7 +53,10 @@ def parse_act(raw, scale) -> Optional[list[AgentInputAction]]:
         kind = item.get("type")
         if kind in ("key", "keys"):
             keys = [item.get("key")] if kind == "key" else item.get("keys")
-            if not isinstance(keys, list) or not keys or any(k not in ALLOWED_KEYS for k in keys):
+            if not isinstance(keys, list) or not keys:
+                return None
+            keys = [normalize_key(k) for k in keys]
+            if any(k is None for k in keys):
                 return None
             hold = _ms(item.get("holdMs", 100))
             if hold is None:
@@ -80,12 +85,52 @@ def parse_act(raw, scale) -> Optional[list[AgentInputAction]]:
     return out
 
 
+log = logging.getLogger(__name__)
+
+# The model's spelling -> the bridge's key names (case-insensitive). Anything else must already be allowed.
+KEY_ALIASES = {"return": "Enter", "enter": "Enter", "space": "Space", "spacebar": "Space", " ": "Space",
+               "esc": "Escape", "escape": "Escape", "shift": "Shift",
+               "up": "ArrowUp", "down": "ArrowDown", "left": "ArrowLeft", "right": "ArrowRight",
+               "arrowup": "ArrowUp", "arrowdown": "ArrowDown", "arrowleft": "ArrowLeft", "arrowright": "ArrowRight"}
+
+
+def normalize_key(key) -> Optional[str]:
+    if not isinstance(key, str):
+        return None
+    k = KEY_ALIASES.get(key.strip().lower(), key.strip())
+    if len(k) == 1 and k.isalpha():
+        k = k.lower()
+    return k if k in ALLOWED_KEYS else None
+
+
+def _loose_fields(text: str) -> Optional[dict]:
+    """Broken JSON (e.g. unescaped quotes inside the note) -> the simple fields, by pattern. No act lists."""
+    m = re.search(r'"action"\s*:\s*"(\w+)"', text)
+    if not m:
+        return None
+    data: dict = {"action": m.group(1)}
+    for field in ("key", "stopReason"):
+        f = re.search(rf'"{field}"\s*:\s*"([^"]*)"', text)
+        if f:
+            data[field] = f.group(1)
+    for field in ("x", "y"):
+        f = re.search(rf'"{field}"\s*:\s*(-?\d+(?:\.\d+)?)', text)
+        if f:
+            data[field] = float(f.group(1))
+    note = re.search(r'"note"\s*:\s*"(.*?)"\s*(?:,\s*"\w+"\s*:|\}\s*$)', text, re.S)
+    data["note"] = note.group(1) if note else ""
+    return data
+
+
 def parse_step(text: str, sw: int, sh: int, vw: int, vh: int) -> Optional[AgentStepOut]:
     """Model JSON -> action in viewport coords. None when the answer isn't usable."""
     try:
         data = extract_json(text)
     except ValueError:
-        return None
+        data = _loose_fields(text)
+        if data is None:
+            log.warning("agent step: unusable model answer: %r", text[:300])
+            return None
     action = data.get("action")
     note = str(data.get("note") or "")[:300]
 
@@ -103,8 +148,9 @@ def parse_step(text: str, sw: int, sh: int, vw: int, vh: int) -> Optional[AgentS
         actions = parse_act(data.get("actions"), scale)
         return AgentStepOut(action="act", actions=actions, note=note) if actions else None
     if action == "key":
-        key = data.get("key")
-        if key not in ALLOWED_KEYS:
+        key = normalize_key(data.get("key"))
+        if key is None:
+            log.warning("agent step: key not allowed: %r", data.get("key"))
             return None
         return AgentStepOut(action="key", key=key, note=note)
     if action == "wait":

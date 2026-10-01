@@ -55,7 +55,7 @@ Rules:
 - wait: when something is loading or animating, or text is still typing out. If a line of
   text looks cut off mid-word, it is probably still appearing — wait instead of calling it a glitch.
 - stop: when this persona would quit (bored, stuck, lost, finished) — say why in stopReason.
-- note: one first-person sentence — what you see, what you're trying, how it feels.
+- note: one first-person sentence — what you see, what you're trying, how it feels. Don't use double quotes inside the note (use 'single quotes' to quote on-screen text).
 - Only describe what is actually visible. Never guess at hidden content.
 """
 
