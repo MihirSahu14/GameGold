@@ -77,5 +77,5 @@
     "panel": "#0b0f17"
   },
   "sounds": {"volume": 0.6, "shotPitch": 1.0, "enemyPitch": 1.0},
-  "settings": {"stepMode": false, "stepSeconds": 0.4}
+  "settings": {"stepMode": false, "stepSeconds": 0.8}
 }

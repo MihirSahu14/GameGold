@@ -76,14 +76,14 @@ def test_validate_cases(label, patch, expected):
 
 def test_arena_player_template():
     code = UNITY_TEMPLATES["ArenaPlayer"]
-    assert code.startswith("// GameGold ArenaPlayer v2") and template_version(code) == 2
+    assert code.startswith("// GameGold ArenaPlayer v3") and template_version(code) == 3
     assert "public class ArenaPlayer : MonoBehaviour" in code
     for needle in ("GameGold/fps_arena", "JsonUtility.FromJson<ArenaData>", "#if ENABLE_INPUT_SYSTEM", "#elif ENABLE_LEGACY_INPUT_MANAGER",
                    "GameObject.CreatePrimitive", "CharacterController", "Physics.RaycastAll", "CursorLockMode.Locked",
                    "gg_step=1", "stepSeconds", "Time.timeScale = 0f", "AgentAdvance", "PlayerPrefs", "AudioClip.Create",
-                   "Universal Render Pipeline/Lit", "\"Standard\"", "Unlit/Color", "LegacyRuntime.ttf", "InputSystemUIInputModule"):
+                   "new Material(r.sharedMaterial)", "LegacyRuntime.ttf", "InputSystemUIInputModule"):
         assert needle in code, needle
-    for banned in ("NavMeshAgent", "UnityEngine.AI", "void OnAudioFilterRead", "System.Linq", "GetInstanceID", "LayerMask.NameToLayer"):
+    for banned in ("NavMeshAgent", "UnityEngine.AI", "void OnAudioFilterRead", "System.Linq", "GetInstanceID", "LayerMask.NameToLayer", "Shader.Find"):
         assert banned not in code, banned
 
 

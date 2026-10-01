@@ -1,4 +1,4 @@
-// GameGold ArenaPlayer v2
+// GameGold ArenaPlayer v3
 // GameGold ArenaPlayer — a complete 3D arena first-person shooter built at runtime from one JSON file.
 // Setup: put this on an empty GameObject in an empty scene, save the arena JSON as
 // Assets/Resources/GameGold/fps_arena.json and press Play. It builds the floor, walls, cover, light,
@@ -21,7 +21,7 @@
 // Controls: WASD move, mouse or Arrow keys / Q-E look, click or F fire, R reload, 1/2 weapon, Space jump, Esc pause.
 // WebGL: the mouse locks on "Click to play"; Esc (browser rule) unlocks and pauses; click Resume to re-lock.
 // Agent step mode: URL contains gg_step=1 (or settings.stepMode): the game is frozen (Time.timeScale = 0) until a
-// key/click, then runs stepSeconds (default 0.4) with the pressed keys held, then freezes again. No cursor lock
+// key/click, then runs stepSeconds (default 0.8) with the pressed keys held, then freezes again. No cursor lock
 // needed — Arrow keys aim. SendMessage("GameGold FPS Arena", "AgentAdvance", "0.4") also advances one step.
 using System;
 using System.Collections.Generic;
@@ -96,7 +96,7 @@ public class ArenaPlayer : MonoBehaviour
     }
 
     [Serializable] public class Sounds { public float volume = 0.6f, shotPitch = 1f, enemyPitch = 1f; }
-    [Serializable] public class Settings { public bool stepMode; public float stepSeconds = 0.4f; }
+    [Serializable] public class Settings { public bool stepMode; public float stepSeconds = 0.8f; }
 
     [Serializable]
     public class ArenaData
@@ -245,21 +245,11 @@ public class ArenaPlayer : MonoBehaviour
     // ─── Level (primitives + flat-colour materials) ───────────────────────────
 
     readonly Dictionary<string, Material> matCache = new Dictionary<string, Material>();
-    Shader litShader;
-    bool shaderLooked;
-
-    // URP if a render pipeline is active, else built-in Standard, else Unlit/Color; if the build stripped all of
-    // them, copy the primitive's own default material (which always matches the active pipeline).
     Material NewMaterial(Renderer r, Color c)
     {
-        if (!shaderLooked)
-        {
-            shaderLooked = true;
-            bool srp = GraphicsSettings.currentRenderPipeline != null;
-            litShader = srp ? Shader.Find("Universal Render Pipeline/Lit") : Shader.Find("Standard");
-            if (litShader == null && !srp) litShader = Shader.Find("Unlit/Color");
-        }
-        var m = litShader != null ? new Material(litShader) : new Material(r.sharedMaterial);
+        // Always the primitive's own default material: looking up "Standard" by name still returns a shader in web builds
+        // whose variants were stripped, and the whole arena rendered missing-shader pink (Core Breach).
+        var m = new Material(r.sharedMaterial);
         if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
         if (m.HasProperty("_Color")) m.SetColor("_Color", c);
         if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.15f);
