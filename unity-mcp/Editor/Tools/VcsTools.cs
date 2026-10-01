@@ -123,7 +123,7 @@ namespace GameGold.MCP
         private static (int code, string output) Probe(string root, string exe, params string[] args)
         {
             try { return Run(exe, root, null, ProbeTimeout, args); }
-            catch (Exception) { return (-1, ""); }
+            catch (Exception ex) { return (-1, ex.Message); }
         }
 
         // Runs a job step and logs it; returns the output, or null on non-zero exit. Never touches State —
@@ -176,7 +176,9 @@ namespace GameGold.MCP
             var budget = Stopwatch.StartNew(); // runs on the main thread — keep the whole call inside ~8 s
             var root = ProjectRoot();
             bool git = Probe(root, "git", "--version").code == 0;
-            bool butler = Probe(root, ButlerExe(), "--version").code == 0;
+            var butlerExe = ButlerExe();
+            var butlerProbe = Probe(root, butlerExe, "--version");
+            bool butler = butlerProbe.code == 0;
             bool isRepo = git && IsOwnRepo(root);
             string remote = null, branch = null, last = null;
             int dirty = 0;
@@ -195,7 +197,9 @@ namespace GameGold.MCP
                 if (l1.code == 0 && l1.output.Trim().Length > 0) last = Scrub(l1.output.Trim());
             }
             var data = $"{{\"gitInstalled\":{Bool(git)},\"butlerInstalled\":{Bool(butler)},\"isRepo\":{Bool(isRepo)}," +
-                       $"\"remoteUrl\":{Str(remote)},\"branch\":{Str(branch)},\"dirtyFiles\":{dirty},\"lastCommit\":{Str(last)}}}";
+                       $"\"remoteUrl\":{Str(remote)},\"branch\":{Str(branch)},\"dirtyFiles\":{dirty},\"lastCommit\":{Str(last)}," +
+                       // where butler was looked for and why it failed — "not installed" alone hid a real problem once
+                       $"\"butlerPath\":{Str(butlerExe)},\"butlerError\":{Str(butler ? null : Scrub(butlerProbe.output).Trim())}}}";
             return GameGoldMCP.Ok(isRepo ? "Repo found" : git ? "Not a git repo yet" : "git isn't installed", data);
         }
 
