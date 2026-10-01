@@ -64,9 +64,9 @@ export function KitPanel(props: KitPanelProps) {
         </label>
       </div>
 
-      {editors.length > 1 && (
+      {(editors.length > 1 || (editors.length > 0 && !connectedTo)) && (
         <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Unity editors">
-          <span>{editors.length} Unity editors are open.</span>
+          <span>{editors.length} Unity editor{editors.length > 1 ? 's are' : ' is'} open.</span>
           {editors.map((e) => {
             const name = e.projectName ?? `port ${e.port}`
             const current = connectedTo?.port === e.port

@@ -1,4 +1,4 @@
-// GameGold ArenaShooter v1
+// GameGold ArenaShooter v2
 // GameGold ArenaShooter — a top-down twin-stick arena shooter driven entirely by data.
 // Setup: put this on any GameObject, save the arena JSON as Assets/Resources/GameGold/arena.json, press Play.
 // Everything (camera, floor, walls, player, enemies, bullets, pickups, HUD, screens, sound) is built in code:
@@ -774,7 +774,7 @@ public class ArenaShooter : MonoBehaviour
         cam = Camera.main;
         if (cam == null)
         {
-            var camGo = new GameObject("Main Camera", typeof(Camera));
+            var camGo = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener));
             camGo.tag = "MainCamera";
             cam = camGo.GetComponent<Camera>();
         }
@@ -1064,10 +1064,11 @@ public class ArenaShooter : MonoBehaviour
     static bool Held(Btn b) => Key(b, true);
     static bool Down(Btn b) => Key(b, false);
 
-    // Step mode: any move/aim key or a held mouse button buys the next stepSeconds of game time.
+    // Step mode: a fresh press (even a one-frame tap) or a held move/aim key or mouse button buys the next
+    // stepSeconds of game time; holding keeps re-triggering steps.
     static bool AnyGameplayInput()
     {
-        for (var b = Btn.W; b <= Btn.Right; b++) if (Held(b)) return true;
-        return MouseHeld;
+        for (var b = Btn.W; b <= Btn.Right; b++) if (Held(b) || Down(b)) return true;
+        return MouseHeld || MouseDown;
     }
 }

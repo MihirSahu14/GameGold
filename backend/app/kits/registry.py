@@ -24,6 +24,12 @@ RESOURCES = "Assets/Resources/GameGold"
 
 Validator = Callable[[dict], list[str]]
 
+MAX_DATA_BYTES = 1_000_000  # serialized cap on kit data and kit settings documents
+
+
+def too_big(obj: object) -> bool:
+    return len(json.dumps(obj, separators=(",", ":"))) > MAX_DATA_BYTES
+
 
 @dataclass(frozen=True)
 class Kit:

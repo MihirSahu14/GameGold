@@ -71,7 +71,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const markStep = useMarkStep(id)
   const exportPack = useExportBuildPack(id)
   const updateRisk = useUpdateRisk(id)
-  const { status: mcpStatus, unityInfo, editors, check: checkMCP, executeTool } = useUnityMCP(project?.unityProjectName)
+  const { status: mcpStatus, unityInfo, editors, missingProject, check: checkMCP, executeTool } = useUnityMCP(project?.unityProjectName)
   const updateSettings = useUpdatePlayerSettings(id)
   const [syncingSettings, setSyncingSettings] = useState(false)
   const { data: syncs, refetch: refetchSyncs } = useUnitySyncs(id)
@@ -293,7 +293,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     setExecutingStep(stepNumber)
     try {
       // The LLM can't know file contents — sprite data / script code come from stored assets.
-      const resolved = await prepareToolArgs(tool, args, assets ?? [], project?.kitSettings)
+      const resolved = await prepareToolArgs(tool, args, assets ?? [], project?.kitSettings, kit?.dataKind)
       if ('error' in resolved) {
         setStepResults(prev => ({ ...prev, [stepNumber]: { success: false, message: resolved.error } }))
         return false
@@ -301,7 +301,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
       const result = await executeStepTool(tool, resolved.args, executeTool)
       setStepResults(prev => ({ ...prev, [stepNumber]: result }))
       if (!result.success) return false
-      await recordWrite(id, tool, resolved.args, stepSource(tool, args, assets ?? [])).catch(() => {})
+      await recordWrite(id, tool, resolved.args, stepSource(tool, args, assets ?? [], kit?.dataKind)).catch(() => {})
       await markStep.mutateAsync({ stepNumber, completed: true })
       return true
     } catch (err) {
@@ -466,6 +466,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                     ✓ Connected{unityInfo.projectPath ? ` — ${unityInfo.projectPath.split(/[\\/]/).pop()}` : ''}
                     {unityInfo.version ? <span style={{ color: '#456079' }}> ({unityInfo.version})</span> : null}
                   </div>
+                ) : missingProject ? (
+                  <div style={{ fontSize: '12px', color: '#f59e0b' }}>Open {missingProject} in Unity — another project&apos;s editor is running</div>
                 ) : mcpStatus === 'disconnected' ? (
                   <div style={{ fontSize: '12px', color: '#ef4444' }}>✗ Not connected — is Unity open with the GameGold package?</div>
                 ) : mcpStatus === 'checking' ? (

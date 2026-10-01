@@ -25,6 +25,7 @@ from collections.abc import Callable
 LEGEND = set(".#^oPFC=M ")
 FLOOR = set("#=")  # plus moving-platform sweep cells
 MAX_W, MAX_H = 400, 60
+MAX_LEVELS = 50
 
 # Must match PlatformerRunner.cs Settings defaults.
 DEFAULTS = {
@@ -185,6 +186,8 @@ def validate(data: object) -> list[str]:
     levels = data.get("levels")
     if not isinstance(levels, list) or not levels:
         return ["'levels' must be a non-empty list"]
+    if len(levels) > MAX_LEVELS:
+        return [f"too many levels ({len(levels)}, max {MAX_LEVELS})"]
     settings = data.get("settings")
     if settings is not None and not isinstance(settings, dict):
         return ["'settings' must be an object"]

@@ -69,8 +69,22 @@ describe('AgentPlaytestCard', () => {
     fireEvent.change(screen.getByPlaceholderText(/custom player/i), { target: { value: 'A kid' } })
     fireEvent.click(screen.getByRole('button', { name: /start agent playthrough/i }))
     expect(mocks.start).toHaveBeenCalledWith({
-      url: 'https://me.itch.io/ripple', personas: ['first_timer', 'impatient', 'poker', 'custom'], custom: 'A kid', stepMode: true,
+      url: 'https://me.itch.io/ripple', personas: ['first_timer', 'impatient', 'poker', 'custom'], custom: 'A kid', stepMode: false,
     })
+  })
+
+  it('uses the active bridge port for the local build', () => {
+    render(<AgentPlaytestCard projectId="p1" publishedUrl={null} connected bridgePort={7434} />)
+    expect(screen.getByDisplayValue('http://localhost:7434/play/index.html')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /pause between turns/i })).toBeEnabled()
+  })
+
+  it('disables "Pause between turns" for hosted builds', () => {
+    render(<AgentPlaytestCard projectId="p1" publishedUrl="https://me.itch.io/ripple" connected />)
+    const pause = screen.getByRole('checkbox', { name: /pause between turns/i })
+    expect(pause).toBeDisabled()
+    expect(pause).not.toBeChecked()
+    expect(screen.getByText(/pause only works for local builds \(itch\/pages run in an iframe\)/i)).toBeInTheDocument()
   })
 
   it('adopts a published link that loads after mount, unless the user edited the field', () => {

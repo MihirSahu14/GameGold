@@ -14,6 +14,7 @@ RULES = {"sokoban"}
 CHARS = set("# -_.$*@+")
 WALL = "#"
 DIRS = {"u": (-1, 0), "d": (1, 0), "l": (0, -1), "r": (0, 1)}
+MAX_LEVELS, MAX_SIDE = 100, 64
 
 
 def _parse(rows: list[str]):
@@ -50,6 +51,8 @@ def validate(data: dict) -> list[str]:
     levels = data.get("levels")
     if not isinstance(levels, list) or not levels:
         return errors + ["levels must be a non-empty list"]
+    if len(levels) > MAX_LEVELS:
+        return errors + [f"too many levels ({len(levels)}, max {MAX_LEVELS})"]
 
     ids: set[str] = set()
     for i, level in enumerate(levels, 1):
@@ -75,6 +78,8 @@ def validate(data: dict) -> list[str]:
 def _check_rows(rows) -> list[str]:
     if not isinstance(rows, list) or not rows or not all(isinstance(r, str) for r in rows):
         return ["rows must be a non-empty list of strings"]
+    if len(rows) > MAX_SIDE or max(map(len, rows)) > MAX_SIDE:
+        return [f"larger than {MAX_SIDE}x{MAX_SIDE}"]
     bad = sorted({ch for row in rows for ch in row} - CHARS)
     if bad:
         return [f"unknown characters {''.join(bad)!r} (use # space . $ * @ +)"]

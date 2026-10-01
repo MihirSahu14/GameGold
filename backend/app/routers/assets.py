@@ -2,6 +2,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 from bson import ObjectId
 
 from app.core.concurrency import project_llm_slot
@@ -26,7 +27,7 @@ from app.models.assets import (
     UpdateGuideRequest,
     UploadSpriteRequest,
 )
-from app.kits.registry import kit_for_data_kind, load_validator
+from app.kits.registry import MAX_DATA_BYTES, kit_for_data_kind, load_validator, too_big
 from app.prompts.asset_prompts import build_regen_block
 from app.routers.auth import get_current_user
 from app.services.asset_service import (
@@ -419,8 +420,8 @@ IMPORTED_DIALOGUE_GUIDE = [
 ]
 
 
-def _checked_tree(tree: DialogueTree) -> dict:
-    errors, _ = validate_tree(tree)
+async def _checked_tree(tree: DialogueTree) -> dict:
+    errors, _ = await run_in_threadpool(validate_tree, tree)
     if errors:
         raise HTTPException(status_code=422, detail=errors)
     return tree.model_dump()
@@ -440,7 +441,7 @@ async def import_dialogue(
     """Create a dialogue asset from pasted JSON — the designer wrote it, so not a placeholder."""
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
-    tree = _checked_tree(body.tree)
+    tree = await _checked_tree(body.tree)
     return await insert_and_return(db, AssetInDB(
         project_id=project_id,
         type="dialogue",
@@ -466,21 +467,23 @@ async def update_dialogue_tree(
     doc = await db.assets.find_one({"_id": to_object_id(asset_id), "project_id": project_id})
     if not doc or doc.get("type") != "dialogue":
         raise HTTPException(status_code=404, detail="Dialogue asset not found")
-    await db.assets.update_one({"_id": doc["_id"]}, {"$set": {"tree": _checked_tree(body)}})
+    await db.assets.update_one({"_id": doc["_id"]}, {"$set": {"tree": await _checked_tree(body)}})
     doc = await db.assets.find_one({"_id": doc["_id"]})
     return AssetOut(**serialize_asset(doc))
 
 
 # ─── Genre-kit data (levels, arena, cards… — designer JSON, no LLM) ──────────
 
-def _checked_data(kind: str, data: dict) -> dict:
-    """422 with the kit validator's error list; 409 if that kit has no validator yet."""
+async def _checked_data(kind: str, data: dict) -> dict:
+    """422 with the kit validator's error list; 409 if that kit has no validator yet; 413 if over 1 MB."""
     kit = kit_for_data_kind(kind)
     validate = load_validator(kit) if kit else None
     if validate is None:
         raise HTTPException(status_code=409, detail=f"No validator for '{kind}' data yet")
+    if too_big(data):
+        raise HTTPException(status_code=413, detail=f"{kind} data is over {MAX_DATA_BYTES // 1_000_000} MB")
     try:
-        errors = validate(data)
+        errors = await run_in_threadpool(validate, data)  # validators are CPU-bound (reachability, solving)
     except Exception as exc:  # a validator tripping on malformed JSON is still the user's 422, not a 500
         errors = [f"Could not check this {kind} data: {exc}"]
     if errors:
@@ -512,7 +515,7 @@ async def import_data(
 ):
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
-    data = _checked_data(body.kind, body.data)
+    data = await _checked_data(body.kind, body.data)
     guide = _data_guide(body.kind)
     return await insert_and_return(db, AssetInDB(
         project_id=project_id,
@@ -538,7 +541,7 @@ async def update_data(
     doc = await db.assets.find_one({"_id": to_object_id(asset_id), "project_id": project_id})
     if not doc or doc.get("type") != "data":
         raise HTTPException(status_code=404, detail="Data asset not found")
-    await db.assets.update_one({"_id": doc["_id"]}, {"$set": {"data": _checked_data(doc.get("kind", ""), body)}})
+    await db.assets.update_one({"_id": doc["_id"]}, {"$set": {"data": await _checked_data(doc.get("kind", ""), body)}})
     doc = await db.assets.find_one({"_id": doc["_id"]})
     return AssetOut(**serialize_asset(doc))
 

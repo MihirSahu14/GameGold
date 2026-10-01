@@ -24,10 +24,13 @@ export function resolveToolArgs(
   args: Record<string, unknown>,
   assets: Asset[],
   kitSettings?: KitSettings,
+  kitDataKind?: string | null,
 ): { args: Record<string, unknown> } | { error: string } {
   if (tool === 'asset.createText' && typeof args.data === 'string') {
     const { data, ...rest } = args
-    const asset = assets.find((a) => a.type === 'data' && a.name === data)
+    // prefer the kit's own data kind: a levels file and an arena file can share a name
+    const named = assets.filter((a) => a.type === 'data' && a.name === data)
+    const asset = named.find((a) => a.kind === kitDataKind) ?? named[0]
     if (!asset?.data) {
       return { error: `No game data asset named "${data}" found — import it on the Assets page (Game data tab) first.` }
     }
@@ -71,13 +74,14 @@ export async function prepareToolArgs(
   args: Record<string, unknown>,
   assets: Asset[],
   kitSettings?: KitSettings,
+  kitDataKind?: string | null,
 ): Promise<{ args: Record<string, unknown> } | { error: string }> {
   if (tool === 'asset.createScript' && !findScriptAsset(args, assets)?.code) {
     // No stored script: maybe a runtime GameGold ships (any kit's, served by GET /unity/templates/<name>).
     const code = await templateCode(String(args.className))
     if (code !== null) return { args: { ...args, code } }
   }
-  const resolved = resolveToolArgs(tool, args, assets, kitSettings)
+  const resolved = resolveToolArgs(tool, args, assets, kitSettings, kitDataKind)
   if ('error' in resolved) return resolved
   const b64 = resolved.args.base64
   if (tool === 'asset.importSprite' && typeof b64 === 'string' && b64.startsWith('data:image/svg')) {
@@ -131,9 +135,15 @@ export function useKitSample(kitId: KitId | undefined, enabled: boolean) {
 // ─── Bridge ports: each Unity editor's bridge takes the first free port in 7432–7439 ──
 
 export const MCP_PORTS = [7432, 7433, 7434, 7435, 7436, 7437, 7438, 7439]
-// ponytail: one active bridge per tab, set by useUnityConnection; executeTool and friends read it.
-let activePort = MCP_PORTS[0]
-export const bridgeUrl = (path: string) => `http://localhost:${activePort}${path}`
+// ponytail: one active bridge per tab. executeTool and friends pick it at call time from the latest scan and the
+// project the page asked for, so a call never sees a port an effect hasn't caught up with.
+let lastEditors: UnityEditor[] = []
+let wantedProject: string | null | undefined
+/** The port tools go to; null = this project's editor isn't running (another project's is). */
+export function activePort(): number | null {
+  if (!lastEditors.length) return MCP_PORTS[0] // nothing scanned/found yet: the default port fails on its own
+  return pickEditor(lastEditors, wantedProject)?.port ?? null
+}
 
 // ─── Build plan (backend) ─────────────────────────────────────────────────────
 
@@ -213,12 +223,15 @@ export async function scanEditors(): Promise<UnityEditor[] | null> {
     return null
   }))
   const editors = found.filter((e): e is UnityEditor => e !== null)
+  lastEditors = editors
   return editors.length ? editors : null
 }
 
-// The editor whose project matches this GameGold project's unityProjectName, else the first found.
+// The editor whose project matches this GameGold project's unityProjectName (null if that one isn't running —
+// never silently another project's), else the first found when no name is set.
 export function pickEditor(editors: UnityEditor[], unityProjectName?: string | null): UnityEditor | null {
-  return editors.find((e) => !!unityProjectName && e.projectName === unityProjectName) ?? editors[0] ?? null
+  if (unityProjectName) return editors.find((e) => e.projectName === unityProjectName) ?? null
+  return editors[0] ?? null
 }
 
 // One cached scan shared by every page/card (Unity page, Assets page). Pass the project's unityProjectName
@@ -234,15 +247,19 @@ export function useUnityConnection(unityProjectName?: string | null) {
     refetchInterval: (query) => (query.state.data ? 15_000 : 4_000),
     refetchIntervalInBackground: true,
   })
-  // Background polls keep the last result instead of flashing "checking" / hiding connected-only panels.
-  const status: ConnectionStatus = q.data ? 'connected' : q.isFetching ? 'checking' : q.isFetched ? 'disconnected' : 'idle'
-  const { refetch } = q
-  const check = useCallback(async () => !!(await refetch()).data, [refetch])
+  wantedProject = unityProjectName
   const editors = q.data ?? []
   const chosen = pickEditor(editors, unityProjectName)
-  const chosenPort = chosen?.port
-  useEffect(() => { if (chosenPort) activePort = chosenPort }, [chosenPort])
-  return { status, unityInfo: chosen, editors, check }
+  // Background polls keep the last result instead of flashing "checking" / hiding connected-only panels.
+  const status: ConnectionStatus = q.data ? (chosen ? 'connected' : 'disconnected') : q.isFetching ? 'checking' : q.isFetched ? 'disconnected' : 'idle'
+  const { refetch } = q
+  const check = useCallback(async () => {
+    const editors = (await refetch()).data
+    return !!editors && !!pickEditor(editors, unityProjectName)
+  }, [refetch, unityProjectName])
+  // Editors are open but not this project's: the page says "Open <name> in Unity".
+  const missingProject = q.data && !chosen ? unityProjectName ?? null : null
+  return { status, unityInfo: chosen, editors, missingProject, check }
 }
 
 const COMPILE_WAIT_MS = 180_000
@@ -263,8 +280,10 @@ export async function executeStepTool(tool: string, args: Record<string, unknown
 }
 
 export async function executeTool(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
+  const port = activePort()
+  if (port === null) return { success: false, message: `Open ${wantedProject} in Unity — its editor isn't running` }
   try {
-    const res = await fetch(bridgeUrl(`/tool/${tool}`), {
+    const res = await fetch(`http://localhost:${port}/tool/${tool}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(args),
@@ -393,12 +412,13 @@ export async function recordWrite(projectId: string, tool: string, args: Record<
 }
 
 // Which GameGold item a plan step's write came from.
-export function stepSource(tool: string, args: Record<string, unknown>, assets: Asset[]): string {
+export function stepSource(tool: string, args: Record<string, unknown>, assets: Asset[], kitDataKind?: string | null): string {
   if (tool === 'asset.createText' && typeof args.dialogue === 'string') {
     return assets.find((a) => a.type === 'dialogue' && a.name === args.dialogue)?._id ?? 'plan'
   }
   if (tool === 'asset.createText' && typeof args.data === 'string') {
-    return assets.find((a) => a.type === 'data' && a.name === args.data)?._id ?? 'plan'
+    const named = assets.filter((a) => a.type === 'data' && a.name === args.data)
+    return (named.find((a) => a.kind === kitDataKind) ?? named[0])?._id ?? 'plan'
   }
   if (tool === 'asset.createText' && typeof args.kitSettings === 'string') return 'kit-settings'
   if (tool === 'asset.importSprite') return assets.find((a) => a.type === 'sprite' && a.name === args.name)?._id ?? 'plan'

@@ -168,6 +168,8 @@ class AgentRunCreate(BaseModel):
             raise ValueError("personas must be unique")
         if "custom" in self.personas and not self.custom.strip():
             raise ValueError("Describe the custom persona")
+        if not LOCAL_PLAY_URL.match(self.url):
+            self.step_mode = False  # itch/Pages run the game in an iframe: gg_step=1 never reaches it
         return self
 
 

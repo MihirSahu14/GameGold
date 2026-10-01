@@ -218,8 +218,11 @@ def test_waits_dont_use_a_turn_but_the_hard_cap_holds(client, mock_db, project, 
 
 def test_step_mode_is_stored_and_told_to_the_agent(client, mock_db, project, llm):
     mock_db.agent_runs.insert_one.return_value = MagicMock(inserted_id=RUN_ID)
-    client.post(f"{BASE}/agent-runs", json={"url": "https://a.io/g", "personas": ["first_timer"], "stepMode": True})
+    client.post(f"{BASE}/agent-runs", json={"url": "http://localhost:7433/play/index.html", "personas": ["first_timer"], "stepMode": True})
     assert mock_db.agent_runs.insert_one.call_args[0][0]["step_mode"] is True
+    # itch/Pages wrap the game in an iframe, so gg_step=1 can't reach it: step mode is dropped
+    client.post(f"{BASE}/agent-runs", json={"url": "https://a.io/g", "personas": ["first_timer"], "stepMode": True})
+    assert mock_db.agent_runs.insert_one.call_args[0][0]["step_mode"] is False
 
     llm.return_value = make_llm_response(json.dumps({"action": "wait", "note": "hm"}))
     mock_db.agent_runs.find_one.return_value = _run_doc(step_mode=True)

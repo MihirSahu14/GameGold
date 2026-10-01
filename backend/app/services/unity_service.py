@@ -164,6 +164,9 @@ def narrative_plan(assets: list[dict]) -> tuple[str, list[UnityBuildStep]]:
 
 
 KIT_SPRITES = f"{RESOURCES}/Sprites"
+# IL2CPP/WebGL builds can strip Input System types the kit runtimes only reach via Keyboard.current/Mouse.current.
+LINK_XML_PATH = "Assets/GameGold/link.xml"
+LINK_XML = '<linker>\n  <assembly fullname="Unity.InputSystem" preserve="all" ignoreIfMissing="1"/>\n</linker>\n'
 
 
 def kit_data_asset(kit: Kit, assets: list[dict]) -> dict | None:
@@ -196,6 +199,8 @@ def runtime_plan(kit: Kit, assets: list[dict]) -> tuple[str, list[UnityBuildStep
          {"className": kit.runtime_class, "path": kit.runtime_path}, "asset"),
         (f"Save the '{data['name']}' {kit.data_kind} JSON to Resources so {kit.runtime_class} can load it",
          "asset.createText", {"data": data["name"], "path": kit.data_path}, "asset"),
+        ("Add a link.xml so player builds keep the Input System the runtime reads", "asset.createText",
+         {"path": LINK_XML_PATH, "content": LINK_XML}, "asset"),
     ]
     if kit.settings_path:
         raw.append((f"Save the {kit.title} settings JSON to Resources", "asset.createText",

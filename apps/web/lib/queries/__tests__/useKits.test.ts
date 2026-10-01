@@ -41,9 +41,9 @@ function stubBridges(names: Record<number, string>) {
 describe('multi-editor port selection', () => {
   const editors: UnityEditor[] = [{ port: 7432, projectName: 'RippleGG' }, { port: 7433, projectName: 'Dockside' }]
 
-  it('picks the editor matching the project, else the first found', () => {
+  it('picks the editor matching the project (never another project), else the first found', () => {
     expect(pickEditor(editors, 'Dockside')?.port).toBe(7433)
-    expect(pickEditor(editors, 'Nope')?.port).toBe(7432)
+    expect(pickEditor(editors, 'Nope')).toBeNull()
     expect(pickEditor(editors, null)?.port).toBe(7432)
     expect(pickEditor([], 'Dockside')).toBeNull()
   })
@@ -73,6 +73,30 @@ describe('multi-editor port selection', () => {
     expect((await executeTool('scene.snapshot', {})).message).toBe('ran on 7434')
     expect(fetchMock).toHaveBeenLastCalledWith('http://localhost:7434/tool/scene.snapshot', expect.anything())
   })
+
+  it('asks for the project instead of using another editor when it is not running', async () => {
+    const fetchMock = stubBridges({ 7432: 'RippleGG' })
+    const qc = new QueryClient()
+    const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client: qc }, children)
+    const { result } = renderHook(() => useUnityConnection('Dockside'), { wrapper })
+    await waitFor(() => expect(result.current.editors).toHaveLength(1))
+    expect(result.current.status).toBe('disconnected')
+    expect(result.current.unityInfo).toBeNull()
+    expect(result.current.missingProject).toBe('Dockside')
+    fetchMock.mockClear()
+    expect((await executeTool('scene.snapshot', {})).message).toMatch(/^Open Dockside in Unity/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('executeTool uses the new port as soon as a scan finds it (no effect lag)', async () => {
+    stubBridges({ 7432: 'RippleGG', 7436: 'Dockside' })
+    const qc = new QueryClient()
+    const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client: qc }, children)
+    renderHook(() => useUnityConnection('Dockside'), { wrapper })
+    stubBridges({ 7432: 'RippleGG', 7437: 'Dockside' }) // Unity reloaded onto another port
+    await scanEditors()
+    expect((await executeTool('scene.snapshot', {})).message).toBe('ran on 7437')
+  })
 })
 
 describe('kit data in Unity', () => {
@@ -95,6 +119,11 @@ describe('kit data in Unity', () => {
     const r = resolveToolArgs('asset.createText', { data: 'Dockside', path: GRID.dataPath }, [LEVELS])
     expect(r).toEqual({ args: { path: GRID.dataPath, content: JSON.stringify(LEVELS.data, null, 2) } })
     expect(resolveToolArgs('asset.createText', { data: 'Ghost', path: 'x' }, [LEVELS])).toHaveProperty('error')
+    // same name, different kind: the kit's own data kind wins
+    const arena = asset({ _id: 'd2', name: 'Dockside', kind: 'arena', data: { waves: [] } })
+    const k = resolveToolArgs('asset.createText', { data: 'Dockside', path: GRID.dataPath }, [arena, LEVELS], undefined, 'levels')
+    expect(k).toEqual({ args: { path: GRID.dataPath, content: JSON.stringify(LEVELS.data, null, 2) } })
+    expect(stepSource('asset.createText', { data: 'Dockside' }, [arena, LEVELS], 'levels')).toBe('d1')
 
     const s = resolveToolArgs('asset.createText', { kitSettings: 'platformer', path: 'p.json' }, [], { platformer: { jumpHeight: 3 } })
     expect(s).toEqual({ args: { path: 'p.json', content: JSON.stringify({ jumpHeight: 3 }, null, 2) } })
