@@ -46,7 +46,18 @@ describe('AgentPlaytestCard', () => {
     expect(screen.getByText(/free trial: 1 agent × 15 steps/i)).toHaveTextContent('$0.12')
     expect(mocks.estimate).toHaveBeenLastCalledWith('p1', 1, 15)
     fireEvent.click(screen.getByRole('button', { name: /start agent playthrough/i }))
-    expect(mocks.start).toHaveBeenCalledWith({ url: 'http://localhost:7432/play/index.html', personas: ['first_timer'] })
+    expect(mocks.start).toHaveBeenCalledWith({
+      url: 'http://localhost:7432/play/index.html', personas: ['first_timer'], stepMode: true,
+    })
+  })
+
+  it('sends stepMode false when "Pause between turns" is unticked', () => {
+    render(<AgentPlaytestCard projectId="p1" publishedUrl={null} connected />)
+    const pause = screen.getByRole('checkbox', { name: /pause between turns/i })
+    expect(pause).toBeChecked()
+    fireEvent.click(pause)
+    fireEvent.click(screen.getByRole('button', { name: /start agent playthrough/i }))
+    expect(mocks.start).toHaveBeenCalledWith(expect.objectContaining({ stepMode: false }))
   })
 
   it('uses the published link and all personas with an own key', () => {
@@ -58,7 +69,7 @@ describe('AgentPlaytestCard', () => {
     fireEvent.change(screen.getByPlaceholderText(/custom player/i), { target: { value: 'A kid' } })
     fireEvent.click(screen.getByRole('button', { name: /start agent playthrough/i }))
     expect(mocks.start).toHaveBeenCalledWith({
-      url: 'https://me.itch.io/ripple', personas: ['first_timer', 'impatient', 'poker', 'custom'], custom: 'A kid',
+      url: 'https://me.itch.io/ripple', personas: ['first_timer', 'impatient', 'poker', 'custom'], custom: 'A kid', stepMode: true,
     })
   })
 

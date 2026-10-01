@@ -127,7 +127,8 @@ def test_click_is_scaled_to_viewport_and_frame_stored(client, mock_db, project, 
         {"action": "click", "x": 512, "y": 288, "note": "I see a Start button", "stopReason": ""}))
     resp = client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step())
     assert resp.status_code == 200
-    assert resp.json() == {"action": "click", "x": 640, "y": 360, "key": None, "note": "I see a Start button", "stopReason": None}
+    assert resp.json() == {"action": "click", "x": 640, "y": 360, "key": None, "actions": None,
+                           "note": "I see a Start button", "stopReason": None}
 
     user_msg = llm.call_args.kwargs["messages"][1]["content"]
     assert user_msg[1] == {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{JPEG}"}}
@@ -154,6 +155,99 @@ def test_action_parsing(client, mock_db, project, llm, answer, expected):
     assert {k: body[k] for k in expected} == expected
 
 
+def test_act_is_scaled_validated_and_counts_as_a_turn(client, mock_db, project, llm):
+    mock_db.agent_runs.find_one.return_value = _run_doc()
+    llm.return_value = make_llm_response(json.dumps({"action": "act", "note": "run and jump", "actions": [
+        {"type": "key", "key": "d", "holdMs": 600},
+        {"type": "keys", "keys": ["d", "Space", "d"], "holdMs": 400},
+        {"type": "mouseMove", "x": 512, "y": 288},
+        {"type": "mouseDown"},
+        {"type": "mouseUp", "x": 2000, "y": 10},
+        {"type": "click", "x": 0, "y": 576},
+    ]}))
+    body = client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step()).json()
+    assert body["action"] == "act" and body["note"] == "run and jump"
+    strip = [{k: v for k, v in a.items() if v is not None} for a in body["actions"]]
+    assert strip == [
+        {"type": "key", "key": "d", "holdMs": 600},
+        {"type": "keys", "keys": ["d", "Space"], "holdMs": 400},
+        {"type": "mouseMove", "x": 640, "y": 360},
+        {"type": "mouseDown"},
+        {"type": "mouseUp", "x": 1279, "y": 12},
+        {"type": "click", "x": 0, "y": 719},
+    ]
+    assert {"$inc": {"actions_used.first_timer": 1}} in [c.args[1] for c in mock_db.agent_runs.update_one.call_args_list]
+    assert mock_db.playtest_frames.insert_one.call_args[0][0]["action"] == "act"
+
+
+def test_act_caps_count_holds_and_total_time(client, mock_db, project, llm):
+    mock_db.agent_runs.find_one.return_value = _run_doc()
+    llm.return_value = make_llm_response(json.dumps({"action": "act", "note": "x", "actions": [
+        {"type": "key", "key": "w", "holdMs": 9000},   # clamped to 1500
+        {"type": "wait", "ms": 1200},
+        {"type": "key", "key": "a", "holdMs": 1000},   # trimmed to the 300 ms left of 3 s
+        {"type": "key", "key": "s"},                    # default hold, but no time left
+        {"type": "key", "key": "e"}, {"type": "key", "key": "r"},
+        {"type": "key", "key": "z"},                    # 7th action dropped
+    ]}))
+    body = client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step()).json()
+    acts = body["actions"]
+    assert len(acts) == 6
+    assert [a.get("holdMs") or a.get("ms") or 0 for a in acts] == [1500, 1200, 300, 0, 0, 0]
+
+
+@pytest.mark.parametrize("actions", [
+    [], "Space", [{"type": "key", "key": "F5"}], [{"type": "keys", "keys": ["w", "Tab"]}],
+    [{"type": "teleport"}], [{"type": "click", "x": "here", "y": 2}], [{"type": "mouseMove"}],
+    [{"type": "wait"}], [{"type": "key", "key": "d", "holdMs": "long"}],
+])
+def test_bad_act_is_unreadable(client, mock_db, project, llm, actions):
+    mock_db.agent_runs.find_one.return_value = _run_doc()
+    llm.return_value = make_llm_response(json.dumps({"action": "act", "actions": actions, "note": "?"}))
+    assert client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step()).json()["note"] == "(couldn't read the screen this step)"
+
+
+def test_waits_dont_use_a_turn_but_the_hard_cap_holds(client, mock_db, project, llm):
+    mock_db.agent_runs.find_one.return_value = _run_doc(steps_used={"first_timer": 20}, actions_used={"first_timer": 14})
+    llm.return_value = make_llm_response(json.dumps({"action": "wait", "note": "text still typing"}))
+    resp = client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step(n=21))
+    assert resp.status_code == 200
+    assert not any("$inc" in c.args[1] for c in mock_db.agent_runs.update_one.call_args_list)
+    assert "Turns used: 14 of 15" in llm.call_args.kwargs["messages"][1]["content"][0]["text"]
+
+
+def test_step_mode_is_stored_and_told_to_the_agent(client, mock_db, project, llm):
+    mock_db.agent_runs.insert_one.return_value = MagicMock(inserted_id=RUN_ID)
+    client.post(f"{BASE}/agent-runs", json={"url": "https://a.io/g", "personas": ["first_timer"], "stepMode": True})
+    assert mock_db.agent_runs.insert_one.call_args[0][0]["step_mode"] is True
+
+    llm.return_value = make_llm_response(json.dumps({"action": "wait", "note": "hm"}))
+    mock_db.agent_runs.find_one.return_value = _run_doc(step_mode=True)
+    client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step())
+    assert "paused between your turns" in llm.call_args.kwargs["messages"][1]["content"][0]["text"]
+    mock_db.agent_runs.find_one.return_value = _run_doc(steps_used={"first_timer": 1})
+    client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step(n=2))
+    assert "paused between your turns" not in llm.call_args.kwargs["messages"][1]["content"][0]["text"]
+
+
+def test_step_prompt_explains_holding_keys_and_typing_text():
+    from app.prompts.agent_play_prompt import AGENT_STEP_SYSTEM_PROMPT as p
+    assert '"act"' in p and '"holdMs": 600' in p and '"keys": ["d", "Space"]' in p
+    assert "Shift" in p and "3000 ms" in p and "still typing" in p and "cut off" in p
+
+
+def test_finish_says_step_limit_after_max_acting_steps(client, mock_db, project, llm):
+    mock_db.agent_runs.find_one.return_value = _run_doc(max_steps=2)
+    mock_db.playtest_frames.find.return_value = make_cursor([
+        {"n": 1, "action": "wait", "note": "a"}, {"n": 2, "action": "act", "note": "b"}, {"n": 3, "action": "key", "note": "c"},
+    ])
+    llm.return_value = make_llm_response(json.dumps(REPORT_JSON))
+    mock_db.playtests.insert_one.return_value = MagicMock(inserted_id=ObjectId())
+    mock_db.playtests.find_one.side_effect = lambda q: {**mock_db.playtests.insert_one.call_args[0][0], "_id": ObjectId()}
+    resp = client.post(f"{BASE}/agent-runs/{RUN_ID}/agents/first_timer/finish")
+    assert resp.json()["stopReason"] == "Step limit reached"
+
+
 @pytest.mark.parametrize("bad", ["not json at all", json.dumps({"action": "key", "key": "F12"}),
                                  json.dumps({"action": "click", "x": "left"}), json.dumps({"action": "dance"})])
 def test_unreadable_answer_waits_once_then_stops(client, mock_db, project, llm, bad):
@@ -171,7 +265,8 @@ def test_unreadable_answer_waits_once_then_stops(client, mock_db, project, llm, 
 @pytest.mark.parametrize("run, step, code", [
     ({}, {"agent": "poker"}, 400),                                   # agent not in run
     ({"finished": ["first_timer"]}, {}, 400),                        # agent already reported
-    ({}, {"n": 16}, 400),                                            # over the trial cap
+    ({}, {"n": 31}, 400),                                            # over the hard cap (2x trial cap)
+    ({"actions_used": {"first_timer": 15}}, {"n": 20}, 400),         # 15 acting steps used
     ({"steps_used": {"first_timer": 3}}, {"n": 3}, 409),             # replayed step
     ({"steps_used": {"first_timer": 3}}, {"n": 2}, 409),
 ])
@@ -192,7 +287,7 @@ def test_step_lost_the_atomic_claim(client, mock_db, project, llm):
     {"jpegBase64": base64.b64encode(b"\x89PNG\r\n" + b"0" * 50).decode()},     # not a JPEG
     {"jpegBase64": base64.b64encode(b"\xff\xd8\xff" + b"0" * (400 * 1024)).decode()},  # > 400 KB
     {"jpegBase64": "!!!not-base64!!!"},
-    {"n": 0}, {"n": 61}, {"agent": "hardcore"}, {"screenWidth": 0},
+    {"n": 0}, {"n": 121}, {"agent": "hardcore"}, {"screenWidth": 0},
 ])
 def test_step_body_validation(client, mock_db, project, llm, step):
     mock_db.agent_runs.find_one.return_value = _run_doc()

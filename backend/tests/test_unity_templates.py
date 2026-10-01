@@ -68,3 +68,11 @@ def test_dialogue_player_v7_card_prompt(client):
     body = client.get("/unity/templates/DialoguePlayer").json()
     assert body["version"] >= 7  # gap 70: title/art cards show a "Click or press Space" prompt
     assert "Click or press Space to continue" in body["code"] and "cardTime" in body["code"]
+
+
+def test_dialogue_player_v8_choice_hint(client):
+    body = client.get("/unity/templates/DialoguePlayer").json()
+    assert body["version"] >= 8  # gap 72: "1-4 to choose" only while choices are on screen
+    code = body["code"]
+    assert "continue  ·  1–4" not in code  # no combined first-line hint any more
+    assert 'ContinueHint = "Space / Enter to continue"' in code and "to choose" in code

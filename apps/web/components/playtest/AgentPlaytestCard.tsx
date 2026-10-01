@@ -22,6 +22,7 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentP
   const url = editedUrl ?? publishedUrl ?? LOCAL_BUILD_URL
   const [picked, setPicked] = useState<AgentPersona[]>(['first_timer', 'impatient', 'poker'])
   const [custom, setCustom] = useState('')
+  const [stepMode, setStepMode] = useState(true)
   const { start, stop, running, progress, result } = useAgentPlaytest(projectId)
 
   const personas: AgentPersona[] = trial ? ['first_timer'] : [...picked, ...(custom.trim() ? ['custom' as const] : [])]
@@ -91,6 +92,12 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentP
         />
       )}
 
+      <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+        <input type="checkbox" checked={stepMode} disabled={running} onChange={(e) => setStepMode(e.target.checked)} />
+        Pause between turns
+        <span className="text-zinc-600">· real-time games freeze while the agent thinks</span>
+      </label>
+
       <p className="text-xs text-zinc-500">
         {trial && 'Free trial: 1 agent × 15 steps — add your own key for 3 agents × 40 steps. '}
         {estimate?.usd != null && `Estimated cost: up to $${estimate.usd.toFixed(2)}.`}
@@ -106,7 +113,9 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentP
           </button>
         ) : (
           <button
-            onClick={() => void start({ url, personas, ...(personas.includes('custom') ? { custom: custom.trim() } : {}) })}
+            onClick={() => void start({
+              url, personas, stepMode, ...(personas.includes('custom') ? { custom: custom.trim() } : {}),
+            })}
             disabled={!connected || !validUrl || personas.length === 0}
             className="rounded-lg bg-yellow-400 px-5 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-yellow-300 disabled:opacity-40"
           >
@@ -128,7 +137,7 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected }: AgentP
           )}
           <div className="text-xs">
             <p className="font-semibold text-zinc-300">
-              {AGENT_LABELS[progress.agent]} · step {progress.n}/{progress.maxSteps}
+              {AGENT_LABELS[progress.agent]} · turn {progress.turns}/{progress.maxSteps}
             </p>
             {progress.note && <p className="mt-1 italic text-zinc-400">{progress.note}</p>}
           </div>
