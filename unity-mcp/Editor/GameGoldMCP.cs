@@ -92,6 +92,10 @@ namespace GameGold.MCP
 
         static GameGoldMCP()
         {
+            // Unity's background asset-import workers load Editor scripts too; a bridge there grabbed the next
+            // port and never answered (its main thread doesn't tick), so tools sent to it timed out (gap 79).
+            if (AssetDatabase.IsAssetImportWorkerProcess()) return;
+
             _unityVersion = Application.unityVersion;
             _projectPath  = Application.dataPath.Replace("/Assets", "");
             _projectName  = System.IO.Path.GetFileName(_projectPath);
