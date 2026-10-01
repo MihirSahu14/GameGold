@@ -4,8 +4,8 @@ estimate, complete_vision. LiteLLM is always mocked."""
 import asyncio
 import base64
 import json
-from datetime import datetime
-from unittest.mock import MagicMock
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bson import ObjectId
@@ -138,6 +138,7 @@ def test_click_is_scaled_to_viewport_and_frame_stored(client, mock_db, project, 
     frame = mock_db.playtest_frames.insert_one.call_args[0][0]
     assert frame["report_or_run_id"] == str(RUN_ID) and frame["n"] == 1 and frame["jpeg"] == JPEG
     assert frame["action"] == "click" and frame["note"] == "I see a Start button"
+    assert frame["expires_at"] - frame["created_at"] == timedelta(days=7)
 
 
 @pytest.mark.parametrize("answer, expected", [
@@ -197,6 +198,15 @@ def test_step_body_validation(client, mock_db, project, llm, step):
     mock_db.agent_runs.find_one.return_value = _run_doc()
     assert client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step(**step)).status_code == 422
     llm.assert_not_called()
+
+
+def test_own_key_run_rejects_steps_once_the_key_is_removed(client, mock_db, project, llm):
+    mock_db.agent_runs.find_one.return_value = _run_doc(using_own_key=True, max_steps=40)
+    resp = client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step())
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Your own key was removed — start a new run"
+    llm.assert_not_called()
+    mock_db.agent_runs.update_one.assert_not_called()
 
 
 def test_unknown_run_is_404(client, mock_db, project, llm):
@@ -259,7 +269,7 @@ def test_finish_files_an_agent_play_report(client, mock_db, project, llm):
     assert stored()["kind"] == "agent_play" and "testers" not in stored()
     rekey_filter, rekey = mock_db.playtest_frames.update_many.call_args.args
     assert rekey_filter == {"report_or_run_id": str(RUN_ID), "agent": "first_timer"}
-    assert rekey == {"$set": {"report_or_run_id": str(report_id)}}
+    assert rekey == {"$set": {"report_or_run_id": str(report_id)}, "$unset": {"expires_at": ""}}
 
 
 def test_finish_uses_the_web_stop_reason(client, mock_db, project, llm):
@@ -311,6 +321,21 @@ def test_deleting_a_report_deletes_its_frames(client, mock_db, project):
     report_id = str(ObjectId())
     assert client.delete(f"{BASE}/{report_id}").status_code == 204
     mock_db.playtest_frames.delete_many.assert_awaited_once_with({"report_or_run_id": report_id})
+
+
+def test_deleting_a_project_deletes_its_runs_and_frames(client, mock_db, project):
+    run_id, report_id = ObjectId(), ObjectId()
+    for name in ("gdds", "systems", "assets", "playtests", "bugs", "deployments",
+                 "unity_plans", "unity_syncs", "agent_runs", "playtest_frames"):
+        getattr(mock_db, name).delete_many = AsyncMock()
+    mock_db.projects.delete_one = AsyncMock()
+    mock_db.agent_runs.find = MagicMock(return_value=make_cursor([{"_id": run_id}]))
+    mock_db.playtests.find = MagicMock(return_value=make_cursor([{"_id": report_id}]))
+    assert client.delete(f"/projects/{TEST_PROJECT_ID}").status_code == 204
+    mock_db.agent_runs.delete_many.assert_awaited_once_with({"project_id": TEST_PROJECT_ID})
+    mock_db.playtest_frames.delete_many.assert_awaited_once_with(
+        {"report_or_run_id": {"$in": [str(run_id), str(report_id)]}})
+    assert mock_db.agent_runs.find.call_args[0][0] == {"project_id": TEST_PROJECT_ID}
 
 
 # ─── No project data in agent prompts ────────────────────────────────────────

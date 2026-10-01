@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, Response, status
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 import litellm
@@ -219,6 +219,9 @@ async def synthesize(
 COULDNT_READ = "(couldn't read the screen this step)"
 
 
+FRAME_TTL = timedelta(days=7)
+
+
 def _user_model(user: dict) -> str:
     return (user.get("llm") or {}).get("model") or settings.llm_model
 
@@ -285,6 +288,8 @@ async def agent_run_step(
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
     run = await _load_run(db, project_id, run_id, current_user["_id"])
+    if run.get("using_own_key") and not current_user.get("llm"):
+        raise HTTPException(status_code=400, detail="Your own key was removed — start a new run")
     agent = body.agent
     if agent not in run["agents"] or agent in run.get("finished", []):
         raise HTTPException(status_code=400, detail="That agent isn't playing in this run")
@@ -324,9 +329,11 @@ async def agent_run_step(
         else:
             step = AgentStepOut(action="stop", note=COULDNT_READ, stop_reason="Couldn't read the screen")
 
+    now = datetime.utcnow()
     await db.playtest_frames.insert_one({
         "report_or_run_id": run_id, "agent": agent, "n": body.n, "jpeg": body.jpeg_base64,
-        "page_url": body.page_url, **step.model_dump(), "created_at": datetime.utcnow(),
+        "page_url": body.page_url, **step.model_dump(), "created_at": now,
+        "expires_at": now + FRAME_TTL,  # TTL index reaps frames of runs that never file a report
     })
     return step
 
@@ -386,7 +393,8 @@ async def finish_agent(
     )
     result = await db.playtests.insert_one(doc.model_dump())
     await db.playtest_frames.update_many(
-        {"report_or_run_id": run_id, "agent": agent}, {"$set": {"report_or_run_id": str(result.inserted_id)}}
+        {"report_or_run_id": run_id, "agent": agent},
+        {"$set": {"report_or_run_id": str(result.inserted_id)}, "$unset": {"expires_at": ""}},
     )
     saved = await db.playtests.find_one({"_id": result.inserted_id})
     return PlaytestReportOut(**serialize(saved))
