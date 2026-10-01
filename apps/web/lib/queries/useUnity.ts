@@ -265,16 +265,18 @@ export function useUnityConnection(unityProjectName?: string | null) {
 const COMPILE_WAIT_MS = 180_000
 const COMPILE_POLL_MS = 3_000
 
-/** Runs a plan step's tool. editor.awaitCompile is retried while Unity reports "Still compiling" (or is busy
- *  reloading) so a component can be added right after its script was written. */
+/** Runs a plan step's tool, riding out Unity's script reloads: writing a script makes Unity recompile and restart
+ *  the bridge, so the next step can find nobody listening ("Failed to reach…" — the request never arrived, so a
+ *  retry is safe for every tool). editor.awaitCompile is also retried while Unity reports "Still compiling" or is
+ *  busy; other tools are not retried on a busy reply, since the call may already have run. */
 export async function executeStepTool(tool: string, args: Record<string, unknown>,
   exec: typeof executeTool = executeTool, wait = (ms: number) => new Promise((r) => setTimeout(r, ms))): Promise<ToolResult> {
-  if (tool !== 'editor.awaitCompile') return exec(tool, args)
   const deadline = Date.now() + COMPILE_WAIT_MS
   for (;;) {
     const r = await exec(tool, args)
-    const retry = !r.success && (/^Still compiling/.test(r.message) || r.message === BRIDGE_BUSY || /Failed to reach/.test(r.message))
-    if (!retry || Date.now() > deadline) return r
+    const unreachable = !r.success && /Failed to reach/.test(r.message)
+    const compiling = tool === 'editor.awaitCompile' && !r.success && (/^Still compiling/.test(r.message) || r.message === BRIDGE_BUSY)
+    if (!(unreachable || compiling) || Date.now() > deadline) return r
     await wait(COMPILE_POLL_MS)
   }
 }

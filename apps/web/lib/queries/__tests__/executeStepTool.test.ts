@@ -18,6 +18,20 @@ describe('executeStepTool', () => {
     expect(exec).toHaveBeenCalledTimes(3)
   })
 
+  it('retries any tool while the bridge restarts after a script reload', async () => {
+    const exec = vi.fn()
+      .mockResolvedValueOnce({ success: false, message: 'Failed to reach Unity MCP server: TypeError: Failed to fetch' })
+      .mockResolvedValueOnce({ success: true, message: 'Wrote file' })
+    expect((await executeStepTool('asset.createText', { path: 'x' }, exec, vi.fn().mockResolvedValue(undefined))).success).toBe(true)
+    expect(exec).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry other tools on a busy reply (the call may have run)', async () => {
+    const exec = vi.fn().mockResolvedValue({ success: false, message: 'Tool timed out' })
+    await executeStepTool('gameobject.create', { name: 'A' }, exec, vi.fn().mockResolvedValue(undefined))
+    expect(exec).toHaveBeenCalledTimes(1)
+  })
+
   it('stops on a real compile error', async () => {
     const exec = vi.fn().mockResolvedValue({ success: false, message: "Scripts don't compile (2 error(s))" })
     const r = await executeStepTool('editor.awaitCompile', {}, exec, vi.fn().mockResolvedValue(undefined))
