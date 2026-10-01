@@ -1,0 +1,81 @@
+{
+  "title": "CORE BREACH",
+  "subtitle": "Hold the reactor. Three waves. One rifle.",
+  "winText": "CORE SECURED",
+  "loseText": "CORE LOST",
+  "arena": {
+    "floorSize": [40, 40],
+    "wallHeight": 4,
+    "boundaryWalls": true,
+    "floorColor": "#3a3f47",
+    "wallColor": "#5b6270",
+    "blocks": [
+      {"name": "Reactor Core", "pos": [0, 1.5, 0], "size": [4, 3, 4], "color": "#ff7a1a"},
+      {"name": "Cover NE", "pos": [8, 0.75, 8], "size": [3, 1.5, 1], "color": "#c77d3a"},
+      {"name": "Cover NW", "pos": [-8, 0.75, 8], "size": [3, 1.5, 1], "color": "#c77d3a"},
+      {"name": "Cover SE", "pos": [8, 0.75, -8], "size": [1, 1.5, 3], "color": "#c77d3a"},
+      {"name": "Cover SW", "pos": [-8, 0.75, -8], "size": [1, 1.5, 3], "color": "#c77d3a"},
+      {"name": "Pillar E", "pos": [13, 2, 0], "size": [1.5, 4, 1.5], "color": "#6f7787"},
+      {"name": "Pillar W", "pos": [-13, 2, 0], "size": [1.5, 4, 1.5], "color": "#6f7787"},
+      {"name": "Barrier N", "pos": [0, 1, 12], "size": [6, 2, 1], "color": "#6f7787"},
+      {"name": "Step Pad S", "pos": [0, 0.15, -9], "size": [5, 0.3, 3], "color": "#4a515c"}
+    ],
+    "playerStart": [0, 0, -15],
+    "playerYaw": 0,
+    "spawnPoints": [
+      {"name": "North Gate", "pos": [0, 0, 18]},
+      {"name": "East Gate", "pos": [18, 0, 6]},
+      {"name": "West Gate", "pos": [-18, 0, 6]}
+    ],
+    "pickups": [
+      {"pos": [-14, 0, -12], "heal": 30},
+      {"pos": [14, 0, -12], "heal": 30}
+    ]
+  },
+  "lighting": {
+    "ambient": "#5a6272",
+    "sun": "#fff1dc",
+    "sunIntensity": 1.1,
+    "sunPitch": 55,
+    "sunYaw": -35,
+    "sky": "#141a26",
+    "fogColor": "#141a26",
+    "fogDensity": 0.012
+  },
+  "player": {
+    "moveSpeed": 6.5,
+    "health": 100,
+    "lookSensitivity": 2,
+    "turnSpeed": 120,
+    "jumpSpeed": 6,
+    "eyeHeight": 1.6,
+    "fov": 75,
+    "invertY": false
+  },
+  "weapons": [
+    {"name": "Pulse Rifle", "type": "hitscan", "damage": 20, "fireRate": 6, "magazine": 12, "reloadTime": 1.4,
+     "spread": 0.8, "range": 80, "auto": true, "color": "#ffd54f"}
+  ],
+  "enemies": [
+    {"id": "drone", "name": "Crawler Drone", "behavior": "chaser", "hp": 40, "speed": 3.2, "damage": 10,
+     "attackRange": 1.8, "attackCooldown": 1.2, "color": "#e53935", "size": 1.0},
+    {"id": "spitter", "name": "Spitter Drone", "behavior": "ranged", "hp": 30, "speed": 2.6, "damage": 8,
+     "attackRange": 14, "attackCooldown": 2.2, "color": "#8e44ff", "size": 0.9, "projectileSpeed": 11}
+  ],
+  "waves": [
+    {"name": "Probe", "spawnInterval": 3.5, "spawns": [{"enemy": "drone", "count": 6}]},
+    {"name": "Crossfire", "spawnInterval": 3.0, "spawns": [{"enemy": "drone", "count": 7}, {"enemy": "spitter", "count": 3}]},
+    {"name": "Breach", "spawnInterval": 2.5, "spawns": [{"enemy": "drone", "count": 9}, {"enemy": "spitter", "count": 5}]}
+  ],
+  "breatherSeconds": 8,
+  "hud": {
+    "text": "#f5f5f5",
+    "accent": "#ffb300",
+    "health": "#43a047",
+    "damage": "#e53935",
+    "crosshair": "#ffffff",
+    "panel": "#0b0f17"
+  },
+  "sounds": {"volume": 0.6, "shotPitch": 1.0, "enemyPitch": 1.0},
+  "settings": {"stepMode": false, "stepSeconds": 0.4}
+}
