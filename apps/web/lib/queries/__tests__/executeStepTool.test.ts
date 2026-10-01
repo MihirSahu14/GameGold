@@ -26,6 +26,13 @@ describe('executeStepTool', () => {
     expect(exec).toHaveBeenCalledTimes(2)
   })
 
+  it('retries file writes on a busy reply (safe to repeat)', async () => {
+    const exec = vi.fn()
+      .mockResolvedValueOnce({ success: false, message: 'Tool timed out' })
+      .mockResolvedValueOnce({ success: true, message: 'Wrote file' })
+    expect((await executeStepTool('asset.createText', { path: 'x' }, exec, vi.fn().mockResolvedValue(undefined))).success).toBe(true)
+  })
+
   it('does not retry other tools on a busy reply (the call may have run)', async () => {
     const exec = vi.fn().mockResolvedValue({ success: false, message: 'Tool timed out' })
     await executeStepTool('gameobject.create', { name: 'A' }, exec, vi.fn().mockResolvedValue(undefined))

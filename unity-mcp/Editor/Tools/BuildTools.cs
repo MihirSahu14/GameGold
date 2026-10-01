@@ -62,7 +62,8 @@ namespace GameGold.MCP
             Save("building", $"Building for WebGL — starts in '{active.name}'…", output, 0, 0);
             // One-shot update hook, not delayCall: delayCall never fires while the Editor is unfocused (gap 71).
             EditorApplication.CallbackFunction once = null;
-            once = () => { EditorApplication.update -= once; Run(scenes, output, compression); };
+            var development = SimpleJson.Parse(body).GetBool("development");
+            once = () => { EditorApplication.update -= once; Run(scenes, output, compression, development); };
             EditorApplication.update += once;
             GameGoldMCP.NudgeEditorLoop();
             return GameGoldMCP.Ok("Build started", "{\"state\":\"building\"}");
@@ -93,7 +94,7 @@ namespace GameGold.MCP
             return error == null ? output : null;
         }
 
-        private static void Run(string[] scenes, string output, WebGLCompressionFormat compression)
+        private static void Run(string[] scenes, string output, WebGLCompressionFormat compression, bool development = false)
         {
             var started = DateTime.UtcNow;
             try
@@ -104,7 +105,8 @@ namespace GameGold.MCP
                     locationPathName = output,
                     target = BuildTarget.WebGL,
                     targetGroup = BuildTargetGroup.WebGL,
-                    options = BuildOptions.None,
+                    // development: readable stack traces (function names) for debugging web-only crashes
+                    options = development ? BuildOptions.Development : BuildOptions.None,
                 });
                 var seconds = (DateTime.UtcNow - started).TotalSeconds;
                 var ok = report.summary.result == BuildResult.Succeeded;

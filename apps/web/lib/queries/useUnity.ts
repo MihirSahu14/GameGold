@@ -262,6 +262,9 @@ export function useUnityConnection(unityProjectName?: string | null) {
   return { status, unityInfo: chosen, editors, missingProject, check }
 }
 
+// Writing the same file / ensuring the same package / saving again changes nothing — safe to retry when busy.
+const IDEMPOTENT_TOOLS = new Set(['editor.awaitCompile', 'editor.compileErrors', 'packages.ensure', 'asset.createScript',
+  'asset.createText', 'asset.importSprite', 'scene.save', 'scene.snapshot', 'build.status'])
 const COMPILE_WAIT_MS = 180_000
 const COMPILE_POLL_MS = 3_000
 
@@ -275,8 +278,10 @@ export async function executeStepTool(tool: string, args: Record<string, unknown
   for (;;) {
     const r = await exec(tool, args)
     const unreachable = !r.success && /Failed to reach/.test(r.message)
-    const compiling = tool === 'editor.awaitCompile' && !r.success && (/^Still compiling/.test(r.message) || r.message === BRIDGE_BUSY)
-    if (!(unreachable || compiling) || Date.now() > deadline) return r
+    const compiling = tool === 'editor.awaitCompile' && !r.success && /^Still compiling/.test(r.message)
+    // A busy reply means the call may already have run — retry only tools that are safe to repeat.
+    const busyRetry = !r.success && r.message === BRIDGE_BUSY && IDEMPOTENT_TOOLS.has(tool)
+    if (!(unreachable || compiling || busyRetry) || Date.now() > deadline) return r
     await wait(COMPILE_POLL_MS)
   }
 }
