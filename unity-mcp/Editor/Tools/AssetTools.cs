@@ -56,7 +56,7 @@ namespace GameGold.MCP
                 $"{{\"path\":\"{GameGoldMCP.EscapeJson(path)}\"}}");
         }
 
-        private static readonly string[] TextExtensions = { ".json", ".txt", ".md", ".xml" }; // .xml: link.xml for build stripping
+        private static readonly string[] TextExtensions = { ".json", ".txt", ".md", ".xml", ".mat" }; // .xml: link.xml for build stripping; .mat: text-YAML materials (kit shaders)
 
         /// <summary>args: { path, content } — writes a text asset (.json/.txt/.md), e.g. dialogue JSON under Assets/Resources/.</summary>
         internal static string CreateText(string body)
@@ -68,7 +68,7 @@ namespace GameGold.MCP
             if (path == null) return GameGoldMCP.Error("'path' must stay under Assets/");
             if (content == null) return GameGoldMCP.Error("'content' is required");
             if (!Array.Exists(TextExtensions, ext => path.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
-                return GameGoldMCP.Error("'path' must be a .json, .txt, .md or .xml file");
+                return GameGoldMCP.Error("'path' must be a .json, .txt, .md, .xml or .mat file");
             if (Array.Exists(path.Split('/'), seg => seg.Equals("Editor", StringComparison.OrdinalIgnoreCase)))
                 return GameGoldMCP.Error("Text assets may not be created inside an Editor folder");
 
