@@ -127,7 +127,8 @@ def test_click_is_scaled_to_viewport_and_frame_stored(client, mock_db, project, 
         {"action": "click", "x": 512, "y": 288, "note": "I see a Start button", "stopReason": ""}))
     resp = client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step())
     assert resp.status_code == 200
-    assert resp.json() == {"action": "click", "x": 640, "y": 360, "key": None, "note": "I see a Start button", "stopReason": None}
+    assert resp.json() == {"action": "click", "x": 640, "y": 360, "key": None, "actions": None,
+                           "note": "I see a Start button", "stopReason": None}
 
     user_msg = llm.call_args.kwargs["messages"][1]["content"]
     assert user_msg[1] == {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{JPEG}"}}
@@ -154,6 +155,102 @@ def test_action_parsing(client, mock_db, project, llm, answer, expected):
     assert {k: body[k] for k in expected} == expected
 
 
+def test_act_is_scaled_validated_and_counts_as_a_turn(client, mock_db, project, llm):
+    mock_db.agent_runs.find_one.return_value = _run_doc()
+    llm.return_value = make_llm_response(json.dumps({"action": "act", "note": "run and jump", "actions": [
+        {"type": "key", "key": "d", "holdMs": 600},
+        {"type": "keys", "keys": ["d", "Space", "d"], "holdMs": 400},
+        {"type": "mouseMove", "x": 512, "y": 288},
+        {"type": "mouseDown"},
+        {"type": "mouseUp", "x": 2000, "y": 10},
+        {"type": "click", "x": 0, "y": 576},
+    ]}))
+    body = client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step()).json()
+    assert body["action"] == "act" and body["note"] == "run and jump"
+    strip = [{k: v for k, v in a.items() if v is not None} for a in body["actions"]]
+    assert strip == [
+        {"type": "key", "key": "d", "holdMs": 600},
+        {"type": "keys", "keys": ["d", "Space"], "holdMs": 400},
+        {"type": "mouseMove", "x": 640, "y": 360},
+        {"type": "mouseDown"},
+        {"type": "mouseUp", "x": 1279, "y": 12},
+        {"type": "click", "x": 0, "y": 719},
+    ]
+    assert {"$inc": {"actions_used.first_timer": 1}} in [c.args[1] for c in mock_db.agent_runs.update_one.call_args_list]
+    assert mock_db.playtest_frames.insert_one.call_args[0][0]["action"] == "act"
+
+
+def test_act_caps_count_holds_and_total_time(client, mock_db, project, llm):
+    mock_db.agent_runs.find_one.return_value = _run_doc()
+    llm.return_value = make_llm_response(json.dumps({"action": "act", "note": "x", "actions": [
+        {"type": "key", "key": "w", "holdMs": 9000},   # clamped to 1500
+        {"type": "wait", "ms": 1200},
+        {"type": "key", "key": "a", "holdMs": 1000},   # trimmed to the 300 ms left of 3 s
+        {"type": "key", "key": "s"},                    # default hold, but no time left
+        {"type": "key", "key": "e"}, {"type": "key", "key": "r"},
+        {"type": "key", "key": "z"},                    # 7th action dropped
+    ]}))
+    body = client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step()).json()
+    acts = body["actions"]
+    assert len(acts) == 6
+    assert [a.get("holdMs") or a.get("ms") or 0 for a in acts] == [1500, 1200, 300, 0, 0, 0]
+
+
+@pytest.mark.parametrize("actions", [
+    [], "Space", [{"type": "key", "key": "F5"}], [{"type": "keys", "keys": ["Tab"]}],
+    [{"type": "teleport"}], [{"type": "click", "x": "here", "y": 2}], [{"type": "mouseMove"}],
+    [{"type": "wait"}],
+])
+def test_bad_act_is_unreadable(client, mock_db, project, llm, actions):
+    mock_db.agent_runs.find_one.return_value = _run_doc()
+    llm.return_value = make_llm_response(json.dumps({"action": "act", "actions": actions, "note": "?"}))
+    assert client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step()).json()["note"] == "(couldn't read the screen this step)"
+
+
+def test_waits_dont_use_a_turn_but_the_hard_cap_holds(client, mock_db, project, llm):
+    mock_db.agent_runs.find_one.return_value = _run_doc(steps_used={"first_timer": 20}, actions_used={"first_timer": 14})
+    llm.return_value = make_llm_response(json.dumps({"action": "wait", "note": "text still typing"}))
+    resp = client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step(n=21))
+    assert resp.status_code == 200
+    assert not any("$inc" in c.args[1] for c in mock_db.agent_runs.update_one.call_args_list)
+    assert "Turns used: 14 of 15" in llm.call_args.kwargs["messages"][1]["content"][0]["text"]
+
+
+def test_step_mode_is_stored_and_told_to_the_agent(client, mock_db, project, llm):
+    mock_db.agent_runs.insert_one.return_value = MagicMock(inserted_id=RUN_ID)
+    client.post(f"{BASE}/agent-runs", json={"url": "http://localhost:7433/play/index.html", "personas": ["first_timer"], "stepMode": True})
+    assert mock_db.agent_runs.insert_one.call_args[0][0]["step_mode"] is True
+    # itch/Pages wrap the game in an iframe, so gg_step=1 can't reach it: step mode is dropped
+    client.post(f"{BASE}/agent-runs", json={"url": "https://a.io/g", "personas": ["first_timer"], "stepMode": True})
+    assert mock_db.agent_runs.insert_one.call_args[0][0]["step_mode"] is False
+
+    llm.return_value = make_llm_response(json.dumps({"action": "wait", "note": "hm"}))
+    mock_db.agent_runs.find_one.return_value = _run_doc(step_mode=True)
+    client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step())
+    assert "paused between your turns" in llm.call_args.kwargs["messages"][1]["content"][0]["text"]
+    mock_db.agent_runs.find_one.return_value = _run_doc(steps_used={"first_timer": 1})
+    client.post(f"{BASE}/agent-runs/{RUN_ID}/steps", json=_step(n=2))
+    assert "paused between your turns" not in llm.call_args.kwargs["messages"][1]["content"][0]["text"]
+
+
+def test_step_prompt_explains_holding_keys_and_typing_text():
+    from app.prompts.agent_play_prompt import AGENT_STEP_SYSTEM_PROMPT as p
+    assert '"act"' in p and '"holdMs": 600' in p and '"keys": ["d", "Space"]' in p
+    assert "Shift" in p and "3000 ms" in p and "still typing" in p and "cut off" in p
+
+
+def test_finish_says_step_limit_after_max_acting_steps(client, mock_db, project, llm):
+    mock_db.agent_runs.find_one.return_value = _run_doc(max_steps=2)
+    mock_db.playtest_frames.find.return_value = make_cursor([
+        {"n": 1, "action": "wait", "note": "a"}, {"n": 2, "action": "act", "note": "b"}, {"n": 3, "action": "key", "note": "c"},
+    ])
+    llm.return_value = make_llm_response(json.dumps(REPORT_JSON))
+    mock_db.playtests.insert_one.return_value = MagicMock(inserted_id=ObjectId())
+    mock_db.playtests.find_one.side_effect = lambda q: {**mock_db.playtests.insert_one.call_args[0][0], "_id": ObjectId()}
+    resp = client.post(f"{BASE}/agent-runs/{RUN_ID}/agents/first_timer/finish")
+    assert resp.json()["stopReason"] == "Step limit reached"
+
+
 @pytest.mark.parametrize("bad", ["not json at all", json.dumps({"action": "key", "key": "F12"}),
                                  json.dumps({"action": "click", "x": "left"}), json.dumps({"action": "dance"})])
 def test_unreadable_answer_waits_once_then_stops(client, mock_db, project, llm, bad):
@@ -171,7 +268,8 @@ def test_unreadable_answer_waits_once_then_stops(client, mock_db, project, llm, 
 @pytest.mark.parametrize("run, step, code", [
     ({}, {"agent": "poker"}, 400),                                   # agent not in run
     ({"finished": ["first_timer"]}, {}, 400),                        # agent already reported
-    ({}, {"n": 16}, 400),                                            # over the trial cap
+    ({}, {"n": 31}, 400),                                            # over the hard cap (2x trial cap)
+    ({"actions_used": {"first_timer": 15}}, {"n": 20}, 400),         # 15 acting steps used
     ({"steps_used": {"first_timer": 3}}, {"n": 3}, 409),             # replayed step
     ({"steps_used": {"first_timer": 3}}, {"n": 2}, 409),
 ])
@@ -192,7 +290,7 @@ def test_step_lost_the_atomic_claim(client, mock_db, project, llm):
     {"jpegBase64": base64.b64encode(b"\x89PNG\r\n" + b"0" * 50).decode()},     # not a JPEG
     {"jpegBase64": base64.b64encode(b"\xff\xd8\xff" + b"0" * (400 * 1024)).decode()},  # > 400 KB
     {"jpegBase64": "!!!not-base64!!!"},
-    {"n": 0}, {"n": 61}, {"agent": "hardcore"}, {"screenWidth": 0},
+    {"n": 0}, {"n": 121}, {"agent": "hardcore"}, {"screenWidth": 0},
 ])
 def test_step_body_validation(client, mock_db, project, llm, step):
     mock_db.agent_runs.find_one.return_value = _run_doc()
@@ -431,3 +529,35 @@ def test_complete_vision_uses_own_key_unmetered(mock_db, llm, monkeypatch):
     assert llm.call_args.kwargs["api_key"] == "sk-own-1234567890"
     assert llm.call_args.kwargs["model"] == "openai/gpt-4o"
     mock_db.llm_budget.update_one.assert_not_called()
+
+
+def test_parse_step_tolerates_unescaped_quotes_and_key_spellings():
+    from app.services.agent_play_service import parse_step
+    broken = '{"action": "key", "key": "Return", "note": "It says "Enter or Space to start" so I press Enter"}'
+    step = parse_step(broken, 1024, 576, 1280, 720)
+    assert step is not None and step.action == "key" and step.key == "Enter"
+    assert "Enter or Space" in step.note
+    assert parse_step('{"action": "key", "key": "space", "note": "go"}', 1024, 576, 1280, 720).key == "Space"
+    assert parse_step('{"action": "key", "key": "Right", "note": "go"}', 1024, 576, 1280, 720).key == "ArrowRight"
+    assert parse_step('{"action": "key", "key": "F12", "note": "x"}', 1024, 576, 1280, 720) is None
+    click = parse_step('{"action": "click", "x": 512, "y": 288, "note": "the "Play" button"}', 1024, 576, 1280, 720)
+    assert (click.x, click.y) == (640, 360)
+
+
+def test_act_skips_bad_items():
+    from app.services.agent_play_service import parse_act
+    acts = parse_act([{"type": "teleport"}, {"type": "keys", "keys": ["w", "Tab"]},
+                      {"type": "key", "key": "d", "holdMs": "long"}], lambda x, y: (x, y))
+    assert [(a.type, a.keys or a.key, a.hold_ms) for a in acts] == [("keys", ["w"], 100), ("key", "d", 100)]
+
+
+def test_note_only_answer_is_a_wait():
+    from app.services.agent_play_service import parse_step
+    step = parse_step('```json\n{"action": "note", "note": "I see a cube."}\n```', 100, 100, 100, 100)
+    assert step.action == "wait" and step.note == "I see a cube."
+
+
+def test_missing_y_key_is_salvaged():
+    from app.services.agent_play_service import parse_step
+    step = parse_step('{"action": "click", "x": 50, 70, "note": "the orange enemy"}', 100, 100, 100, 100)
+    assert (step.action, step.x, step.y) == ("click", 50, 70)

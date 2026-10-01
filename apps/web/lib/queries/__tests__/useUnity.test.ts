@@ -140,7 +140,10 @@ describe('syncCall', () => {
 
 describe('useUnityConnection', () => {
   it('shares one status check between components', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ version: '6000.5' }) })
+    const fetchMock = vi.fn(async (url: string) => {
+      if (!url.includes(':7432/')) throw new TypeError('refused') // one editor open
+      return { ok: true, json: async () => ({ version: '6000.5' }) }
+    })
     vi.stubGlobal('fetch', fetchMock)
     const qc = new QueryClient()
     const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -150,7 +153,7 @@ describe('useUnityConnection', () => {
     await waitFor(() => expect(a.result.current.status).toBe('connected'))
     expect(b.result.current.status).toBe('connected')
     expect(b.result.current.unityInfo?.version).toBe('6000.5')
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(8) // one scan of 7432–7439, shared
     expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:7432/status')
     vi.unstubAllGlobals()
   })

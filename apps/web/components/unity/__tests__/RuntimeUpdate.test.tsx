@@ -12,6 +12,11 @@ describe('RuntimeUpdate (gap 40)', () => {
     expect(onUpdate).toHaveBeenCalled()
   })
 
+  it('names the kit runtime and its path', () => {
+    render(<RuntimeUpdate runtimeClass="GridPlayer" outdated servedVersion={3} syncedVersion={2} busy={false} onUpdate={vi.fn()} />)
+    expect(screen.getByRole('status')).toHaveTextContent(/newer GameGold GridPlayer \(v3\).*Assets\/Scripts\/GridPlayer\.cs only/)
+  })
+
   it('stays a quiet button when current', () => {
     render(<RuntimeUpdate outdated={false} servedVersion={2} syncedVersion={2} busy={false} onUpdate={vi.fn()} />)
     expect(screen.queryByRole('status')).toBeNull()

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -19,6 +20,10 @@ namespace GameGold.MCP
     {
         // OpenTimeoutMs stays under the web's 15 s tool timeout, so a slow open never outlives the caller.
         private const int CdpTimeoutMs = 15_000, OpenTimeoutMs = 12_000;
+        // browser.act: everything in one call (holds + waits) must fit well inside the web's 15 s tool timeout.
+        internal const int ActMaxTotalMs = 3_000, ActMaxActions = 20, ActDefaultHoldMs = 100;
+        // Real-time runtimes (genre kits) freeze between agent inputs when the page URL carries this flag.
+        internal const string StepParam = "gg_step=1";
         private const string Reloading = "Unity is reloading — try again in a moment";
         private static readonly TimeSpan IdleLimit = TimeSpan.FromMinutes(10);
 
@@ -43,7 +48,8 @@ namespace GameGold.MCP
             var args = SimpleJson.Parse(body);
             var url = args.GetString("url");
             if (!IsAllowedUrl(url, out var uri))
-                return GameGoldMCP.Error("url must be https://… or http://localhost:7432/play/…");
+                return GameGoldMCP.Error($"url must be https://… or http://localhost:{GameGoldMCP.Port}/play/…");
+            if (args.GetBool("stepMode")) url = WithStepParam(url);
             int w = Clamp(args.GetInt("width", 1280), 320, 1920), h = Clamp(args.GetInt("height", 720), 240, 1080);
             var exe = FindBrowser();
             if (exe == null) return GameGoldMCP.Error("Neither Microsoft Edge nor Google Chrome is installed");
@@ -152,17 +158,86 @@ namespace GameGold.MCP
             var s = Find(args, out var error);
             if (s == null) return GameGoldMCP.Error(error);
             var k = KeyInfo(args.GetString("key"));
-            if (k == null) return GameGoldMCP.Error("key must be Space, Enter, ArrowUp/Down/Left/Right, Escape, 1-9 or a-z");
-            var (key, code, vk, text) = k.Value;
+            if (k == null) return GameGoldMCP.Error(KeyHelp);
             try
             {
-                var common = $"\"key\":\"{GameGoldMCP.EscapeJson(key)}\",\"code\":\"{code}\",\"windowsVirtualKeyCode\":{vk},\"nativeVirtualKeyCode\":{vk}";
-                var textJson = text == null ? "" : $",\"text\":\"{GameGoldMCP.EscapeJson(text)}\"";
-                Call(s, "Input.dispatchKeyEvent", $"{{\"type\":\"keyDown\",{common}{textJson}}}");
-                Call(s, "Input.dispatchKeyEvent", $"{{\"type\":\"keyUp\",{common}}}");
-                return GameGoldMCP.Ok($"Pressed {key}", $"{{\"url\":\"{GameGoldMCP.EscapeJson(CurrentUrl(s))}\"}}");
+                Call(s, "Input.dispatchKeyEvent", KeyEvent("keyDown", k.Value));
+                Call(s, "Input.dispatchKeyEvent", KeyEvent("keyUp", k.Value));
+                return GameGoldMCP.Ok($"Pressed {k.Value.Item1}", $"{{\"url\":\"{GameGoldMCP.EscapeJson(CurrentUrl(s))}\"}}");
             }
             catch (Exception ex) { return GameGoldMCP.Error("Key press failed: " + ex.Message); }
+        }
+
+        /// <summary>Several inputs in order within one call: key holds, chords, mouse move/press/release, clicks and
+        /// short waits (holds + waits ≤ 3 s). Keys and the mouse button still down at the end (or on failure) are released.</summary>
+        public static string Act(string body)
+        {
+            var args = SimpleJson.Parse(body);
+            var s = Find(args, out var error);
+            if (s == null) return GameGoldMCP.Error(error);
+            var steps = ParseActions(body, s.Width, s.Height, out error);
+            if (steps == null) return GameGoldMCP.Error(error);
+
+            var held = new List<(string, string, int, string)>();
+            bool mouseHeld = false;
+            float mx = s.Width / 2f, my = s.Height / 2f;
+            string Mouse(string type, int buttons, bool withButton) =>
+                $"{{\"type\":\"{type}\",\"x\":{mx.ToString(CultureInfo.InvariantCulture)},\"y\":{my.ToString(CultureInfo.InvariantCulture)}" +
+                (withButton ? ",\"button\":\"left\",\"clickCount\":1" : "") + $",\"buttons\":{buttons}}}";
+            void Down((string, string, int, string) k) { Call(s, "Input.dispatchKeyEvent", KeyEvent("keyDown", k)); held.Add(k); }
+            void Up((string, string, int, string) k) { held.Remove(k); Call(s, "Input.dispatchKeyEvent", KeyEvent("keyUp", k)); }
+            try
+            {
+                foreach (var a in steps)
+                {
+                    if (a.X >= 0) { mx = a.X; my = a.Y; }
+                    switch (a.Type)
+                    {
+                        case "key":
+                        case "keys": // all down together, hold, release in reverse
+                            foreach (var k in a.Keys) Down(k);
+                            Thread.Sleep(a.Ms);
+                            for (int i = a.Keys.Count - 1; i >= 0; i--) Up(a.Keys[i]);
+                            break;
+                        case "mouseMove":
+                            Call(s, "Input.dispatchMouseEvent", Mouse("mouseMoved", mouseHeld ? 1 : 0, false));
+                            break;
+                        case "mouseDown":
+                            Call(s, "Input.dispatchMouseEvent", Mouse("mouseMoved", mouseHeld ? 1 : 0, false));
+                            Call(s, "Input.dispatchMouseEvent", Mouse("mousePressed", 1, true));
+                            mouseHeld = true;
+                            break;
+                        case "mouseUp":
+                            Call(s, "Input.dispatchMouseEvent", Mouse("mouseMoved", mouseHeld ? 1 : 0, false));
+                            Call(s, "Input.dispatchMouseEvent", Mouse("mouseReleased", 0, true));
+                            mouseHeld = false;
+                            break;
+                        case "click":
+                            Call(s, "Input.dispatchMouseEvent", Mouse("mouseMoved", 0, false));
+                            Call(s, "Input.dispatchMouseEvent", Mouse("mousePressed", 1, true));
+                            Call(s, "Input.dispatchMouseEvent", Mouse("mouseReleased", 0, true));
+                            break;
+                        case "wait":
+                            Thread.Sleep(a.Ms);
+                            break;
+                    }
+                }
+                return GameGoldMCP.Ok($"Did {steps.Count} action{(steps.Count == 1 ? "" : "s")}",
+                    $"{{\"url\":\"{GameGoldMCP.EscapeJson(CurrentUrl(s))}\"}}");
+            }
+            catch (Exception ex) { return GameGoldMCP.Error("Act failed: " + ex.Message); }
+            finally
+            {
+                // A stuck key would keep the player running forever: release best-effort, never throw from here.
+                foreach (var k in held.ToArray())
+                {
+                    try { Up(k); } catch { held.Remove(k); }
+                }
+                if (mouseHeld)
+                {
+                    try { Call(s, "Input.dispatchMouseEvent", Mouse("mouseReleased", 0, true)); } catch { /* browser gone */ }
+                }
+            }
         }
 
         public static string Close(string body)
@@ -193,7 +268,7 @@ namespace GameGold.MCP
         {
             if (!Uri.TryCreate(url ?? "", UriKind.Absolute, out uri) || uri.UserInfo != "") return false;
             if (uri.Scheme == "https") return uri.Host != "";
-            return uri.Scheme == "http" && uri.Host == "localhost" && uri.Port == 7432 && uri.AbsolutePath.StartsWith("/play/");
+            return uri.Scheme == "http" && uri.Host == "localhost" && uri.Port == GameGoldMCP.Port && uri.AbsolutePath.StartsWith("/play/");
         }
 
         internal static string[] LaunchArgs(string profile, int w, int h) => new[]
@@ -204,6 +279,143 @@ namespace GameGold.MCP
             "about:blank",
         };
 
+        private const string KeyHelp = "key must be Space, Enter, Shift, ArrowUp/Down/Left/Right, Escape, 1-9 or a-z";
+
+        internal static string KeyEvent(string type, (string, string, int, string) k)
+        {
+            var (key, code, vk, text) = k;
+            var textJson = type == "keyDown" && text != null ? $",\"text\":\"{GameGoldMCP.EscapeJson(text)}\"" : "";
+            return $"{{\"type\":\"{type}\",\"key\":\"{GameGoldMCP.EscapeJson(key)}\",\"code\":\"{code}\"," +
+                   $"\"windowsVirtualKeyCode\":{vk},\"nativeVirtualKeyCode\":{vk}{textJson}}}";
+        }
+
+        /// <summary>Adds gg_step=1 to the query (before any #fragment) unless it's already there.</summary>
+        internal static string WithStepParam(string url)
+        {
+            int hash = url.IndexOf('#');
+            string head = hash < 0 ? url : url.Substring(0, hash), tail = hash < 0 ? "" : url.Substring(hash);
+            int q = head.IndexOf('?');
+            if (q >= 0 && head.Substring(q + 1).Split('&').Contains(StepParam)) return url;
+            var sep = q < 0 ? "?" : head.EndsWith("?") || head.EndsWith("&") ? "" : "&";
+            return head + sep + StepParam + tail;
+        }
+
+        internal sealed class ActStep
+        {
+            public string Type;
+            public readonly List<(string, string, int, string)> Keys = new();
+            public int Ms;               // key/keys: hold time; wait: wait time
+            public float X = -1, Y = -1; // viewport pixels; -1 = keep the last mouse position
+        }
+
+        /// <summary>Validates browser.act's "actions" array up front, so a bad list never half-runs. null + error when off.</summary>
+        internal static List<ActStep> ParseActions(string body, int vw, int vh, out string error)
+        {
+            error = null;
+            var objects = ArrayObjects(body ?? "", "actions");
+            if (objects == null || objects.Count == 0) { error = "actions must be a non-empty list"; return null; }
+            if (objects.Count > ActMaxActions) { error = $"at most {ActMaxActions} actions per call"; return null; }
+            var steps = new List<ActStep>();
+            int total = 0;
+            foreach (var raw in objects)
+            {
+                var j = SimpleJson.Parse(raw);
+                var a = new ActStep { Type = j.GetString("type") };
+                switch (a.Type)
+                {
+                    case "key":
+                    {
+                        var k = KeyInfo(j.GetString("key"));
+                        if (k == null) { error = KeyHelp; return null; }
+                        a.Keys.Add(k.Value);
+                        a.Ms = j.GetInt("holdMs", ActDefaultHoldMs);
+                        break;
+                    }
+                    case "keys":
+                    {
+                        var names = StringArray(raw, "keys");
+                        if (names == null || names.Count == 0) { error = "keys must be a non-empty list of keys"; return null; }
+                        foreach (var name in names.Distinct())
+                        {
+                            var k = KeyInfo(name);
+                            if (k == null) { error = KeyHelp; return null; }
+                            a.Keys.Add(k.Value);
+                        }
+                        a.Ms = j.GetInt("holdMs", ActDefaultHoldMs);
+                        break;
+                    }
+                    case "wait":
+                        a.Ms = j.GetInt("ms", -1);
+                        break;
+                    case "mouseMove":
+                    case "click":
+                    case "mouseDown":
+                    case "mouseUp":
+                    {
+                        bool needsXY = a.Type == "mouseMove" || a.Type == "click";
+                        // press/release where the mouse already is (a JSON null counts as missing)
+                        if (!needsXY && j.GetString("x") == "" && j.GetString("y") == "") break;
+                        a.X = j.GetFloat("x", -1);
+                        a.Y = j.GetFloat("y", -1);
+                        if (a.X < 0 || a.Y < 0 || a.X >= vw || a.Y >= vh)
+                        {
+                            error = $"{a.Type}: x/y must be inside the {vw}×{vh} viewport";
+                            return null;
+                        }
+                        break;
+                    }
+                    default:
+                        error = "action type must be key, keys, mouseMove, mouseDown, mouseUp, click or wait";
+                        return null;
+                }
+                if (a.Ms < 0) { error = $"{a.Type}: holdMs/ms must be 0 or more"; return null; }
+                total += a.Ms;
+                steps.Add(a);
+            }
+            if (total > ActMaxTotalMs)
+            {
+                error = $"holds and waits add up to {total} ms — keep them within {ActMaxTotalMs} ms per call";
+                return null;
+            }
+            return steps;
+        }
+
+        // The {…} items of the array under "key" (SimpleJson skips arrays). null when missing or unterminated.
+        private static List<string> ArrayObjects(string json, string key)
+        {
+            var m = Regex.Match(json, "\"" + key + "\"\\s*:\\s*\\[");
+            if (!m.Success) return null;
+            var items = new List<string>();
+            int depth = 0, start = -1;
+            for (int i = m.Index + m.Length; i < json.Length; i++)
+            {
+                char c = json[i];
+                if (c == '"') { i = StringEnd(json, i); continue; }
+                if (c == '{') { if (depth++ == 0) start = i; }
+                else if (c == '}') { if (--depth == 0) items.Add(json.Substring(start, i - start + 1)); }
+                else if (c == ']' && depth == 0) return items;
+            }
+            return null;
+        }
+
+        private static int StringEnd(string json, int i)
+        {
+            for (i++; i < json.Length; i++)
+            {
+                if (json[i] == '\\') i++;
+                else if (json[i] == '"') return i;
+            }
+            return json.Length;
+        }
+
+        // ["a","b"] under "key" in one flat action object; key names never contain quotes, escapes or brackets.
+        private static List<string> StringArray(string json, string key)
+        {
+            var m = Regex.Match(json, "\"" + key + "\"\\s*:\\s*\\[([^\\]]*)\\]");
+            if (!m.Success) return null;
+            return Regex.Matches(m.Groups[1].Value, "\"([^\"\\\\]*)\"").Cast<Match>().Select(x => x.Groups[1].Value).ToList();
+        }
+
         // (key, code, windowsVirtualKeyCode, text) for Input.dispatchKeyEvent; null when not allowed.
         internal static (string, string, int, string)? KeyInfo(string key)
         {
@@ -212,6 +424,7 @@ namespace GameGold.MCP
                 case "Space":      return (" ", "Space", 32, " ");
                 case "Enter":      return ("Enter", "Enter", 13, "\r");
                 case "Escape":     return ("Escape", "Escape", 27, null);
+                case "Shift":      return ("Shift", "ShiftLeft", 16, null);
                 case "ArrowLeft":  return ("ArrowLeft", "ArrowLeft", 37, null);
                 case "ArrowUp":    return ("ArrowUp", "ArrowUp", 38, null);
                 case "ArrowRight": return ("ArrowRight", "ArrowRight", 39, null);

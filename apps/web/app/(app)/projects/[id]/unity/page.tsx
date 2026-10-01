@@ -1,7 +1,8 @@
 'use client'
 
 import { use, useState, useEffect } from 'react'
-import { useProject, useUpdateRisk, useUpdatePlayerSettings } from '@/lib/queries/useProjects'
+import { useProject, useUpdateRisk, useUpdatePlayerSettings, useUpdateKitFields } from '@/lib/queries/useProjects'
+import { KitPanel } from '@/components/unity/KitPanel'
 import { RiskPanel } from '@/components/unity/RiskPanel'
 import { MissingScripts } from '@/components/unity/MissingScripts'
 import { PlayControls } from '@/components/unity/PlayControls'
@@ -12,12 +13,14 @@ import { ProjectHomeCard } from '@/components/unity/ProjectHomeCard'
 import { ChangeSomethingPanel } from '@/components/unity/ChangeSomethingPanel'
 import { PlayerSettingsPanel } from '@/components/unity/PlayerSettingsPanel'
 import { useToastStore } from '@/store/toastStore'
-import type { PlayerSettings, UnityChangePlan, UnityDiffItem } from '@gamegold/types'
+import type { KitId, PlayerSettings, UnityChangePlan, UnityDiffItem } from '@gamegold/types'
 import { useAssets } from '@/lib/queries/useAssets'
 import {
   useUnityPlan, useGeneratePlan, useMarkStep, useUnityMCP, useExportBuildPack, prepareToolArgs, findScriptAsset, playerSettingsFile,
   PLAYER_SETTINGS_PATH, runQueue, useUnitySyncs, usePullFromUnity, useSyncToUnity, snapshotUnity, diffUnity, overwriteTarget,
-  recordWrite, stepSource, useRuntimeTemplate, useUpdateRuntime, runtimeOutdated, RUNTIME_PATH, useProposeChange,
+  recordWrite, stepSource, useRuntimeTemplate, useUpdateRuntime, runtimeOutdated, runtimePath, useProposeChange,
+  useProjectKit, useKits, DEFAULT_RUNTIME,
+  executeStepTool,
 } from '@/lib/queries/useUnity'
 import type { ToolResult } from '@/lib/queries/useUnity'
 import { useProjectSummary, stalenessMessage } from '@/lib/queries/useProjectSummary'
@@ -68,18 +71,24 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   const markStep = useMarkStep(id)
   const exportPack = useExportBuildPack(id)
   const updateRisk = useUpdateRisk(id)
-  const { status: mcpStatus, unityInfo, check: checkMCP, executeTool } = useUnityMCP()
+  const { status: mcpStatus, unityInfo, editors, missingProject, check: checkMCP, executeTool } = useUnityMCP(project?.unityProjectName)
   const updateSettings = useUpdatePlayerSettings(id)
   const [syncingSettings, setSyncingSettings] = useState(false)
   const { data: syncs, refetch: refetchSyncs } = useUnitySyncs(id)
-  const { data: runtimeTemplate } = useRuntimeTemplate()
-  const updateRuntime = useUpdateRuntime(id)
+  const { data: projectKit } = useProjectKit(id)
+  const { data: kits } = useKits()
+  const updateKitFields = useUpdateKitFields(id)
+  const kit = projectKit?.kit ?? null
+  // The runtime "Update runtime" re-sends: the project's kit runtime (DialoguePlayer when there's no kit).
+  const runtimeClass = kit?.runtimeClass ?? DEFAULT_RUNTIME
+  const { data: runtimeTemplate } = useRuntimeTemplate(runtimeClass)
+  const updateRuntime = useUpdateRuntime(id, runtimeClass)
   const proposeChange = useProposeChange(id)
   const [changePlan, setChangePlan] = useState<UnityChangePlan | null>(null)
   const [changeResults, setChangeResults] = useState<Record<number, ToolResult>>({})
   const [changeRunning, setChangeRunning] = useState(false)
   const pullFromUnity = usePullFromUnity(id)
-  const syncToUnity = useSyncToUnity(id)
+  const syncToUnity = useSyncToUnity(id, kit)
   const [diffItems, setDiffItems] = useState<UnityDiffItem[] | null>(null)
   const [checkingUnity, setCheckingUnity] = useState(false)
   const [busyPath, setBusyPath] = useState<string | null>(null)
@@ -151,6 +160,25 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     }
   }
 
+  function handleKitFields(fields: Parameters<typeof updateKitFields.mutate>[0], message: string) {
+    updateKitFields.mutate(fields, { onError: (err) => toastError(err, message) })
+  }
+
+  // Save the kit's settings JSON, then write it where the kit runtime reads it.
+  async function handleSyncKitSettings(settings: Record<string, unknown>) {
+    if (!kit?.settingsPath) return
+    const toast = useToastStore.getState().pushToast
+    try {
+      await updateKitFields.mutateAsync({ kitSettings: { [kit.id]: settings } })
+      const args = { path: kit.settingsPath, content: JSON.stringify(settings, null, 2) }
+      const r = await executeTool('asset.createText', args)
+      if (r.success) await recordWrite(id, 'asset.createText', args, 'kit-settings').catch(() => {})
+      toast(r.success ? `${kit.title} settings synced to Unity.` : `Settings sync failed: ${r.message}`, r.success ? 'info' : 'error')
+    } catch (err) {
+      toastError(err, 'Could not save the kit settings.')
+    }
+  }
+
   // ─── Read-back: Unity's GameGold files vs what GameGold last wrote there ───
   async function handleCheckUnity() {
     setCheckingUnity(true)
@@ -179,7 +207,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
   }
 
   async function handleOverwrite(item: UnityDiffItem) {
-    const target = overwriteTarget(item.path, assets ?? [], item.record)
+    const target = overwriteTarget(item.path, assets ?? [], item.record, kit)
     if (!target || !project) return
     setBusyPath(item.path)
     try {
@@ -195,7 +223,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
 
   function handleUpdateRuntime() {
     updateRuntime.mutate(undefined, {
-      onSuccess: () => useToastStore.getState().pushToast('DialoguePlayer updated in Unity.', 'info'),
+      onSuccess: () => useToastStore.getState().pushToast(`${runtimeClass} updated in Unity.`, 'info'),
       onError: (err) => toastError(err, err instanceof Error ? err.message : 'Could not update the runtime.'),
     })
   }
@@ -240,9 +268,9 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
 
   const isBusy = executingStep !== null || runAllProgress !== null || changeRunning
 
-  // Gap 40: only offer "Update runtime" once GameGold's DialoguePlayer has been sent to this project.
-  const runtimeRecord = syncs?.find(r => r.path === RUNTIME_PATH)
-  const planSentRuntime = !!plan?.steps.some(s => s.tool === 'asset.createScript' && s.args.className === 'DialoguePlayer' && s.completed)
+  // Gap 40: only offer "Update runtime" once GameGold's kit runtime has been sent to this project.
+  const runtimeRecord = syncs?.find(r => r.path === runtimePath(runtimeClass))
+  const planSentRuntime = !!plan?.steps.some(s => s.tool === 'asset.createScript' && s.args.className === runtimeClass && s.completed)
   const showRuntime = mcpStatus === 'connected' && (!!runtimeRecord || planSentRuntime)
 
   // A click while something runs gets a visible note instead of being silently dropped.
@@ -265,15 +293,15 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
     setExecutingStep(stepNumber)
     try {
       // The LLM can't know file contents — sprite data / script code come from stored assets.
-      const resolved = await prepareToolArgs(tool, args, assets ?? [])
+      const resolved = await prepareToolArgs(tool, args, assets ?? [], project?.kitSettings, kit?.dataKind)
       if ('error' in resolved) {
         setStepResults(prev => ({ ...prev, [stepNumber]: { success: false, message: resolved.error } }))
         return false
       }
-      const result = await executeTool(tool, resolved.args)
+      const result = await executeStepTool(tool, resolved.args, executeTool)
       setStepResults(prev => ({ ...prev, [stepNumber]: result }))
       if (!result.success) return false
-      await recordWrite(id, tool, resolved.args, stepSource(tool, args, assets ?? [])).catch(() => {})
+      await recordWrite(id, tool, resolved.args, stepSource(tool, args, assets ?? [], kit?.dataKind)).catch(() => {})
       await markStep.mutateAsync({ stepNumber, completed: true })
       return true
     } catch (err) {
@@ -438,6 +466,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
                     ✓ Connected{unityInfo.projectPath ? ` — ${unityInfo.projectPath.split(/[\\/]/).pop()}` : ''}
                     {unityInfo.version ? <span style={{ color: '#456079' }}> ({unityInfo.version})</span> : null}
                   </div>
+                ) : missingProject ? (
+                  <div style={{ fontSize: '12px', color: '#f59e0b' }}>Open {missingProject} in Unity — another project&apos;s editor is running</div>
                 ) : mcpStatus === 'disconnected' ? (
                   <div style={{ fontSize: '12px', color: '#ef4444' }}>✗ Not connected — is Unity open with the GameGold package?</div>
                 ) : mcpStatus === 'checking' ? (
@@ -460,6 +490,24 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
           </div>
 
           {project && (
+            <KitPanel
+              key={kit?.id ?? 'none'}
+              projectKit={projectKit}
+              kits={kits ?? []}
+              settings={kit ? project.kitSettings?.[kit.id] : undefined}
+              editors={editors}
+              connectedTo={unityInfo}
+              unityProjectName={project.unityProjectName}
+              connected={mcpStatus === 'connected'}
+              busy={updateKitFields.isPending}
+              onSetKit={(k: KitId | null) => handleKitFields({ kit: k }, 'Could not change the kit.')}
+              onConnectEditor={(name) => handleKitFields({ unityProjectName: name }, 'Could not save the Unity project.')}
+              onSaveSettings={(s) => kit && handleKitFields({ kitSettings: { [kit.id]: s } }, 'Could not save the kit settings.')}
+              onSyncSettings={(s) => void handleSyncKitSettings(s)}
+            />
+          )}
+
+          {project && (!kit || kit.id === 'narrative') && (
             <PlayerSettingsPanel
               key={project._id}
               settings={project.playerSettings}
@@ -474,7 +522,8 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
 
           {showRuntime && (
             <RuntimeUpdate
-              outdated={runtimeOutdated(syncs ?? [], runtimeTemplate?.version, planSentRuntime)}
+              runtimeClass={runtimeClass}
+              outdated={runtimeOutdated(syncs ?? [], runtimeTemplate?.version, planSentRuntime, runtimePath(runtimeClass))}
               servedVersion={runtimeTemplate?.version ?? null}
               syncedVersion={runtimeRecord?.version ?? null}
               busy={updateRuntime.isPending}
@@ -501,7 +550,7 @@ export default function UnityPage({ params }: { params: Promise<{ id: string }> 
               items={diffItems}
               checking={checkingUnity}
               busyPath={busyPath}
-              canOverwrite={(item) => overwriteTarget(item.path, assets ?? [], item.record) !== null}
+              canOverwrite={(item) => overwriteTarget(item.path, assets ?? [], item.record, kit) !== null}
               onCheck={() => void handleCheckUnity()}
               onPull={(item) => void handlePull(item)}
               onOverwrite={(item) => void handleOverwrite(item)}

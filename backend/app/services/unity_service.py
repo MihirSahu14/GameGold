@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from app.kits.registry import RESOURCES, Kit
 from app.models.project import PlayerSettings
 from app.models.unity import UnityBuildStep
 from app.prompts.unity_prompt import UNITY_PLAN_SYSTEM_PROMPT, build_unity_plan_prompt
@@ -160,6 +161,115 @@ def narrative_plan(assets: list[dict]) -> tuple[str, list[UnityBuildStep]]:
         for i, (d, t, args, c) in enumerate(raw, start=1)
     ]
     return f"Play '{dialogue['name']}' in Unity with GameGold's DialoguePlayer", steps
+
+
+KIT_SPRITES = f"{RESOURCES}/Sprites"
+# IL2CPP/WebGL builds can strip Input System types the kit runtimes only reach via Keyboard.current/Mouse.current.
+LINK_XML_PATH = "Assets/GameGold/link.xml"
+# PhysicsModule: kits add colliders at runtime (CreatePrimitive), which engine-code stripping can't see.
+LINK_XML = ('<linker>\n  <assembly fullname="Unity.InputSystem" preserve="all" ignoreIfMissing="1"/>\n'
+            '  <assembly fullname="UnityEngine.PhysicsModule" preserve="all"/>\n</linker>\n')
+
+# A Standard-shader material in Resources: nothing in a kit scene uses the shader, so web builds strip it and
+# runtime-made 3D meshes render pink (Core Breach, gap 97). Loading this material keeps the shader in the build.
+LIT_MATERIAL_PATH = "Assets/Resources/GameGold/ArenaLit.mat"
+LIT_MATERIAL = """%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: ArenaLit
+  m_Shader: {fileID: 46, guid: 0000000000000000f000000000000000, type: 0}
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _Glossiness: 0.15
+    m_Colors:
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+  m_BuildTextureStacks: []
+"""
+
+
+def kit_data_asset(kit: Kit, assets: list[dict]) -> dict | None:
+    """The data file the kit's runtime plays: designer-written first, then the newest."""
+    if kit.id == "narrative":
+        return pick_dialogue(assets)
+    data = [a for a in assets if a.get("type") == "data" and a.get("kind") == kit.data_kind]
+    if not data:
+        return None
+    return max(data, key=lambda a: (a.get("placeholder") is False, a.get("created_at") or datetime.min))
+
+
+KIT_PACKAGES = ("com.unity.ugui",)
+
+
+def runtime_plan(kit: Kit, assets: list[dict]) -> tuple[str, list[UnityBuildStep]]:
+    """Fixed, no-LLM plan on a GameGold kit runtime. Caller guarantees kit_data_asset() exists.
+    The web injects file contents: {data: name} → the data asset's JSON, {kitSettings: id} →
+    project.kitSettings[id] (or {} so the runtime keeps its defaults)."""
+    if kit.id == "narrative":
+        return narrative_plan(assets)  # predates kits; keeps its Backgrounds/Portraits folders
+    data = kit_data_asset(kit, assets)
+    assert data is not None
+    obj = kit.object_name
+    raw: list[tuple[str, str, dict, str]] = [
+        ("Create and save a new scene named Game", "scene.new", {"name": "Game", "saveCurrent": True}, "scene"),
+        # Unity's default template has no uGUI package, and every kit runtime builds its UI with it (gap 75).
+        ("Make sure the Unity UI package is installed", "packages.ensure", {"names": list(KIT_PACKAGES)}, "asset"),
+        (f"Add GameGold's {kit.runtime_class} script (builds the game from JSON at runtime)", "asset.createScript",
+         {"className": kit.runtime_class, "path": kit.runtime_path}, "asset"),
+        (f"Save the '{data['name']}' {kit.data_kind} JSON to Resources so {kit.runtime_class} can load it",
+         "asset.createText", {"data": data["name"], "path": kit.data_path}, "asset"),
+        ("Add a link.xml so player builds keep the Input System the runtime reads", "asset.createText",
+         {"path": LINK_XML_PATH, "content": LINK_XML}, "asset"),
+    ]
+    if kit.id == "fps":  # ponytail: the only 3D kit; make it a Kit field when a second one needs it
+        raw.append(("Add a lit material so web builds keep the Standard shader", "asset.createText",
+                    {"path": LIT_MATERIAL_PATH, "content": LIT_MATERIAL}, "asset"))
+    if kit.settings_path:
+        raw.append((f"Save the {kit.title} settings JSON to Resources", "asset.createText",
+                    {"kitSettings": kit.id, "path": kit.settings_path}, "asset"))
+    for a in assets:
+        if a.get("type") == "sprite":
+            raw.append((
+                f"Import the sprite '{a.get('name')}' into Resources/GameGold/Sprites",
+                "asset.importSprite",
+                {"name": a.get("name"), "path": f"{KIT_SPRITES}/{_sprite_file(a)}.png"},
+                "asset",
+            ))
+    raw += [
+        ("Wait for Unity to finish compiling the scripts", "editor.awaitCompile", {}, "asset"),
+        (f"Create an empty GameObject named {obj}", "gameobject.create", {"name": obj}, "gameobject"),
+        (f"Add the {kit.runtime_class} component to {obj}", "component.add",
+         {"gameObjectName": obj, "componentType": kit.runtime_class}, "component"),
+        ("Save the scene (Build for web needs it saved)", "scene.save", {}, "scene"),
+        ("Make it the scene web builds start in (Build Settings)", "build.scenes",
+         {"scenes": ["Assets/Scenes/Game.unity"]}, "scene"),
+        ("Enter Play mode and play it", "playmode.enter", {}, "playmode"),
+    ]
+    steps = [
+        UnityBuildStep(step_number=i, description=d, tool=t, args=args, category=c)
+        for i, (d, t, args, c) in enumerate(raw, start=1)
+    ]
+    return f"Play '{data['name']}' in Unity with GameGold's {kit.runtime_class}", steps
+
+
+def _sprite_file(asset: dict) -> str:
+    return re.sub(r"[^\w\- ]", "_", str(asset.get("name", "")))
 
 
 def _summarize_assets(assets: list[dict]) -> str:

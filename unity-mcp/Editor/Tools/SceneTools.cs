@@ -11,6 +11,18 @@ namespace GameGold.MCP
 {
     internal static class SceneTools
     {
+        /// <summary>args: none — saves the active scene (to Assets/Scenes/<name>.unity if it has never been saved).
+        /// Plans end with it so Build for web (which refuses unsaved scenes) works straight away.</summary>
+        internal static string Save(string _)
+        {
+            var scene = SceneManager.GetActiveScene();
+            var path = string.IsNullOrEmpty(scene.path) ? $"Assets/Scenes/{(string.IsNullOrEmpty(scene.name) ? "Game" : scene.name)}.unity" : scene.path;
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            EditorSceneManager.MarkSceneDirty(scene);
+            if (!EditorSceneManager.SaveScene(scene, path)) return GameGoldMCP.Error($"Couldn't save the scene to {path}");
+            return GameGoldMCP.Ok($"Saved {path}", $"{{\"path\":\"{GameGoldMCP.EscapeJson(path)}\"}}");
+        }
+
         /// <summary>args: { name?, saveCurrent?, force? } — creates a new scene; saves it under Assets/Scenes if named.
         /// saveCurrent: save dirty scenes that already have a path first (never discards work).</summary>
         internal static string New(string body)

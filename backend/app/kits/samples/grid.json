@@ -1,0 +1,142 @@
+{
+  "title": "Dockside",
+  "rules": "sokoban",
+  "levels": [
+    {
+      "id": "l1",
+      "name": "First Push",
+      "hint": "Walk into a crate to push it onto the bay.",
+      "par": 3,
+      "rows": [
+        "#######",
+        "#@ $ .#",
+        "#######"
+      ]
+    },
+    {
+      "id": "l2",
+      "name": "Around the Corner",
+      "hint": "Crates only go where you push them. Get on the other side.",
+      "par": 5,
+      "rows": [
+        "######",
+        "#.   #",
+        "#  $ #",
+        "#  @ #",
+        "######"
+      ]
+    },
+    {
+      "id": "l3",
+      "name": "Two Crates",
+      "hint": "Every bay needs a crate. Take them one at a time.",
+      "par": 10,
+      "rows": [
+        "#######",
+        "#.    #",
+        "# $@$ #",
+        "#    .#",
+        "#######"
+      ]
+    },
+    {
+      "id": "l4",
+      "name": "Mind the Pillar",
+      "hint": "A crate in a corner never comes out. Z undoes.",
+      "par": 11,
+      "rows": [
+        "#######",
+        "#     #",
+        "# $#  #",
+        "#  @ .#",
+        "#######"
+      ]
+    },
+    {
+      "id": "l5",
+      "name": "Short Cut",
+      "hint": "Come at the bottom crate from the side.",
+      "par": 11,
+      "rows": [
+        "  ####",
+        "###  #",
+        "#  $ #",
+        "# #. ###",
+        "# $  . #",
+        "#  @   #",
+        "########"
+      ]
+    },
+    {
+      "id": "l6",
+      "name": "Three in a Row",
+      "hint": "Push the wrong crate first and the others jam.",
+      "par": 13,
+      "rows": [
+        "#######",
+        "#.  ..#",
+        "# $$$ #",
+        "#  @  #",
+        "#######"
+      ]
+    },
+    {
+      "id": "l7",
+      "name": "Behind the Stacks",
+      "hint": "Walk round the stacks to push from above.",
+      "par": 24,
+      "rows": [
+        "########",
+        "#      #",
+        "# #$$# #",
+        "# .  . #",
+        "#  @   #",
+        "########"
+      ]
+    },
+    {
+      "id": "l8",
+      "name": "Parking Space",
+      "hint": "Park one crate out of the way, then come back for it.",
+      "par": 24,
+      "rows": [
+        " #####",
+        " #   ###",
+        "## $   #",
+        "#. .$# #",
+        "#  @   #",
+        "########"
+      ]
+    },
+    {
+      "id": "l9",
+      "name": "Crossroads",
+      "hint": "Three crates, three bays. Order matters.",
+      "par": 27,
+      "rows": [
+        "########",
+        "#  .   #",
+        "# $##$ #",
+        "# . @. #",
+        "## $## #",
+        " #     #",
+        " #######"
+      ]
+    },
+    {
+      "id": "l10",
+      "name": "Night Shift",
+      "hint": "Clear a lane before you fill it.",
+      "par": 35,
+      "rows": [
+        "  #####",
+        "###   #",
+        "#  $# ##",
+        "# #  . #",
+        "#  $$# #",
+        "##.@ . #",
+        " #######"
+      ]
+    }
+  ]
+}

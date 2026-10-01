@@ -1,13 +1,15 @@
 import re
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
-from typing import Annotated, Literal, Optional, get_args
+from typing import Annotated, Any, Literal, Optional, get_args
 from datetime import datetime
+
+from app.kits.registry import KitId, too_big
 
 GameGenre = Literal[
     "platformer", "rpg", "puzzle", "shooter", "strategy",
     "horror", "simulation", "adventure", "fighting",
-    "narrative", "visual-novel", "other"
+    "narrative", "visual-novel", "card-battler", "fps", "other"
 ]
 GamePlatform = Literal["pc", "mobile", "web", "console", "cross-platform"]
 GameTone = Literal["dark", "lighthearted", "epic", "comedic", "horror", "atmospheric", "realistic"]
@@ -137,8 +139,19 @@ class ProjectUpdate(BaseModel):
     risk_kind: Optional[RiskKind] = None
     player_settings: Optional[PlayerSettings] = None
     home: Optional[ProjectHomeUpdate] = None
+    # An explicit null clears these two (the route keeps None for fields sent in the body).
+    kit: Optional[KitId] = None
+    unity_project_name: Optional[str] = Field(default=None, max_length=200)
+    kit_settings: Optional[dict[KitId, dict[str, Any]]] = Field(default=None, max_length=10)
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    @field_validator("kit_settings")
+    @classmethod
+    def settings_size(cls, v: Optional[dict[str, dict[str, Any]]]) -> Optional[dict[str, dict[str, Any]]]:
+        if v is not None and too_big(v):
+            raise ValueError("kit settings are over 1 MB")
+        return v
 
 
 class ProjectOut(BaseModel):
@@ -157,6 +170,9 @@ class ProjectOut(BaseModel):
     risk_kind: Optional[RiskKind] = None
     player_settings: PlayerSettings = Field(default_factory=PlayerSettings)
     home: ProjectHome = Field(default_factory=ProjectHome)
+    kit: Optional[KitId] = None  # override; None = pick from genre (kits.registry.kit_for_project)
+    unity_project_name: Optional[str] = None  # which running Unity editor's bridge this project uses
+    kit_settings: dict[str, dict[str, Any]] = {}  # kit id -> JSON synced to that kit's settings_path
     stage_entered_at: Optional[datetime] = None
     alpha_at: Optional[datetime] = None
     provenance_generated_at: Optional[datetime] = None
@@ -210,6 +226,9 @@ class ProjectInDB(BaseModel):
     risk_kind: Optional[RiskKind] = None
     player_settings: PlayerSettings = Field(default_factory=PlayerSettings)
     home: ProjectHome = Field(default_factory=ProjectHome)
+    kit: Optional[KitId] = None
+    unity_project_name: Optional[str] = None
+    kit_settings: dict[str, dict[str, Any]] = Field(default_factory=dict)
     stage_entered_at: datetime = Field(default_factory=datetime.utcnow)
     alpha_at: Optional[datetime] = None
     provenance_generated_at: Optional[datetime] = None

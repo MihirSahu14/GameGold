@@ -11,13 +11,18 @@ using UnityEngine;
 namespace GameGold.MCP
 {
     /// <summary>
-    /// Entry point. Opens an HTTP listener on localhost:7432 when the Editor starts,
-    /// dispatches tool calls to the right handler, and shuts down cleanly on Editor quit.
+    /// Entry point. Opens an HTTP listener on localhost:7432 when the Editor starts (7433–7439 when another
+    /// Unity editor already holds it), dispatches tool calls to the right handler, and shuts down cleanly on Editor quit.
     /// </summary>
     [InitializeOnLoad]
     public static class GameGoldMCP
     {
-        private const int Port = 7432;
+        // The web app scans this range and matches /status projectName to pick the right editor.
+        private const int FirstPort = 7432;
+        private const int LastPort = 7439;
+
+        /// <summary>The port this editor's bridge is listening on (FirstPort until started).</summary>
+        internal static int Port { get; private set; } = FirstPort;
 
         // Only these origins may drive the Editor — anything else in a browser gets 403.
         // Without this, any website the developer visits could call localhost:7432.
@@ -45,6 +50,7 @@ namespace GameGold.MCP
         {
             ["scene.list"]           = SceneTools.List,
             ["scene.new"]            = SceneTools.New,
+            ["scene.save"]           = SceneTools.Save,
             ["scene.snapshot"]       = SceneTools.Snapshot,
             ["gameobject.create"]    = GameObjectTools.Create,
             ["gameobject.delete"]    = GameObjectTools.Delete,
@@ -59,6 +65,10 @@ namespace GameGold.MCP
             ["playmode.exit"]        = PlayModeTools.Exit,
             ["build.webgl"]          = BuildTools.WebGL,
             ["build.status"]         = BuildTools.Status,
+            ["build.scenes"]         = BuildTools.Scenes,
+            ["editor.compileErrors"] = EditorTools.CompileErrors,
+            ["packages.ensure"]     = EditorTools.EnsurePackages,
+            ["editor.awaitCompile"] = EditorTools.AwaitCompile,
             ["vcs.status"]           = VcsTools.Status,
             ["vcs.connect"]          = VcsTools.Connect,
             ["vcs.save"]             = VcsTools.Save,
@@ -76,11 +86,16 @@ namespace GameGold.MCP
             ["browser.screenshot"]   = BrowserTools.Screenshot,
             ["browser.click"]        = BrowserTools.Click,
             ["browser.key"]          = BrowserTools.Key,
+            ["browser.act"]          = BrowserTools.Act,
             ["browser.close"]        = BrowserTools.Close,
         };
 
         static GameGoldMCP()
         {
+            // Unity's background asset-import workers load Editor scripts too; a bridge there grabbed the next
+            // port and never answered (its main thread doesn't tick), so tools sent to it timed out (gap 79).
+            if (AssetDatabase.IsAssetImportWorkerProcess()) return;
+
             _unityVersion = Application.unityVersion;
             _projectPath  = Application.dataPath.Replace("/Assets", "");
             _projectName  = System.IO.Path.GetFileName(_projectPath);
@@ -128,29 +143,41 @@ namespace GameGold.MCP
         {
             if (_running) return;
 
-            try
+            // First free port in 7432–7439, so a second Unity editor gets its own bridge.
+            Exception lastError = null;
+            for (int port = FirstPort; port <= LastPort; port++)
             {
-                _listener = new HttpListener();
-                _listener.Prefixes.Add($"http://localhost:{Port}/");
-                _listener.Start();
-                _running = true;
+                try
+                {
+                    _listener = new HttpListener();
+                    _listener.Prefixes.Add($"http://localhost:{port}/");
+                    _listener.Start();
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                    try { _listener?.Close(); } catch { /* already broken */ }
+                    _listener = null;
+                    continue;
+                }
 
+                Port = port;
+                _running = true;
                 _thread = new Thread(Listen) { IsBackground = true };
                 _thread.Start();
 
                 _startErrorLogged = false;
-                Debug.Log($"[GameGold MCP] Server started on http://localhost:{Port}");
+                Debug.Log(port == FirstPort
+                    ? $"[GameGold MCP] Server started on http://localhost:{port}"
+                    : $"[GameGold MCP] Port {FirstPort} is taken (another Unity editor?) — server started on http://localhost:{port}");
+                return;
             }
-            catch (Exception ex)
-            {
-                _running = false;
-                try { _listener?.Close(); } catch { /* already broken */ }
-                _listener = null;
-                if (_startErrorLogged) return;
-                _startErrorLogged = true;
-                Debug.LogError($"[GameGold MCP] Could not start server on localhost:{Port} ({ex.Message}). " +
-                               "Another Unity instance or process may be using the port. Retry via Window > GameGold MCP > Start Server.");
-            }
+
+            _running = false;
+            if (_startErrorLogged) return;
+            _startErrorLogged = true;
+            Debug.LogError($"[GameGold MCP] Could not start server on localhost:{FirstPort}–{LastPort} ({lastError?.Message}). " +
+                           "Other Unity instances or processes may be using every port. Retry via Window > GameGold MCP > Start Server.");
         }
 
         [MenuItem("Window/GameGold MCP/Stop Server")]

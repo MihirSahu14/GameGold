@@ -32,6 +32,8 @@ export type GameGenre =
   | 'fighting'
   | 'narrative'
   | 'visual-novel'
+  | 'card-battler'
+  | 'fps'
   | 'other'
 
 export type GamePlatform = 'pc' | 'mobile' | 'web' | 'console' | 'cross-platform'
@@ -97,6 +99,12 @@ export interface Project {
   riskKind: RiskKind | null
   playerSettings: PlayerSettings
   home: ProjectHome
+  /** Genre-kit override; null = picked from the genre (GET /projects/:id/unity/kit resolves it). */
+  kit?: KitId | null
+  /** Which running Unity editor's bridge (its /status projectName) this project talks to. */
+  unityProjectName?: string | null
+  /** kit id → settings JSON synced to that kit's settingsPath. */
+  kitSettings?: Partial<Record<KitId, Record<string, unknown>>>
   stageEnteredAt: string | null
   alphaAt: string | null
   provenanceGeneratedAt: string | null
@@ -227,7 +235,29 @@ export interface BalanceAnalysis {
 
 // ─── Assets ──────────────────────────────────────────────────────────────────
 
-export type AssetType = 'sprite' | 'script' | 'dialogue'
+export type AssetType = 'sprite' | 'script' | 'dialogue' | 'data'
+
+// ─── Genre kits (backend/app/kits/registry.py) ───────────────────────────────
+
+export type KitId = 'narrative' | 'grid' | 'platformer' | 'arena_shooter' | 'card_battler' | 'fps'
+/** Kinds stored as generic "data" assets (narrative keeps the dialogue asset type). */
+export type DataKind = 'levels' | 'platformer_levels' | 'arena' | 'cardgame' | 'fps_arena'
+
+export type Kit = {
+  id: KitId
+  title: string
+  runtimeClass: string
+  runtimePath: string
+  objectName: string
+  dataKind: DataKind | 'dialogue'
+  dataPath: string
+  settingsPath: string | null
+  genres: GameGenre[]
+  available: boolean
+  missing: string[]
+}
+
+export type ProjectKit = { kit: Kit | null; overridden: boolean }
 export type ArtStyle = 'pixel' | 'illustrated'
 export type AssetKind = 'sprite' | 'background' | 'portrait'
 
@@ -318,13 +348,15 @@ export interface Asset {
   // Sprite fields
   url?: string
   style?: ArtStyle
-  kind?: AssetKind
+  kind?: AssetKind | DataKind // data assets: the data kind
   imagePrompt?: string
   // Script fields
   code?: string
   scriptType?: ScriptType
   // Dialogue fields
   tree?: DialogueTree
+  // Data fields (genre-kit JSON)
+  data?: Record<string, unknown>
 }
 
 // ─── Playtesting ─────────────────────────────────────────────────────────────
@@ -386,9 +418,20 @@ export type PlaytestSession = {
 // ─── Agent playtests of the live build (agents play the web build through the bridge) ──
 
 export type AgentPersona = 'first_timer' | 'impatient' | 'poker' | 'custom'
-export type AgentAction = 'click' | 'key' | 'wait' | 'stop'
+export type AgentAction = 'click' | 'key' | 'act' | 'wait' | 'stop'
+/** One input of an "act" step — sent as-is to the bridge's browser.act (x/y are viewport coords). */
+export type AgentInputAction = {
+  type: 'key' | 'keys' | 'mouseMove' | 'mouseDown' | 'mouseUp' | 'click' | 'wait'
+  key?: string | null
+  keys?: string[] | null
+  holdMs?: number | null
+  x?: number | null
+  y?: number | null
+  ms?: number | null
+}
 
-export type AgentRunCreate = { url: string; personas: AgentPersona[]; custom?: string }
+/** stepMode: the game is frozen between agent turns (browser.open adds gg_step=1; real-time kit runtimes honour it). */
+export type AgentRunCreate = { url: string; personas: AgentPersona[]; custom?: string; stepMode?: boolean }
 /** The server enforces trial limits — always use these maxSteps/agents, not what was asked for. */
 export type AgentRun = { runId: string; maxSteps: number; agents: AgentPersona[]; usingOwnKey: boolean }
 
@@ -403,7 +446,15 @@ export type AgentStepCreate = {
   viewportHeight: number
 }
 /** x/y are viewport coordinates (the backend scales the model's screenshot coords). */
-export type AgentStep = { action: AgentAction; x?: number; y?: number; key?: string; note: string; stopReason?: string }
+export type AgentStep = {
+  action: AgentAction
+  x?: number
+  y?: number
+  key?: string
+  actions?: AgentInputAction[] | null
+  note: string
+  stopReason?: string
+}
 /** Omit stopReason when the agent stopped itself or hit the step cap — the server works it out from the frames. */
 export type AgentFinishCreate = { stopReason?: string }
 

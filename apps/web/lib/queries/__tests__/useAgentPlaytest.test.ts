@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { runAgentPlaytest, STOPPED_BY_YOU, VIEWPORT, WAIT_MS, type AgentPlaytestApi } from '../useAgentPlaytest'
+import { localBuildUrl, runAgentPlaytest, SETTLE_MS, STOPPED_BY_YOU, VIEWPORT, WAIT_MS, type AgentPlaytestApi } from '../useAgentPlaytest'
 import type { AgentPersona, AgentPlayReport, AgentStep } from '@gamegold/types'
 
 const URL = 'http://localhost:7432/play/index.html'
@@ -40,10 +40,11 @@ describe('runAgentPlaytest', () => {
           : { action: 'stop', note: 'Bored', stopReason: 'nothing happens' }))
     const res = await runAgentPlaytest({ url: URL, personas: ['first_timer'] }, { api, exec, wait })
 
-    expect(exec).toHaveBeenCalledWith('browser.open', { url: URL, ...VIEWPORT })
+    expect(exec).toHaveBeenCalledWith('browser.open', { url: URL, ...VIEWPORT, stepMode: false })
     expect(exec).toHaveBeenCalledWith('browser.click', { sessionId: 's1', x: 640, y: 360 })
     expect(exec).toHaveBeenCalledWith('browser.key', { sessionId: 's1', key: 'Space' })
     expect(wait).toHaveBeenCalledWith(WAIT_MS)
+    expect(wait.mock.calls.filter((c) => c[0] === SETTLE_MS)).toHaveLength(2) // settle after the click and the key
     expect(api.step).toHaveBeenCalledTimes(4)
     expect(api.step).toHaveBeenCalledWith('r1', {
       agent: 'first_timer', n: 1, jpegBase64: '/9j/AA', pageUrl: URL,
@@ -54,14 +55,74 @@ describe('runAgentPlaytest', () => {
     expect(res.reports).toHaveLength(1)
   })
 
-  it('stops at the step cap from the run response (trial limits)', async () => {
+  it('stops at the turn cap from the run response (trial limits) — only acting steps count', async () => {
     const exec = fakeExec()
-    const api = fakeApi(() => ({ action: 'wait', note: 'hm' }), { maxSteps: 15, agents: ['first_timer'] })
+    // a wait between every key press: 15 key turns take 29 steps
+    const api = fakeApi((n) => (n % 2 ? { action: 'key', key: 'Space', note: 'go' } : { action: 'wait', note: 'typing' }),
+      { maxSteps: 15, agents: ['first_timer'] })
     // asked for three agents, the server allowed one
     await runAgentPlaytest({ url: URL, personas: ['first_timer', 'impatient', 'poker'] }, { api, exec, wait })
-    expect(api.step).toHaveBeenCalledTimes(15)
+    expect(api.step).toHaveBeenCalledTimes(29)
+    expect(calls(exec, 'browser.key')).toHaveLength(15)
     expect(calls(exec, 'browser.open')).toHaveLength(1)
     expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer', undefined) // step cap: the server says so
+  })
+
+  it('caps an agent that only waits at 2× the turn cap', async () => {
+    const exec = fakeExec()
+    const api = fakeApi(() => ({ action: 'wait', note: 'hm' }), { maxSteps: 15, agents: ['first_timer'] })
+    await runAgentPlaytest({ url: URL, personas: ['first_timer'] }, { api, exec, wait })
+    expect(api.step).toHaveBeenCalledTimes(30)
+  })
+
+  it('builds the local build URL from the active bridge port', () => {
+    expect(localBuildUrl()).toBe('http://localhost:7432/play/index.html')
+    expect(localBuildUrl(7435)).toBe('http://localhost:7435/play/index.html')
+  })
+
+  it('never opens a hosted (iframe) build in step mode', async () => {
+    const exec = fakeExec()
+    const api = fakeApi(() => ({ action: 'stop', note: 'done' }))
+    await runAgentPlaytest({ url: 'https://me.itch.io/g', personas: ['first_timer'], stepMode: true }, { api, exec, wait })
+    expect(exec).toHaveBeenCalledWith('browser.open', { url: 'https://me.itch.io/g', ...VIEWPORT, stepMode: false })
+  })
+
+  it('sends act steps to browser.act without nulls, settles, and opens in step mode', async () => {
+    const exec = fakeExec()
+    const api = fakeApi((n) => (n === 1
+      ? {
+        action: 'act', note: 'run and jump',
+        actions: [
+          { type: 'key', key: 'd', keys: null, holdMs: 600, x: null, y: null, ms: null },
+          { type: 'keys', key: null, keys: ['d', 'Space'], holdMs: 400, x: null, y: null, ms: null },
+          { type: 'mouseDown', key: null, keys: null, holdMs: null, x: null, y: null, ms: null },
+        ],
+      }
+      : { action: 'stop', note: 'done' }))
+    const progress: number[] = []
+    await runAgentPlaytest({ url: URL, personas: ['first_timer'], stepMode: true },
+      { api, exec, wait, onProgress: (p) => progress.push(p.turns) })
+    expect(exec).toHaveBeenCalledWith('browser.open', { url: URL, ...VIEWPORT, stepMode: true })
+    expect(exec).toHaveBeenCalledWith('browser.act', {
+      sessionId: 's1',
+      actions: [{ type: 'key', key: 'd', holdMs: 600 }, { type: 'keys', keys: ['d', 'Space'], holdMs: 400 }, { type: 'mouseDown' }],
+    })
+    expect(wait).toHaveBeenCalledWith(SETTLE_MS)
+    expect(progress).toEqual([0, 1, 1, 1]) // the act used a turn; the stop didn't
+  })
+
+  it('stops an agent whose browser.act fails (e.g. an old bridge)', async () => {
+    const exec = vi.fn(async (tool: string) => {
+      if (tool === 'browser.open') return { success: true, message: '', data: { sessionId: 's1' } }
+      if (tool === 'browser.screenshot') return shot
+      if (tool === 'browser.act') return { success: false, message: 'Unknown tool: browser.act' }
+      return { success: true, message: '' }
+    })
+    const api = fakeApi(() => ({ action: 'act', note: 'go', actions: [{ type: 'key', key: 'd', holdMs: 100 }] }))
+    const res = await runAgentPlaytest({ url: URL, personas: ['first_timer'] }, { api, exec, wait })
+    expect(api.step).toHaveBeenCalledTimes(1)
+    expect(res.messages[0]).toMatch(/Unknown tool/)
+    expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer', { stopReason: 'Unknown tool: browser.act' })
   })
 
   it('runs every agent the server allowed, one browser each', async () => {

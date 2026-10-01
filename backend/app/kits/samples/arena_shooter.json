@@ -1,0 +1,99 @@
+{
+  "title": "Last Light",
+  "subtitle": "Hold the courtyard until dawn.",
+  "arena": {
+    "width": 24,
+    "height": 14,
+    "spawnClear": 3,
+    "obstacles": [
+      {"x": -7, "y": 3.5, "w": 1.5, "h": 1.5},
+      {"x": 7, "y": 3.5, "w": 1.5, "h": 1.5},
+      {"x": -7, "y": -3.5, "w": 1.5, "h": 1.5},
+      {"x": 7, "y": -3.5, "w": 1.5, "h": 1.5},
+      {"x": 0, "y": 5, "w": 4, "h": 0.8},
+      {"x": 0, "y": -5, "w": 4, "h": 0.8}
+    ]
+  },
+  "player": {"hp": 6, "speed": 6.5, "size": 0.8, "iframes": 1.0, "weapon": "lantern", "color": "#ffd27a"},
+  "weapons": [
+    {"id": "lantern", "name": "Lantern", "fireRate": 5, "spread": 4, "count": 1, "projectileSpeed": 15, "damage": 1, "pierce": 0, "range": 14, "color": "#ffe9a8"},
+    {"id": "scatter", "name": "Scatter Flame", "fireRate": 3, "spread": 36, "count": 5, "projectileSpeed": 13, "damage": 1, "pierce": 0, "range": 9, "color": "#ff9f43"},
+    {"id": "lance", "name": "Sun Lance", "fireRate": 4, "spread": 0, "count": 1, "projectileSpeed": 22, "damage": 2, "pierce": 3, "range": 20, "color": "#fff6d5"}
+  ],
+  "enemies": [
+    {"id": "moth", "name": "Moth", "behavior": "chaser", "hp": 2, "speed": 2.6, "size": 0.6, "score": 10, "color": "#b9a3ff", "contactDamage": 1, "dropChance": 0.06},
+    {"id": "wisp", "name": "Wisp", "behavior": "shooter", "hp": 3, "speed": 2.2, "size": 0.7, "score": 25, "color": "#6be0ff", "contactDamage": 1, "fireRate": 0.4, "projectileSpeed": 5.5, "projectileDamage": 1, "range": 7, "dropChance": 0.12},
+    {"id": "hound", "name": "Shade Hound", "behavior": "dasher", "hp": 4, "speed": 2.4, "size": 0.8, "score": 30, "color": "#ff6b8b", "contactDamage": 1, "dropChance": 0.1},
+    {"id": "shade", "name": "Shade", "behavior": "splitter", "hp": 5, "speed": 1.8, "size": 1.0, "score": 30, "color": "#8a7bb8", "contactDamage": 1, "splitInto": "moth", "splitCount": 2, "dropChance": 0.12},
+    {"id": "warden", "name": "Ash Warden", "behavior": "tank", "hp": 22, "speed": 1.1, "size": 1.5, "score": 120, "color": "#c9a66b", "contactDamage": 2, "dropChance": 0.5}
+  ],
+  "pickups": [
+    {"id": "ember", "name": "Ember", "effect": "health", "amount": 1, "weight": 5, "color": "#ffb347"},
+    {"id": "scatter_charge", "name": "Scatter Flame", "effect": "weapon", "weapon": "scatter", "duration": 10, "weight": 2, "color": "#ff9f43"},
+    {"id": "lance_charge", "name": "Sun Lance", "effect": "weapon", "weapon": "lance", "duration": 10, "weight": 2, "color": "#fff6d5"},
+    {"id": "kindle", "name": "Kindle", "effect": "rapid", "amount": 1.8, "duration": 8, "weight": 2, "color": "#ffef6b"}
+  ],
+  "waves": [
+    {"name": "Dusk", "groups": [
+      {"enemy": "moth", "count": 6, "delay": 0, "interval": 3, "from": "edges"},
+      {"enemy": "moth", "count": 4, "delay": 20, "interval": 3, "from": "edges"}
+    ]},
+    {"name": "First Moths", "groups": [
+      {"enemy": "moth", "count": 10, "delay": 0, "interval": 2.2, "from": "edges"},
+      {"enemy": "moth", "count": 6, "delay": 22, "interval": 1.5, "from": "corners"}
+    ]},
+    {"name": "Wisps", "groups": [
+      {"enemy": "moth", "count": 14, "delay": 0, "interval": 2.5, "from": "edges"},
+      {"enemy": "wisp", "count": 4, "delay": 8, "interval": 8, "from": "corners"}
+    ]},
+    {"name": "Hounds", "groups": [
+      {"enemy": "hound", "count": 5, "delay": 0, "interval": 7, "from": "edges"},
+      {"enemy": "moth", "count": 16, "delay": 5, "interval": 2, "from": "edges"}
+    ]},
+    {"name": "Shades", "groups": [
+      {"enemy": "shade", "count": 5, "delay": 0, "interval": 8, "from": "edges"},
+      {"enemy": "moth", "count": 8, "delay": 10, "interval": 2.5, "from": "edges"},
+      {"enemy": "wisp", "count": 3, "delay": 18, "interval": 7, "from": "corners"}
+    ]},
+    {"name": "The Warden", "groups": [
+      {"enemy": "warden", "count": 1, "delay": 4, "interval": 0, "from": "edges"},
+      {"enemy": "moth", "count": 18, "delay": 0, "interval": 2.5, "from": "edges"},
+      {"enemy": "hound", "count": 4, "delay": 18, "interval": 8, "from": "corners"}
+    ]},
+    {"name": "Crossfire", "groups": [
+      {"enemy": "wisp", "count": 7, "delay": 0, "interval": 6, "from": "corners"},
+      {"enemy": "shade", "count": 4, "delay": 10, "interval": 7, "from": "edges"},
+      {"enemy": "hound", "count": 6, "delay": 20, "interval": 6, "from": "edges"}
+    ]},
+    {"name": "The Pack", "groups": [
+      {"enemy": "hound", "count": 8, "delay": 0, "interval": 5, "from": "edges"},
+      {"enemy": "moth", "count": 22, "delay": 5, "interval": 2, "from": "edges"},
+      {"enemy": "warden", "count": 1, "delay": 25, "interval": 0, "from": "corners"}
+    ]},
+    {"name": "Long Night", "groups": [
+      {"enemy": "shade", "count": 6, "delay": 0, "interval": 6, "from": "edges"},
+      {"enemy": "moth", "count": 12, "delay": 5, "interval": 3, "from": "edges"},
+      {"enemy": "wisp", "count": 5, "delay": 10, "interval": 7, "from": "corners"},
+      {"enemy": "warden", "count": 2, "delay": 20, "interval": 15, "from": "edges"}
+    ]},
+    {"name": "Last Light", "groups": [
+      {"enemy": "moth", "count": 24, "delay": 0, "interval": 2.2, "from": "edges"},
+      {"enemy": "hound", "count": 5, "delay": 10, "interval": 8, "from": "edges"},
+      {"enemy": "shade", "count": 5, "delay": 15, "interval": 8, "from": "edges"},
+      {"enemy": "wisp", "count": 5, "delay": 20, "interval": 8, "from": "corners"},
+      {"enemy": "warden", "count": 3, "delay": 30, "interval": 12, "from": "edges"}
+    ]}
+  ],
+  "scoring": {"comboStep": 5, "comboMax": 8, "waveBonus": 100},
+  "colors": {
+    "background": "#0d0d14",
+    "floor": "#1b1b24",
+    "obstacle": "#3a3550",
+    "playerBullet": "#ffe9a8",
+    "enemyBullet": "#ff6b6b",
+    "text": "#f2efe6",
+    "accent": "#ffd27a"
+  },
+  "sounds": {"enabled": true, "volume": 0.5},
+  "settings": {"stepMode": false, "stepSeconds": 0.8, "aimMode": "both"}
+}

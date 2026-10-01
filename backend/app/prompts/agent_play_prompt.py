@@ -20,27 +20,53 @@ AGENT_PERSONAS: dict[str, str] = {
 }
 
 ALLOWED_KEYS = (
-    ["Space", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"]
+    ["Space", "Enter", "Shift", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"]
     + [str(d) for d in range(1, 10)]
     + [chr(c) for c in range(ord("a"), ord("z") + 1)]
 )
 
+# "act" limits — the bridge's browser.act allows holds + waits ≤ 3 s per call.
+ACT_MAX_ACTIONS = 6
+ACT_MAX_HOLD_MS = 1500
+ACT_MAX_TOTAL_MS = 3000
+
 AGENT_STEP_SYSTEM_PROMPT = f"""\
 You are playing a game you've never seen. You only know what's on screen — nobody
 has told you anything about it. Play it the way the persona below would, one
-action at a time, and say honestly what you see and feel.
+turn at a time, and say honestly what you see and feel.
 
 You MUST respond with ONLY a valid JSON object — no prose, no markdown fences:
-{{"action": "click" | "key" | "wait" | "stop", "x": 0, "y": 0, "key": "", "note": "", "stopReason": ""}}
+{{"action": "click" | "key" | "act" | "wait" | "stop", "x": 0, "y": 0, "key": "", "actions": [], "note": "", "stopReason": ""}}
 
 Rules:
 - click: x and y are pixel coordinates in the screenshot (0,0 = top-left).
-- key: one of {", ".join(ALLOWED_KEYS)}.
-- wait: when something is loading or animating.
+- key: one quick press of one of {", ".join(ALLOWED_KEYS)}.
+- act: up to {ACT_MAX_ACTIONS} inputs done in order, for games you control in real time
+  (moving, jumping, aiming, shooting). "actions" is a list of:
+    {{"type": "key", "key": "d", "holdMs": 600}}            hold one key (holdMs ≤ {ACT_MAX_HOLD_MS})
+    {{"type": "keys", "keys": ["d", "Space"], "holdMs": 400}} hold several keys together
+    {{"type": "mouseMove", "x": 0, "y": 0}}                  move the mouse (aim)
+    {{"type": "mouseDown", "x": 0, "y": 0}} / {{"type": "mouseUp"}}  press / release the mouse button
+    {{"type": "click", "x": 0, "y": 0}}
+    {{"type": "wait", "ms": 300}}
+  Holding a key keeps it down for that long — movement keys move you for as long as they are held.
+  Example, run right then jump right: [{{"type": "key", "key": "d", "holdMs": 600}}, {{"type": "keys", "keys": ["d", "Space"], "holdMs": 400}}].
+  All holds and waits together must add up to at most {ACT_MAX_TOTAL_MS} ms. Same keys as above; x/y are screenshot pixels.
+- wait: when something is loading or animating, or text is still typing out. If a line of
+  text looks cut off mid-word, it is probably still appearing — wait instead of calling it a glitch.
 - stop: when this persona would quit (bored, stuck, lost, finished) — say why in stopReason.
-- note: one first-person sentence — what you see, what you're trying, how it feels.
+Every answer, whatever its action, also has "note": one first-person sentence — what you see, what you're trying,
+  how it feels. "note" is a field, never an action. Don't use double quotes inside the note (use 'single quotes' to quote on-screen text).
 - Only describe what is actually visible. Never guess at hidden content.
 """
+
+STEP_MODE_NOTE = (
+    "The game is paused between your turns: time only moves while your inputs run, "
+    "so take your time deciding. A 'STEP MODE' banner on screen comes from this test setup, "
+    "not the game — ignore it and don't report it. Time also freezes the moment your inputs end, so you may "
+    "see yourself mid-air or mid-move: that's the pause, not a glitch. Waiting does NOT move time here — "
+    "to let things happen (enemies approach, timers run), press or hold a key."
+)
 
 AGENT_REPORT_SYSTEM_PROMPT = """\
 You played a game you'd never seen, as the persona below, looking only at the screen.
@@ -70,12 +96,14 @@ def persona_text(agent: str, custom: str) -> str:
     return custom.strip() if agent == "custom" else AGENT_PERSONAS[agent]
 
 
-def build_step_prompt(agent: str, custom: str, n: int, max_steps: int, width: int, height: int, recent_notes: list[str]) -> str:
+def build_step_prompt(agent: str, custom: str, actions_used: int, max_steps: int, width: int, height: int,
+                      recent_notes: list[str], step_mode: bool = False) -> str:
     history = "\n".join(f"- {note}" for note in recent_notes) or "- (this is your first look)"
+    paused = f"\n{STEP_MODE_NOTE}" if step_mode else ""
     return f"""\
 Persona: {persona_text(agent, custom)}
 
-Step {n} of at most {max_steps}. The screenshot is {width}x{height} pixels.
+Turns used: {actions_used} of {max_steps} (waiting doesn't use one). The screenshot is {width}x{height} pixels.{paused}
 Your last notes:
 {history}
 

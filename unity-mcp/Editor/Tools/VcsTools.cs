@@ -37,6 +37,23 @@ namespace GameGold.MCP
 
         // ── Pure helpers ────────────────────────────────────────────────────────────────
 
+        // butler on PATH, else its usual install folders (manual unzip to %LOCALAPPDATA%utler, or the itch app).
+        // Unity's runtime doesn't reliably resolve Environment.SpecialFolder.LocalApplicationData, so read the
+        // env vars first and fall back to the profile path (gap 74).
+        internal static string[] ButlerCandidates()
+        {
+            var profile = Environment.GetEnvironmentVariable("USERPROFILE") ?? "";
+            var local = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? Path.Combine(profile, "AppData", "Local");
+            var roaming = Environment.GetEnvironmentVariable("APPDATA") ?? Path.Combine(profile, "AppData", "Roaming");
+            return new[] { Path.Combine(local, "butler", "butler.exe"), Path.Combine(roaming, "itch", "apps", "butler", "butler.exe") };
+        }
+
+        static string ButlerExe()
+        {
+            foreach (var p in ButlerCandidates()) if (File.Exists(p)) return p;
+            return "butler";
+        }
+
         public static bool IsCredentialUrl(string url) =>
             Regex.IsMatch(url ?? "", @"^https?://[^/]*@");
 
@@ -113,7 +130,7 @@ namespace GameGold.MCP
         private static (int code, string output) Probe(string root, string exe, params string[] args)
         {
             try { return Run(exe, root, null, ProbeTimeout, args); }
-            catch (Exception) { return (-1, ""); }
+            catch (Exception ex) { return (-1, ex.Message); }
         }
 
         // Runs a job step and logs it; returns the output, or null on non-zero exit. Never touches State —
@@ -166,7 +183,9 @@ namespace GameGold.MCP
             var budget = Stopwatch.StartNew(); // runs on the main thread — keep the whole call inside ~8 s
             var root = ProjectRoot();
             bool git = Probe(root, "git", "--version").code == 0;
-            bool butler = Probe(root, "butler", "--version").code == 0;
+            var butlerExe = ButlerExe();
+            var butlerProbe = Probe(root, butlerExe, "--version");
+            bool butler = butlerProbe.code == 0;
             bool isRepo = git && IsOwnRepo(root);
             string remote = null, branch = null, last = null;
             int dirty = 0;
@@ -184,8 +203,12 @@ namespace GameGold.MCP
                 var l1 = Probe(root, "git", "log", "-1", "--format=%h %s");
                 if (l1.code == 0 && l1.output.Trim().Length > 0) last = Scrub(l1.output.Trim());
             }
+            var butlerError = butler ? null
+                : Scrub(butlerProbe.output).Trim() + " — looked in PATH, " + string.Join(", ", ButlerCandidates());
             var data = $"{{\"gitInstalled\":{Bool(git)},\"butlerInstalled\":{Bool(butler)},\"isRepo\":{Bool(isRepo)}," +
-                       $"\"remoteUrl\":{Str(remote)},\"branch\":{Str(branch)},\"dirtyFiles\":{dirty},\"lastCommit\":{Str(last)}}}";
+                       $"\"remoteUrl\":{Str(remote)},\"branch\":{Str(branch)},\"dirtyFiles\":{dirty},\"lastCommit\":{Str(last)}," +
+                       // where butler was looked for and why it failed — "not installed" alone hid a real problem once
+                       $"\"butlerPath\":{Str(butlerExe)},\"butlerError\":{Str(butlerError)}}}";
             return GameGoldMCP.Ok(isRepo ? "Repo found" : git ? "Not a git repo yet" : "git isn't installed", data);
         }
 
@@ -291,12 +314,12 @@ namespace GameGold.MCP
             var dir = BuildDir(args, out var error);
             if (dir == null) return GameGoldMCP.Error(error);
             var root = ProjectRoot();
-            if (Probe(root, "butler", "--version").code != 0)
+            if (Probe(root, ButlerExe(), "--version").code != 0)
                 return GameGoldMCP.Error("butler (itch.io's uploader) isn't installed — get it from https://itch.io/docs/butler/, then run `butler login` once");
 
             return StartJob(job =>
             {
-                if (Step(job, root, null, "butler", "push", dir, target + ":html5") == null)
+                if (Step(job, root, null, ButlerExe(), "push", dir, target + ":html5") == null)
                 {
                     job.Log("Run `butler login` once in a terminal, then try again.");
                     return false;

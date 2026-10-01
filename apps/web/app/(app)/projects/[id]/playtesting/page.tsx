@@ -64,7 +64,7 @@ export default function PlaytestingPage({
   const synthesize = useSynthesizeSessions(id)
   const decide = usePrototypeDecision(id)
 
-  const { status: bridge } = useUnityConnection()
+  const { status: bridge, unityInfo } = useUnityConnection(project?.unityProjectName)
   const [activeTab, setActiveTab] = useState<Tab>(tabFrom(tab))
 
   // The page stays mounted across a Sidebar "Bugs" (?tab=bugs) navigation — the
@@ -181,7 +181,7 @@ export default function PlaytestingPage({
         ) : activeTab === 'agents' ? (
           <div className="flex flex-col gap-5 max-w-3xl">
             {project && (
-              <AgentPlaytestCard projectId={id} publishedUrl={project.home.lastPublishedUrl} connected={bridge === 'connected'} />
+              <AgentPlaytestCard projectId={id} publishedUrl={project.home.lastPublishedUrl} connected={bridge === 'connected'} bridgePort={unityInfo?.port} />
             )}
             {agentReports.length > 0 && (
               <div className="flex items-center gap-2 flex-wrap">
