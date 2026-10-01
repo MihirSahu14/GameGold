@@ -109,17 +109,21 @@ def extract_json(text: str) -> dict:
     raise ValueError(f"LLM returned invalid JSON: {text[:200]!r}")
 
 
-def _call_llm(system_prompt: str, user_prompt: str, max_tokens: int, model: str, api_key: str):
+def _call_llm(messages: list[dict], max_tokens: int, model: str, api_key: str):
     return litellm.completion(
         model=model,
         api_key=api_key,
         max_tokens=max_tokens,
         timeout=LLM_TIMEOUT_SECONDS,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        messages=messages,
     )
+
+
+def _messages(system_prompt: str, user_content) -> list[dict]:
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
+    ]
 
 
 def _text(response) -> str:
@@ -167,39 +171,63 @@ def _own_key_error(e: Exception, provider: str, key: str) -> str:
     return f"Your {name} key was rejected: {scrub(str(e), key)[:300]}"
 
 
-async def call_with_key(system_prompt: str, user_prompt: str, max_tokens: int, provider: str, model: str, key: str) -> str:
+async def _call_own_key(messages: list[dict], max_tokens: int, provider: str, model: str, key: str) -> str:
     """Call on a user's own key. Errors never fall back to the trial key and never carry the key."""
     try:
-        response = await asyncio.to_thread(_call_llm, system_prompt, user_prompt, max_tokens, model, key)
+        response = await asyncio.to_thread(_call_llm, messages, max_tokens, model, key)
     except Exception as e:
         # from None: the original exception text may contain the key
         raise ValueError(_own_key_error(e, provider, key)) from None
     return _text(response)
 
 
-async def complete(system_prompt: str, user_prompt: str, max_tokens: int = 1500) -> str:
-    """One LLM call via LiteLLM, run off the event loop thread so it doesn't block
-    other requests for the duration of the (often multi-second) call.
+async def call_with_key(system_prompt: str, user_prompt: str, max_tokens: int, provider: str, model: str, key: str) -> str:
+    return await _call_own_key(_messages(system_prompt, user_prompt), max_tokens, provider, model, key)
+
+
+def active_model() -> str:
+    """The model the current user's calls run on: their own, else the trial model."""
+    llm = (current_llm_user.get() or {}).get("llm")
+    return llm["model"] if llm else settings.llm_model
+
+
+async def _complete_messages(messages: list[dict], max_tokens: int, vision: bool = False) -> str:
+    """Key choice + trial budget + error handling shared by complete() and complete_vision().
     Users with their own key run on it, unmetered; everyone else runs on GameGold's
     key within the daily trial budget (TrialBudgetExhausted -> 402).
     Provider/network/timeout errors surface as ValueError so routers return 502."""
     llm = (current_llm_user.get() or {}).get("llm")
+    if vision and not litellm.supports_vision(model=active_model()):
+        raise ValueError(f"{active_model()} can't see images — pick a vision model in Settings")
     if llm:
         try:
             key = decrypt_key(llm["key_encrypted"])
         except Exception:
             raise ValueError("Your saved API key can't be read on this server. Re-enter it in Settings.") from None
-        return await call_with_key(system_prompt, user_prompt, max_tokens, llm["provider"], llm["model"], key)
+        return await _call_own_key(messages, max_tokens, llm["provider"], llm["model"], key)
 
     # ponytail: check-then-spend — concurrent in-flight calls can overshoot the cap by
     # their cost (cents). Upgrade path if that matters: reserve an estimate, then settle.
     if await trial_spent_usd() >= settings.trial_daily_budget_usd:
         raise TrialBudgetExhausted()
     try:
-        response = await asyncio.to_thread(
-            _call_llm, system_prompt, user_prompt, max_tokens, settings.llm_model, settings.llm_api_key
-        )
+        response = await asyncio.to_thread(_call_llm, messages, max_tokens, settings.llm_model, settings.llm_api_key)
     except Exception as e:
         raise ValueError(f"LLM call failed: {scrub(str(e), settings.llm_api_key)}") from e
     await _record_trial_cost(response)
     return _text(response)
+
+
+async def complete(system_prompt: str, user_prompt: str, max_tokens: int = 1500) -> str:
+    """One LLM call via LiteLLM, run off the event loop thread so it doesn't block
+    other requests for the duration of the (often multi-second) call."""
+    return await _complete_messages(_messages(system_prompt, user_prompt), max_tokens)
+
+
+async def complete_vision(system_prompt: str, text: str, jpeg_b64: str, max_tokens: int = 400) -> str:
+    """complete() with one JPEG screenshot attached. Non-vision model -> ValueError (502)."""
+    content = [
+        {"type": "text", "text": text},
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{jpeg_b64}"}},
+    ]
+    return await _complete_messages(_messages(system_prompt, content), max_tokens, vision=True)
