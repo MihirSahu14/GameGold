@@ -29,6 +29,7 @@ from app.models.playtest import (
     AgentFinishCreate,
     AgentFrameOut,
     AgentEstimateOut,
+    AgentUnfinishedOut,
     AgentPlayReportInDB,
     AgentPersona,
 )
@@ -245,6 +246,26 @@ async def estimate_agent_run(
     db = get_db()
     await verify_project_access(project_id, current_user["_id"], db)
     return AgentEstimateOut(usd=estimate_usd(_user_model(current_user), agents, steps))
+
+
+@router.get("/agent-runs/unfinished", response_model=list[AgentUnfinishedOut], response_model_by_alias=True)
+async def unfinished_agent_runs(project_id: str, current_user: dict = Depends(get_current_user)):
+    """Agents with saved steps but no report — their tab closed mid-run (gap 94). finish() files them later."""
+    db = get_db()
+    await verify_project_access(project_id, current_user["_id"], db)
+    since = datetime.utcnow() - FRAME_TTL  # older frames are gone, so there's nothing to report on
+    runs = await db.agent_runs.find(
+        {"project_id": project_id, "user_id": current_user["_id"], "created_at": {"$gte": since}}
+    ).sort("created_at", -1).to_list(20)
+    out = []
+    for run in runs:
+        for agent in run["agents"]:
+            if agent in run.get("finished", []):
+                continue
+            n = await db.playtest_frames.count_documents({"report_or_run_id": str(run["_id"]), "agent": agent})
+            if n:
+                out.append(AgentUnfinishedOut(run_id=str(run["_id"]), agent=agent, steps=n, created_at=run["created_at"]))
+    return out
 
 
 @router.post(

@@ -264,6 +264,16 @@ class AgentFrameOut(BaseModel):
     jpeg_base64: str
 
 
+class AgentUnfinishedOut(BaseModel):
+    """An agent that took steps but never filed its report (e.g. the page closed mid-run)."""
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    run_id: str
+    agent: AgentPersona
+    steps: int
+    created_at: datetime
+
+
 class AgentEstimateOut(BaseModel):
     usd: Optional[float] = None
 

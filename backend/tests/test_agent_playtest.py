@@ -561,3 +561,16 @@ def test_missing_y_key_is_salvaged():
     from app.services.agent_play_service import parse_step
     step = parse_step('{"action": "click", "x": 50, 70, "note": "the orange enemy"}', 100, 100, 100, 100)
     assert (step.action, step.x, step.y) == ("click", 50, 70)
+
+
+def test_unfinished_lists_agents_with_steps_but_no_report(client, mock_db, project):
+    other = ObjectId()
+    mock_db.agent_runs.find = MagicMock(return_value=make_cursor([
+        _run_doc(agents=["first_timer", "impatient"], finished=["impatient"]),
+        _run_doc(_id=other, agents=["poker"]),
+    ]))
+    mock_db.playtest_frames.count_documents = AsyncMock(side_effect=lambda q: 0 if q["agent"] == "poker" else 6)
+    body = client.get(f"{BASE}/agent-runs/unfinished").json()
+    assert [(r["runId"], r["agent"], r["steps"]) for r in body] == [(str(RUN_ID), "first_timer", 6)]
+    query = mock_db.agent_runs.find.call_args[0][0]
+    assert query["project_id"] == TEST_PROJECT_ID and query["user_id"] == TEST_USER_ID

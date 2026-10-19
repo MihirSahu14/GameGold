@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useLlmConfig } from '@/lib/queries/useLlm'
 import {
   AGENT_LABELS, AGENT_PERSONAS, LOCAL_PLAY_URL, OWN_KEY_STEPS, localBuildUrl, TRIAL_LIMITS, useAgentEstimate, useAgentPlaytest,
+  useUnfinishedAgentRuns,
 } from '@/lib/queries/useAgentPlaytest'
 import type { AgentPersona } from '@gamegold/types'
 import { cn } from '@/lib/utils'
@@ -26,6 +27,7 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected, bridgePo
   const [custom, setCustom] = useState('')
   const [stepMode, setStepMode] = useState(true)
   const { start, stop, running, progress, result } = useAgentPlaytest(projectId)
+  const unfinished = useUnfinishedAgentRuns(projectId, !running)
 
   const personas: AgentPersona[] = trial ? ['first_timer'] : [...picked, ...(custom.trim() ? ['custom' as const] : [])]
   const steps = trial ? TRIAL_LIMITS.steps : OWN_KEY_STEPS
@@ -146,6 +148,27 @@ export function AgentPlaytestCard({ projectId, publishedUrl, connected, bridgePo
             </p>
             {progress.note && <p className="mt-1 italic text-zinc-400">{progress.note}</p>}
           </div>
+        </div>
+      )}
+
+      {!running && !!unfinished.list.data?.length && (
+        <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs">
+          <p className="text-zinc-400">These runs stopped before filing a report (the page closed). Their steps are saved:</p>
+          {unfinished.list.data.map((u) => (
+            <div key={`${u.runId}-${u.agent}`} className="flex items-center gap-3">
+              <span className="text-zinc-300">
+                {AGENT_LABELS[u.agent]} · {u.steps} step{u.steps === 1 ? '' : 's'} · {new Date(u.createdAt).toLocaleString()}
+              </span>
+              <button
+                onClick={() => unfinished.file.mutate(u)}
+                disabled={unfinished.file.isPending}
+                className="text-yellow-300 hover:text-yellow-200 disabled:opacity-40"
+              >
+                File report
+              </button>
+            </div>
+          ))}
+          {unfinished.file.isError && <p className="text-orange-300">Couldn&rsquo;t file that report — try again.</p>}
         </div>
       )}
 

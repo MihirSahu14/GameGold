@@ -458,6 +458,9 @@ export type AgentStep = {
 /** Omit stopReason when the agent stopped itself or hit the step cap — the server works it out from the frames. */
 export type AgentFinishCreate = { stopReason?: string }
 
+/** An agent that took steps but never filed its report (its tab closed mid-run). */
+export type AgentUnfinished = { runId: string; agent: AgentPersona; steps: number; createdAt: string }
+
 export type AgentPlayReport = {
   _id: string
   projectId: string

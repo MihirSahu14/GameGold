@@ -1,4 +1,4 @@
-// GameGold ArenaPlayer v4
+// GameGold ArenaPlayer v5
 // GameGold ArenaPlayer — a complete 3D arena first-person shooter built at runtime from one JSON file.
 // Setup: put this on an empty GameObject in an empty scene, save the arena JSON as
 // Assets/Resources/GameGold/fps_arena.json and press Play. It builds the floor, walls, cover, light,
@@ -554,6 +554,8 @@ public class ArenaPlayer : MonoBehaviour
         for (int k = 0; k < GameplayKeys; k++)
             if (Raw((K)k, true) || Raw((K)k, false)) latched[k] = any = true;
         if (MouseDown() || MouseHeld()) latchedFire = any = true;
+        // Shift is no gameplay input: it just lets time pass (an agent's "wait" in step mode, gap 98).
+        if (Raw(K.Shift, true) || Raw(K.Shift, false)) any = true;
         if (!any) { Time.timeScale = 0f; return; }
         stepLeft = data.settings.stepSeconds;
         Time.timeScale = 1f;
@@ -939,7 +941,7 @@ public class ArenaPlayer : MonoBehaviour
     // ─── Input (new Input System or legacy Input Manager, whichever the project uses) ─────────
 
     // Gameplay keys first: StepGate latches these. Esc/Enter are menu keys.
-    enum K { W, A, S, D, Left, Right, Up, Down, Q, E, Space, F, R, D1, D2, Esc, Enter }
+    enum K { W, A, S, D, Left, Right, Up, Down, Q, E, Space, F, R, D1, D2, Esc, Enter, Shift }
     const int GameplayKeys = (int)K.Esc;
     readonly bool[] latched = new bool[GameplayKeys];
     bool latchedFire;
@@ -948,7 +950,7 @@ public class ArenaPlayer : MonoBehaviour
     static readonly Key[] Keys =
     {
         Key.W, Key.A, Key.S, Key.D, Key.LeftArrow, Key.RightArrow, Key.UpArrow, Key.DownArrow, Key.Q, Key.E,
-        Key.Space, Key.F, Key.R, Key.Digit1, Key.Digit2, Key.Escape, Key.Enter,
+        Key.Space, Key.F, Key.R, Key.Digit1, Key.Digit2, Key.Escape, Key.Enter, Key.LeftShift,
     };
 
     static bool Raw(K k, bool down)
@@ -969,6 +971,7 @@ public class ArenaPlayer : MonoBehaviour
     {
         KeyCode.W, KeyCode.A, KeyCode.S, KeyCode.D, KeyCode.LeftArrow, KeyCode.RightArrow, KeyCode.UpArrow, KeyCode.DownArrow,
         KeyCode.Q, KeyCode.E, KeyCode.Space, KeyCode.F, KeyCode.R, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Escape, KeyCode.Return,
+        KeyCode.LeftShift,
     };
 
     static bool Raw(K k, bool down)
