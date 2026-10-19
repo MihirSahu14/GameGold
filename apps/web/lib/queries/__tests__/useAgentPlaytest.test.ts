@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { localBuildUrl, runAgentPlaytest, SETTLE_MS, STOPPED_BY_YOU, VIEWPORT, WAIT_MS, type AgentPlaytestApi } from '../useAgentPlaytest'
+import {
+  localBuildUrl, runAgentPlaytest, SETTLE_MS, STEP_WAIT_ACTION, STOPPED_BY_YOU, VIEWPORT, WAIT_MS, type AgentPlaytestApi,
+} from '../useAgentPlaytest'
 import type { AgentPersona, AgentPlayReport, AgentStep } from '@gamegold/types'
 
 const URL = 'http://localhost:7432/play/index.html'
@@ -109,6 +111,35 @@ describe('runAgentPlaytest', () => {
     })
     expect(wait).toHaveBeenCalledWith(SETTLE_MS)
     expect(progress).toEqual([0, 1, 1, 1]) // the act used a turn; the stop didn't
+  })
+
+  it('in step mode a wait holds Shift so game time passes; outside step mode it only waits', async () => {
+    const steps = (n: number): AgentStep => (n === 1 ? { action: 'wait', note: 'reloading' } : { action: 'stop', note: 'done' })
+    const stepExec = fakeExec()
+    await runAgentPlaytest({ url: URL, personas: ['first_timer'], stepMode: true }, { api: fakeApi(steps), exec: stepExec, wait })
+    expect(stepExec).toHaveBeenCalledWith('browser.act', { sessionId: 's1', actions: STEP_WAIT_ACTION })
+    const plainExec = fakeExec()
+    await runAgentPlaytest({ url: URL, personas: ['first_timer'] }, { api: fakeApi(steps), exec: plainExec, wait })
+    expect(calls(plainExec, 'browser.act')).toHaveLength(0)
+  })
+
+  it('reopens the game once when the browser session is lost, then keeps playing', async () => {
+    let opens = 0
+    let shots = 0
+    const exec = vi.fn(async (tool: string) => {
+      if (tool === 'browser.open') return { success: true, message: '', data: { sessionId: `s${++opens}` } }
+      if (tool === 'browser.screenshot') {
+        return ++shots === 2 ? { success: false, message: 'No open browser session — call browser.open first' } : shot
+      }
+      return { success: true, message: '' }
+    })
+    // screenshot 2 fails → reopen; the loop's next step number is 3
+    const api = fakeApi((n) => (n < 4 ? { action: 'key', key: 'Space', note: 'go' } : { action: 'stop', note: 'done' }))
+    const res = await runAgentPlaytest({ url: URL, personas: ['first_timer'] }, { api, exec, wait })
+    expect(opens).toBe(2)
+    expect(exec).toHaveBeenCalledWith('browser.key', { sessionId: 's2', key: 'Space' })
+    expect(api.finish).toHaveBeenCalledWith('r1', 'first_timer', undefined)
+    expect(res.messages).toEqual([])
   })
 
   it('stops an agent whose browser.act fails (e.g. an old bridge)', async () => {

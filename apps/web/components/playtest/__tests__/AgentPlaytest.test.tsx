@@ -8,12 +8,15 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
   frames: vi.fn(),
   estimate: vi.fn(),
+  unfinished: [] as { runId: string; agent: string; steps: number; createdAt: string }[],
+  fileReport: vi.fn(),
 }))
 
 vi.mock('@/lib/queries/useLlm', () => ({ useLlmConfig: () => ({ data: { usingOwnKey: mocks.usingOwnKey } }) }))
 vi.mock('@/lib/queries/useAgentPlaytest', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/queries/useAgentPlaytest')>()),
   useAgentPlaytest: () => ({ start: mocks.start, stop: vi.fn(), running: false, progress: null, result: null }),
+  useUnfinishedAgentRuns: () => ({ list: { data: mocks.unfinished }, file: { mutate: mocks.fileReport, isPending: false, isError: false } }),
   useAgentEstimate: (...args: unknown[]) => {
     mocks.estimate(...args)
     return { data: { usd: 0.12 } }
@@ -29,10 +32,20 @@ import { AgentPlayReportView } from '../AgentPlayReportView'
 
 beforeEach(() => {
   mocks.usingOwnKey = false
+  mocks.unfinished = []
   vi.clearAllMocks()
 })
 
 describe('AgentPlaytestCard', () => {
+  it('offers to file the report of a run whose page closed mid-run', () => {
+    const run = { runId: 'r9', agent: 'first_timer', steps: 6, createdAt: '2026-10-18T10:00:00Z' }
+    mocks.unfinished = [run]
+    render(<AgentPlaytestCard projectId="p1" publishedUrl={null} connected />)
+    expect(screen.getByText(/6 steps/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /file report/i }))
+    expect(mocks.fileReport).toHaveBeenCalledWith(run)
+  })
+
   it('is disabled with a hint when the bridge is not connected', () => {
     render(<AgentPlaytestCard projectId="p1" publishedUrl={null} connected={false} />)
     expect(screen.getByRole('button', { name: /start agent playthrough/i })).toBeDisabled()

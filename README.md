@@ -4,7 +4,7 @@
 
 Named after the industry term *"gone gold"* — the moment a game is finished, approved, and ready to ship. GameGold is the platform that gets you there.
 
-**Live:** [gamegold.vercel.app](https://gamegold.vercel.app) · **Stack:** Next.js 16, FastAPI, MongoDB, LiteLLM (Claude in prod, or bring your own key) · **Unity:** in-Editor bridge (C#) · **Tests:** 666 backend + 356 web
+**Live:** [gamegold.vercel.app](https://gamegold.vercel.app) · **Stack:** Next.js 16, FastAPI, MongoDB, LiteLLM (Claude in prod, or bring your own key) · **Unity:** in-Editor bridge (C#) · **Tests:** 667 backend + 359 web
 
 ---
 
@@ -34,7 +34,7 @@ GameGold bridges the gap between **game design** and **software engineering** us
 - 🧩 **Six genre kits** — Dialogue/visual novel, Grid puzzle, 2D platformer, Top-down shooter, Card battler, FPS arena. You design the levels, cards, enemies, waves and text as validated data (start from a sample); GameGold supplies a tested Unity runtime that plays it.
 - 🔌 **Builds it in Unity for you** — a C# bridge inside the Unity Editor runs a step-by-step build plan (scene, packages, scripts, data, Build Settings). Works with an open Editor or a headless one.
 - 🌐 **Build for web** — one click makes a WebGL build you can share.
-- 🤖 **AI agent playtests** — agents with no context play your real build from screenshots alone and report confusions, bugs, softlocks and fun moments. Human playtest sessions and a bug tracker sit alongside.
+- 🤖 **AI agent playtests** — agents with no context play your real build from screenshots alone and report confusions, bugs, softlocks and fun moments. Real-time games pause between turns, a lost browser reopens itself, and a run whose tab closed can still file its report. Human playtest sessions and a bug tracker sit alongside.
 - 💾 **Save version & publish** — commit to your own GitHub/GitLab repo and publish to itch.io (butler) or GitHub Pages, using this machine's sign-in. GameGold never holds your tokens.
 - 🎨 **Assets** — sprite generation, C# scripts and dialogue trees, each with a step-by-step Unity guide; edit game data in GameGold and sync it to Unity.
 - 🔑 **Bring your own key** — Anthropic, OpenAI, Gemini, Groq or OpenRouter (encrypted at rest), or a free trial on GameGold's key.

@@ -1,10 +1,11 @@
 import { useCallback, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, apiErrorMessage } from '../api'
 import { MCP_PORTS, executeTool, type ToolResult } from './useUnity'
 import { useUnmountSignal } from './useProjectHome'
 import type {
-  AgentFinishCreate, AgentInputAction, AgentPersona, AgentPlayReport, AgentRun, AgentRunCreate, AgentStep, AgentStepCreate, PlaytestFrame,
+  AgentFinishCreate, AgentInputAction, AgentPersona, AgentPlayReport, AgentRun, AgentRunCreate, AgentStep, AgentStepCreate,
+  AgentUnfinished, PlaytestFrame,
 } from '@gamegold/types'
 
 type Exec = (tool: string, args: Record<string, unknown>) => Promise<ToolResult>
@@ -20,6 +21,12 @@ export const SETTLE_MS = 600
 // maxSteps counts acting steps only (click/key/act); waits are free up to this many total steps (server mirrors it).
 export const TOTAL_STEPS_FACTOR = 2
 export const STOPPED_BY_YOU = 'Stopped by you'
+// Step mode freezes the game between inputs, so a plain wait never let anything happen (gap 98). Holding Shift
+// (no gameplay meaning in any kit) buys game time instead.
+export const STEP_WAIT_ACTION = [{ type: 'key', key: 'Shift', holdMs: 800 }]
+// The bridge can lose the browser (it crashed or another process killed it): reopen and carry on (gap 96).
+const LOST_SESSION = /No open browser session/i
+const MAX_REOPENS = 2
 // Mirrors the server's limits (it enforces them; these only drive the estimate + trial note).
 export const TRIAL_LIMITS = { agents: 1, steps: 15 }
 export const OWN_KEY_STEPS = 40
@@ -87,12 +94,24 @@ export async function runAgentPlaytest(
     const run = await backend.createRun(body)
     for (const agent of run.agents) {
       if (signal?.aborted) break
-      const open = await exec('browser.open', { url: body.url, ...VIEWPORT, stepMode: !!body.stepMode && LOCAL_PLAY_URL.test(body.url) })
+      const stepMode = !!body.stepMode && LOCAL_PLAY_URL.test(body.url)
+      const openGame = () => exec('browser.open', { url: body.url, ...VIEWPORT, stepMode })
+      const open = await openGame()
       if (!open.success) {
         messages.push(`Couldn't open the game: ${open.message}`)
         break // same browser/URL for every agent — the next one would fail too
       }
-      const sessionId = (open.data as { sessionId: string }).sessionId
+      let sessionId = (open.data as { sessionId: string }).sessionId
+      let reopens = 0
+      /** The session vanished: reopen the game (it restarts from the title) and keep playing. */
+      const reopen = async (message: string) => {
+        if (!LOST_SESSION.test(message) || reopens >= MAX_REOPENS) return false
+        reopens++
+        const again = await openGame()
+        if (!again.success) return false
+        sessionId = (again.data as { sessionId: string }).sessionId
+        return true
+      }
       let taken = 0
       let turns = 0 // acting steps — only these count toward maxSteps
       let stopReason: string | undefined
@@ -105,6 +124,7 @@ export async function runAgentPlaytest(
           }
           onProgress?.({ agent, n, turns, maxSteps: run.maxSteps })
           const shot = await exec('browser.screenshot', { sessionId })
+          if (!shot.success && await reopen(shot.message)) continue
           if (!shot.success) {
             stopReason = shot.message
             messages.push(`${AGENT_LABELS[agent]} stopped: ${shot.message}`)
@@ -136,6 +156,7 @@ export async function runAgentPlaytest(
             break
           }
           if (step.action === 'wait') {
+            if (stepMode) await exec('browser.act', { sessionId, actions: STEP_WAIT_ACTION })
             await wait(WAIT_MS)
             continue
           }
@@ -144,6 +165,7 @@ export async function runAgentPlaytest(
             : step.action === 'act'
               ? await exec('browser.act', { sessionId, actions: bridgeActions(step.actions ?? []) })
               : await exec('browser.key', { sessionId, key: step.key })
+          if (!act.success && await reopen(act.message)) continue
           if (!act.success) {
             stopReason = act.message
             messages.push(`${AGENT_LABELS[agent]} stopped: ${act.message}`)
@@ -195,6 +217,26 @@ export function useAgentPlaytest(projectId: string, exec: Exec = executeTool) {
   const stop = useCallback(() => controller.current?.abort(), [])
 
   return { start, stop, running, progress, result }
+}
+
+/** Agents whose tab closed mid-run: their steps are saved, so a report can still be filed (gap 94). */
+export function useUnfinishedAgentRuns(projectId: string, enabled: boolean) {
+  const qc = useQueryClient()
+  const key = ['agent-runs-unfinished', projectId]
+  const list = useQuery({
+    queryKey: key,
+    queryFn: async () => (await api.get<AgentUnfinished[]>(`/projects/${projectId}/playtest/agent-runs/unfinished`)).data,
+    enabled: !!projectId && enabled,
+  })
+  const file = useMutation({
+    mutationFn: ({ runId, agent }: AgentUnfinished) =>
+      agentPlaytestApi(projectId).finish(runId, agent, { stopReason: 'The page closed before the run finished' }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: key })
+      void qc.invalidateQueries({ queryKey: ['playtests', projectId] })
+    },
+  })
+  return { list, file }
 }
 
 export function useAgentEstimate(projectId: string, agents: number, steps: number) {

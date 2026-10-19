@@ -1,4 +1,4 @@
-// GameGold ArenaShooter v5
+// GameGold ArenaShooter v6
 // GameGold ArenaShooter — a top-down twin-stick arena shooter driven entirely by data.
 // Setup: put this on any GameObject, save the arena JSON as Assets/Resources/GameGold/arena.json, press Play.
 // Everything (camera, floor, walls, player, enemies, bullets, pickups, HUD, screens, sound) is built in code:
@@ -1033,6 +1033,7 @@ public class ArenaShooter : MonoBehaviour
     }
     static Vector2 MousePos => Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
     static bool MouseHeld => Mouse.current != null && Mouse.current.leftButton.isPressed;
+    static bool ShiftHeld => Keyboard.current != null && Keyboard.current.shiftKey.isPressed;
     static bool MouseDown => Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
 #elif ENABLE_LEGACY_INPUT_MANAGER
     static bool Key(Btn b, bool held)
@@ -1057,11 +1058,13 @@ public class ArenaShooter : MonoBehaviour
     }
     static Vector2 MousePos => Input.mousePosition;
     static bool MouseHeld => Input.GetMouseButton(0);
+    static bool ShiftHeld => Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
     static bool MouseDown => Input.GetMouseButtonDown(0);
 #else
     static bool Key(Btn b, bool held) => false;
     static Vector2 MousePos => Vector2.zero;
     static bool MouseHeld => false;
+    static bool ShiftHeld => false;
     static bool MouseDown => false;
 #endif
 
@@ -1073,6 +1076,6 @@ public class ArenaShooter : MonoBehaviour
     static bool AnyGameplayInput()
     {
         for (var b = Btn.W; b <= Btn.Enter; b++) if (Held(b) || Down(b)) return true;
-        return MouseHeld || MouseDown;
+        return MouseHeld || MouseDown || ShiftHeld; // Shift just lets time pass (an agent's "wait", gap 98)
     }
 }
